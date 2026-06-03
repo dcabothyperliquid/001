@@ -538,12 +538,9 @@ tr:hover td{background:rgba(13,240,224,0.015);}
           </div>
           <div class="fgrp">
             <label>TIMEFRAME</label>
-            <select id="inpTf">
-              <option value="1h">1 Hour</option>
-              <option value="3h">3 Hours</option>
-              <option value="4h">4 Hours</option>
-              <option value="1d">1 Day</option>
-            </select>
+            <div style="background:var(--bg);border:1px solid var(--line2);padding:8px 11px;border-radius:5px;font-family:var(--mono);font-size:12px;color:var(--cyan);">
+              ⚡ AUTO — 1H · 3H · 4H · 1D
+            </div>
           </div>
           <div class="fgrp">
             <label>STOP LOSS %</label>
@@ -733,8 +730,20 @@ function clearEvents() {
 async function pollEvents() {
   const data = await api('/events');
   if (data && Array.isArray(data)) {
-    localEvents = data;
-    renderEvents();
+    // Merge new events without clearing existing — prevent flicker
+    // Backend returns newest first; add only events not already in localEvents
+    const existingTimes = new Set(localEvents.map(e => e.time + e.message));
+    let added = false;
+    for (const ev of data) {
+      const key = ev.time + ev.message;
+      if (!existingTimes.has(key)) {
+        localEvents.unshift(ev);
+        added = true;
+      }
+    }
+    // Keep max 100 events in memory
+    if (localEvents.length > 100) localEvents = localEvents.slice(0, 100);
+    if (added) renderEvents();
   }
 }
 
@@ -822,12 +831,13 @@ async function fetchBalance() {
 
 // ── COIN MANAGEMENT ───────────────────────────────────────────────────────────
 async function addCoin() {
-  const symbol       = document.getElementById('inpSym').value.trim().toUpperCase();
-  const capital      = parseFloat(document.getElementById('inpCap').value);
-  const timeframe    = document.getElementById('inpTf').value;
-  const stop_loss    = parseFloat(document.getElementById('inpSl').value);
+  const symbol        = document.getElementById('inpSym').value.trim().toUpperCase();
+  const capital       = parseFloat(document.getElementById('inpCap').value);
+  const timeframe     = 'auto';   // always auto — MTF scan handles all timeframes
+  const stop_loss     = parseFloat(document.getElementById('inpSl').value);
   const trailing_stop = parseFloat(document.getElementById('inpTs').value);
   if (!symbol) { toast('Enter a symbol', 'err'); return; }
+  if (isNaN(capital) || capital <= 0) { toast('Enter valid capital', 'err'); return; }
   const r = await api('/coins', 'POST', { symbol, capital, timeframe, stop_loss, trailing_stop });
   if (r?.success) {
     toast(`${symbol} added ✓`);
