@@ -4,3 +4,4 @@ numpy
 gunicorn
 hyperliquid-python-sdk
 eth-account
+flask-cors
