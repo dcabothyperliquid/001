@@ -1116,13 +1116,10 @@ class BotEngine:
         if self.live_mode:
             usdc_bal = self.client.get_spot_balance().get('USDC',{}).get('available',0)
             if usdc_bal < capital:
-                msg = f"Low bal: {usdc_bal:.2f} avail, need {capital:.2f}"
+                msg = f"Insufficient balance — need {capital:.2f} USDC, have {usdc_bal:.2f}"
                 logger.warning(f"[{symbol}] {msg}")
                 self._push_event('warn', msg, {'symbol': symbol})
-                if usdc_bal < 1:
-                    self._push_event('error', f"Insufficient balance — skip {symbol}", {'symbol': symbol})
-                    return None
-                capital = usdc_bal * 0.99
+                return None
 
         actual_price = price; order_id = None; mode_tag = 'SIM'
         if self.live_mode:
