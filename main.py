@@ -374,7 +374,7 @@ class HyperliquidClient:
         Key = universe index (extracted from coin field e.g. @{tok_index}
         mapped back via token→universe index).
         """
-        if time.time() - self._markpx_ts < 5:
+        if time.time() - self._markpx_ts < 3:
             return
         data = self._post({"type": "spotMetaAndAssetCtxs"})
         if data and isinstance(data, list) and len(data) > 1:
@@ -954,6 +954,11 @@ class BotEngine:
         syms = list(self.coins.keys())
         if not syms: return []
 
+        # Pre-warm markPx cache ONCE before parallel fetch — prevents race condition
+        # where multiple threads trigger _refresh_markpx simultaneously and get
+        # different price snapshots (causing paired tokens to "fluctuate" together)
+        self.client._refresh_markpx()
+
         def _fetch(sym):
             try:
                 market  = self.get_market_data(sym)
@@ -988,7 +993,9 @@ class BotEngine:
                         'confidence':'low','holding':0,'avg_entry':0,'pnl_pct':0,'peak_price':0}
 
         with ThreadPoolExecutor(max_workers=min(len(syms), 20)) as ex:
-            return list(ex.map(_fetch, syms))
+            results = list(ex.map(_fetch, syms))
+        # Filter out None results to ensure all coins always show in monitor
+        return [r for r in results if r is not None]
 
     def get_holdings(self):
         result = []
