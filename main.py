@@ -681,14 +681,14 @@ class AsyncEngine:
                     await self._run_order(self.bot._execute_sell, symbol, price, 'stop_loss')
                     return
 
-                if direction == 'sell' and mtf_score <= -2:
+                if direction == 'sell' and mtf_score <= -1:
                     entries   = self.bot.holdings[symbol]['entries']
                     avg_entry = sum(e['usdt'] for e in entries) / sum(e['amount'] for e in entries)
                     if price > avg_entry * 1.005:
                         await self._run_order(self.bot._execute_sell, symbol, price, f'mtf_sell_{mtf_score}')
                         return
 
-                if direction == 'buy' and mtf_score >= 2 and trade_cap > 0:
+                if direction == 'buy' and mtf_score >= 1 and trade_cap > 0:
                     entries   = self.bot.holdings[symbol]['entries']
                     avg_entry = sum(e['usdt'] for e in entries) / sum(e['amount'] for e in entries)
                     if price < avg_entry * 0.97 and len(entries) < 5:
