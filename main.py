@@ -324,13 +324,6 @@ class HyperliquidClient:
                 pairs = [p for p in pairs if p['display'] != display_name]
                 seen_display.discard(display_name)
 
-            # Filter: only show tokens with a real market price
-            if asset_ctxs and i < len(asset_ctxs):
-                ctx     = asset_ctxs[i]
-                mark_px = float(ctx.get('markPx', 0) or 0)
-                if mark_px <= 0:
-                    continue
-
             seen_display.add(display_name)
 
             pairs.append({
