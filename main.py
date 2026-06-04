@@ -667,8 +667,9 @@ class BotEngine:
         self.trades   = []
         self.stats    = {'total_trades': 0, 'winning_trades': 0,
                          'total_profit': 0.0, 'daily_profit': 0.0, 'start_time': None}
-        self._events     = deque(maxlen=200)
-        self._user_stopped = False   # set True when user manually stops; prevents auto-restart
+        self._events        = deque(maxlen=200)
+        self._user_stopped   = False
+        self._persisted_running = None   # loaded from storage
         self._async_eng  = AsyncEngine(client, self)
         self._load_data()
 
@@ -682,10 +683,12 @@ class BotEngine:
     # ── Persistence (Supabase primary, local JSON fallback) ─────────────────
     def _save_data(self):
         payload = {
-            'coins':    self.coins,
-            'holdings': self.holdings,
-            'trades':   self.trades[-200:],
-            'stats':    self.stats
+            'coins':        self.coins,
+            'holdings':     self.holdings,
+            'trades':       self.trades[-200:],
+            'stats':        self.stats,
+            'user_stopped': self._user_stopped,
+            'bot_running':  self.running,
         }
         if SUPABASE_OK:
             try:
@@ -708,11 +711,14 @@ class BotEngine:
                 res = _supabase.table('bot_data').select('value').eq('key', 'state').execute()
                 if res.data and res.data[0].get('value'):
                     d = res.data[0]['value']
-                    self.coins    = d.get('coins', {})
-                    self.holdings = d.get('holdings', {})
-                    self.trades   = d.get('trades', [])
-                    self.stats    = d.get('stats', self.stats)
-                    logger.info(f"✅ Supabase loaded — {len(self.coins)} coins, {len(self.trades)} trades")
+                    self.coins         = d.get('coins', {})
+                    self.holdings      = d.get('holdings', {})
+                    self.trades        = d.get('trades', [])
+                    self.stats         = d.get('stats', self.stats)
+                    self._user_stopped = d.get('user_stopped', False)
+                    # bot_running persisted so auto-start knows user's intent
+                    self._persisted_running = d.get('bot_running', None)
+                    logger.info(f"✅ Supabase loaded — {len(self.coins)} coins | user_stopped={self._user_stopped} | was_running={self._persisted_running}")
                     self._backfill_display_names()
                     return
             except Exception as e:
@@ -720,11 +726,13 @@ class BotEngine:
         if os.path.exists(DATA_FILE):
             try:
                 with open(DATA_FILE) as f: d = json.load(f)
-                self.coins    = d.get('coins', {})
-                self.holdings = d.get('holdings', {})
-                self.trades   = d.get('trades', [])
-                self.stats    = d.get('stats', self.stats)
-                logger.info(f"Local JSON loaded — {len(self.coins)} coins")
+                self.coins         = d.get('coins', {})
+                self.holdings      = d.get('holdings', {})
+                self.trades        = d.get('trades', [])
+                self.stats         = d.get('stats', self.stats)
+                self._user_stopped = d.get('user_stopped', False)
+                self._persisted_running = d.get('bot_running', None)
+                logger.info(f"Local JSON loaded — {len(self.coins)} coins | user_stopped={self._user_stopped}")
                 self._backfill_display_names()
             except Exception as e:
                 logger.error(f"Local load error: {e}")
@@ -932,7 +940,8 @@ class BotEngine:
         wallet = self.wallet or os.environ.get('WALLET_ADDRESS','')
         return {'running': self.running, 'live_mode': self.live_mode,
                 'sdk_available': SDK_AVAILABLE,
-                'user_stopped': self._user_stopped,
+                'user_stopped':      self._user_stopped,
+                'persisted_running': self._persisted_running,
                 'coins_monitored': len(self.coins),
                 'active_holdings': len([h for h in self.holdings.values() if h.get('entries')]),
                 'wallet_masked': (wallet[:6]+'...'+wallet[-4:]) if len(wallet)>10 else wallet,
@@ -1169,6 +1178,7 @@ class BotEngine:
     def stop(self):
         self.running = False; self.live_mode = False; self.exchange = None
         self._user_stopped = True
+        self._save_data()   # persist immediately so restart respects user's intent
         self._push_event('monitor','Bot stopped',{})
         return {'success':True,'message':'Bot stopped'}
 

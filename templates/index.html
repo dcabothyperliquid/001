@@ -1620,7 +1620,12 @@ function startEvents()  { if (eventsTimer) clearInterval(eventsTimer); pollEvent
   const status = await api('/bot/status');
   if (status) {
     renderWalletStatus(status);
-    if (!status.running && status.key_configured && !status.user_stopped) {
+    // Auto-restart only if: key configured AND user never manually stopped AND was running before
+    const shouldAutoStart = status.key_configured
+      && !status.user_stopped
+      && status.persisted_running !== false
+      && !status.running;
+    if (shouldAutoStart) {
       const r = await api('/bot/start', 'POST', {});
       if (r && r.success) {
         toastRich('Auto-restarted: ' + r.mode + ' mode', '', 'ok');
