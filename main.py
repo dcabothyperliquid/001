@@ -291,6 +291,14 @@ class HyperliquidClient:
         pairs = []
         seen_display = set()
         seen_internal = set()
+        # Priority list — these must always appear with their canonical display name
+        PRIORITY_DISPLAY = {
+            'UBTC':'BTC','USOL':'SOL','UETH':'ETH','UBTC':'BTC',
+            'UZEC':'ZEC','UWLD':'WLD','UMOG':'MOG','UPUMP':'PUMP',
+            'HPENGU':'PENGU','HPEPE':'PEPE','HPUMP':'PUMPFUN','FXRP':'XRP',
+            'TRX1':'TRX','BNB0':'BNB','AVAX0':'AVAX','LINK0':'LINK',
+            'AAVE0':'AAVE','XMR1':'XMR','TAO1':'TAO','HYPE':'HYPE',
+        }
         for i, u in enumerate(meta.get('universe', [])):
             tok_indices = u.get('tokens', [])
             internal_name = ''
@@ -304,9 +312,20 @@ class HyperliquidClient:
                 continue
             seen_internal.add(internal_name)
 
-            display_name = _clean_display(internal_name)
-            if display_name == 'USDC' or display_name in seen_display:
+            # Use priority map first, then _clean_display
+            if internal_name in PRIORITY_DISPLAY:
+                display_name = PRIORITY_DISPLAY[internal_name]
+            else:
+                display_name = _clean_display(internal_name)
+            if display_name == 'USDC':
                 continue
+            # If display already claimed by a non-priority token, override with internal
+            if display_name in seen_display and internal_name not in PRIORITY_DISPLAY:
+                continue
+            # Priority tokens always win — remove previous entry if it claimed this display
+            if display_name in seen_display and internal_name in PRIORITY_DISPLAY:
+                pairs = [p for p in pairs if p['display'] != display_name]
+                seen_display.discard(display_name)
 
             # Filter: only show tokens with a real market price
             if asset_ctxs and i < len(asset_ctxs):
@@ -338,8 +357,8 @@ class HyperliquidClient:
         return self._post({"type": "allMids"}) or {}
 
     def _refresh_markpx(self):
-        """Seed markPx cache from spotMetaAndAssetCtxs (refreshed every 10s)."""
-        if time.time() - self._markpx_ts < 10:
+        """Seed markPx cache from spotMetaAndAssetCtxs (refreshed every 5s)."""
+        if time.time() - self._markpx_ts < 5:
             return
         data = self._post({"type": "spotMetaAndAssetCtxs"})
         if data and isinstance(data, list) and len(data) > 1:
@@ -360,26 +379,39 @@ class HyperliquidClient:
         if idx is None:
             self.get_spot_meta(force=True)
             idx = self.sym_to_index(symbol)
+
+        def _sane(px):
+            """Reject prices that are clearly wrong (1.0 exactly, 0, negative)."""
+            if not px or px <= 0: return False
+            # 1.0 is almost never a real price for majors — likely a placeholder
+            if px == 1.0: return False
+            return True
+
         if idx is not None:
-            # Try live WS cache first
+            # 1. Live WS cache (fastest, most current)
             p = price_cache.get(f"@{10000 + idx}")
-            if p and p > 0: return p
-        # Fallback: REST allMids
+            if _sane(p): return p
+
+        # 2. markPx from spotMetaAndAssetCtxs (authoritative REST source)
+        self._refresh_markpx()
+        if idx is not None:
+            px = self._markpx_cache.get(idx)
+            if _sane(px): return px
+
+        # 3. REST allMids fallback
         mids = self.get_all_mids()
         if idx is not None and f"@{10000 + idx}" in mids:
-            px = float(mids[f"@{10000 + idx}"])
-            if px > 0: return px
+            try:
+                px = float(mids[f"@{10000 + idx}"])
+                if _sane(px): return px
+            except: pass
         for key in [f"{symbol}/USDC", symbol]:
             if key in mids:
                 try:
                     px = float(mids[key])
-                    if px > 0: return px
+                    if _sane(px): return px
                 except: pass
-        # Final fallback: markPx from spotMetaAndAssetCtxs
-        if idx is not None:
-            self._refresh_markpx()
-            px = self._markpx_cache.get(idx)
-            if px and px > 0: return px
+
         return None
 
     # ── async candle fetch ────────────────────────────────────────────────────

@@ -1596,17 +1596,25 @@ async function updateTicker(coins) {
 // ═══════════════════════════════════════════════════════════════
 // REFRESH
 // ═══════════════════════════════════════════════════════════════
+let _refreshing = false;
 async function refreshAll() {
-  const [coins, holdings, trades, stats, status] = await Promise.all([
-    api('/coins'), api('/holdings'), api('/trades'), api('/stats'), api('/bot/status')
-  ]);
-  if (coins)    { renderCoins(coins); updateTicker(coins); }
-  if (holdings) renderHoldings(holdings);
-  if (trades)   renderTrades(trades);
-  if (stats)    renderStats(stats);
-  if (status)   { setRunning(status.running, status.live_mode); renderWalletStatus(status); }
-  const _now = new Date(Date.now() + (5.5*3600000));
-  document.getElementById('lastUpd').textContent = 'UPDATED ' + _now.toISOString().substr(11,8) + ' IST';
+  if (_refreshing) return;   // prevent overlapping calls
+  _refreshing = true;
+  try {
+    const [coins, holdings, trades, stats, status] = await Promise.all([
+      api('/coins'), api('/holdings'), api('/trades'), api('/stats'), api('/bot/status')
+    ]);
+    // Only update if data is valid (never blank out existing cards on API error)
+    if (coins && Array.isArray(coins))   { renderCoins(coins); updateTicker(coins); }
+    if (holdings && Array.isArray(holdings)) renderHoldings(holdings);
+    if (trades && Array.isArray(trades)) renderTrades(trades);
+    if (stats)    renderStats(stats);
+    if (status)   { setRunning(status.running, status.live_mode); renderWalletStatus(status); }
+    const _now = new Date(Date.now() + (5.5*3600000));
+    document.getElementById('lastUpd').textContent = 'UPDATED ' + _now.toISOString().substr(11,8) + ' IST';
+  } finally {
+    _refreshing = false;
+  }
 }
 function startRefresh() { if (refreshTimer) clearInterval(refreshTimer); refreshTimer = setInterval(refreshAll, 5000); }
 function stopRefresh()  { if (refreshTimer) clearInterval(refreshTimer); }
