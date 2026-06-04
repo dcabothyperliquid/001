@@ -528,9 +528,19 @@ tr:hover td{background:rgba(13,240,224,0.015);}
       </div>
       <div class="panel-body">
         <div class="fgrid">
-          <div class="fgrp">
+          <div class="fgrp" style="position:relative;">
             <label>SYMBOL</label>
-            <input id="inpSym" type="text" placeholder="SOL, NEAR, JUP…" />
+            <input id="inpSym" type="text" placeholder="Search coin… (e.g. SOL)"
+              autocomplete="off"
+              oninput="filterCoinsDropdown()"
+              onfocus="showCoinsDropdown()"
+              onblur="setTimeout(hideCoinsDropdown,180)"
+            />
+            <div id="coinDropdown" style="
+              display:none;position:absolute;top:100%;left:0;right:0;z-index:200;
+              background:var(--bg2);border:1px solid var(--cyan);border-radius:0 0 6px 6px;
+              max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.5);
+            "></div>
           </div>
           <div class="fgrp">
             <label>CAPITAL (USDC)</label>
@@ -658,6 +668,54 @@ let refreshTimer = null;
 let eventsTimer = null;
 let currentMode = 'sim';
 let localEvents = [];
+let allSpotPairs = [];
+let filteredPairs = [];
+
+// ── COIN SEARCH DROPDOWN ──────────────────────────────────────────────────────
+async function loadSpotPairs() {
+  try {
+    const data = await api('/spot/pairs');
+    if (data && Array.isArray(data)) {
+      allSpotPairs = data.map(p => p.name).filter(Boolean).sort();
+    }
+  } catch(e) {}
+}
+
+function showCoinsDropdown() {
+  filteredPairs = allSpotPairs.slice();
+  renderDropdown();
+}
+
+function filterCoinsDropdown() {
+  const q = document.getElementById('inpSym').value.trim().toUpperCase();
+  filteredPairs = q
+    ? allSpotPairs.filter(n => n.toUpperCase().includes(q))
+    : allSpotPairs.slice();
+  renderDropdown();
+}
+
+function renderDropdown() {
+  const dd = document.getElementById('coinDropdown');
+  if (!filteredPairs.length) { dd.style.display = 'none'; return; }
+  dd.style.display = 'block';
+  dd.innerHTML = filteredPairs.slice(0, 60).map(name => `
+    <div onclick="selectCoin('${name}')" style="
+      padding:8px 12px;font-family:var(--mono);font-size:12px;
+      color:var(--text);cursor:pointer;border-bottom:1px solid var(--line);
+      transition:background 0.1s;
+    " onmouseover="this.style.background='rgba(13,240,224,0.08)'"
+       onmouseout="this.style.background=''">${name}</div>
+  `).join('');
+}
+
+function selectCoin(name) {
+  document.getElementById('inpSym').value = name;
+  hideCoinsDropdown();
+}
+
+function hideCoinsDropdown() {
+  document.getElementById('coinDropdown').style.display = 'none';
+}
 
 // ── THEME ─────────────────────────────────────────────────────────────────────
 function toggleTheme() {
@@ -1060,9 +1118,30 @@ function startEvents() {
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
-refreshAll();
-startRefresh();
-startEvents();
+(async function init() {
+  // Load spot pairs for searchable dropdown
+  await loadSpotPairs();
+
+  // Auto-restart bot if Render woke up from sleep (coins + state restore)
+  const status = await api('/bot/status');
+  if (status) {
+    renderWalletStatus(status);
+    if (!status.running && status.key_configured) {
+      console.log('Auto-restarting bot after server wake-up...');
+      const r = await api('/bot/start', 'POST', {});
+      if (r && r.success) {
+        toast('Auto-restarted: ' + r.mode + ' mode', 'ok');
+        setRunning(true, r.mode === 'LIVE');
+      }
+    } else if (status.running) {
+      setRunning(true, status.live_mode);
+    }
+  }
+
+  refreshAll();
+  startRefresh();
+  startEvents();
+})();
 </script>
 </body>
 </html>
