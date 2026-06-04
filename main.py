@@ -221,8 +221,9 @@ class HyperliquidClient:
                     idx_map[base_name + '/USDC'] = i
                     idx_map[base_name + 'USDC'] = i
             # ── Alias map: user types "SOL" → HL actual name "USOL" ──────────
-            # Hyperliquid remaps: BTC→UBTC, SOL→USOL, ETH→UETH,
-            # TRX→TRX1, BNB→BNB0, AVAX→AVAX0, LINK→LINK0, AAVE→AAVE0 etc
+            # IMPORTANT: These aliases MUST override any native token with same name
+            # e.g. HL may have a native "ETH" token at a different index than "UETH"
+            # We always want ETH→UETH, SOL→USOL, BTC→UBTC (the wrapped versions)
             ALIASES = {
                 'BTC': 'UBTC', 'SOL': 'USOL', 'ETH': 'UETH',
                 'TRX': 'TRX1', 'BNB': 'BNB0', 'AVAX': 'AVAX0',
@@ -230,19 +231,15 @@ class HyperliquidClient:
                 'ZEC': 'UZEC', 'WLD': 'UWLD', 'MOG': 'UMOG',
                 'PUMP': 'UPUMP', 'PENGU': 'HPENGU', 'PEPE': 'HPEPE',
                 'PUMPFUN': 'HPUMP', 'XMR': 'XMR1', 'TAO': 'TAO1',
-                'HYPE': 'HYPE',  # HYPE is its own name on HL spot
+                'HYPE': 'HYPE',
             }
-            # Also add direct self-mapping for any symbol already in idx_map
-            for sym in list(idx_map.keys()):
-                alias = sym.upper()
-                if alias not in ALIASES:
-                    ALIASES[alias] = alias
             for alias, real in ALIASES.items():
-                if real in idx_map and alias not in idx_map:
+                if real in idx_map:
+                    # Force-set alias even if a native token already claimed this key
                     idx_map[alias] = idx_map[real]
                     idx_map[alias + '/USDC'] = idx_map[real]
             self._sym_index = idx_map
-            logger.info(f"spotMeta: {len(set(idx_map.values()))} pairs, aliases: {list(ALIASES.keys())[:6]}")
+            logger.info(f"spotMeta: {len(set(idx_map.values()))} pairs, aliases applied: {[a for a,r in ALIASES.items() if r in idx_map]}")
         return data
 
     def get_spot_pairs(self):
