@@ -173,6 +173,8 @@ class HyperliquidClient:
         self._meta_ts    = 0
         # Build index map: symbol.upper() → universe_index  (rebuilt on meta refresh)
         self._sym_index: dict = {}
+        self._markpx_cache: dict = {}   # universe_idx → markPx (from spotMetaAndAssetCtxs)
+        self._markpx_ts: float  = 0
 
     # ── sync HTTP ─────────────────────────────────────────────────────────────
     def _post(self, payload):
@@ -324,20 +326,45 @@ class HyperliquidClient:
         """Sync fallback when WS price cache is empty/stale."""
         return self._post({"type": "allMids"}) or {}
 
+    def _refresh_markpx(self):
+        """Seed markPx cache from spotMetaAndAssetCtxs (refreshed every 10s)."""
+        if time.time() - self._markpx_ts < 10:
+            return
+        data = self._post({"type": "spotMetaAndAssetCtxs"})
+        if data and isinstance(data, list) and len(data) > 1:
+            ctxs = data[1]
+            cache = {}
+            for i, ctx in enumerate(ctxs):
+                px = ctx.get('markPx')
+                if px:
+                    try: cache[i] = float(px)
+                    except: pass
+            if cache:
+                self._markpx_cache = cache
+                self._markpx_ts    = time.time()
+
     def get_spot_price(self, symbol):
         idx = self.sym_to_index(symbol)
         if idx is not None:
             # Try live WS cache first
             p = price_cache.get(f"@{idx}")
             if p: return p
-        # Fallback: REST
+        # Fallback: REST allMids
         mids = self.get_all_mids()
         if idx is not None and f"@{idx}" in mids:
-            return float(mids[f"@{idx}"])
+            px = float(mids[f"@{idx}"])
+            if px > 0: return px
         for key in [f"{symbol}/USDC", symbol]:
             if key in mids:
-                try: return float(mids[key])
+                try:
+                    px = float(mids[key])
+                    if px > 0: return px
                 except: pass
+        # Final fallback: markPx from spotMetaAndAssetCtxs
+        if idx is not None:
+            self._refresh_markpx()
+            px = self._markpx_cache.get(idx)
+            if px and px > 0: return px
         return None
 
     # ── async candle fetch ────────────────────────────────────────────────────
