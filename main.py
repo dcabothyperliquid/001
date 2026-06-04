@@ -285,12 +285,20 @@ class HyperliquidClient:
                 return s[:-1]
             return s
 
+        # Build a lookup: coin identifier -> markPx context
+        # asset_ctxs[j].coin can be "PURR/USDC" or "@{token_index}"
+        ctx_by_coin = {}
+        for ctx in asset_ctxs:
+            coin = ctx.get('coin', '')
+            if coin:
+                ctx_by_coin[coin] = ctx
+
         pairs = []
         seen_display = set()
         seen_internal = set()
         # Priority list — these must always appear with their canonical display name
         PRIORITY_DISPLAY = {
-            'UBTC':'BTC','USOL':'SOL','UETH':'ETH','UBTC':'BTC',
+            'UBTC':'BTC','USOL':'SOL','UETH':'ETH',
             'UZEC':'ZEC','UWLD':'WLD','UMOG':'MOG','UPUMP':'PUMP',
             'HPENGU':'PENGU','HPEPE':'PEPE','HPUMP':'PUMPFUN','FXRP':'XRP',
             'TRX1':'TRX','BNB0':'BNB','AVAX0':'AVAX','LINK0':'LINK',
@@ -316,13 +324,33 @@ class HyperliquidClient:
                 display_name = _clean_display(internal_name)
             if display_name == 'USDC':
                 continue
-            # If display already claimed by a non-priority token, override with internal
+            # If display already claimed by a non-priority token, skip
             if display_name in seen_display and internal_name not in PRIORITY_DISPLAY:
                 continue
             # Priority tokens always win — remove previous entry if it claimed this display
             if display_name in seen_display and internal_name in PRIORITY_DISPLAY:
                 pairs = [p for p in pairs if p['display'] != display_name]
                 seen_display.discard(display_name)
+
+            # Properly match asset_ctxs by coin field (NOT by raw index i)
+            # HL uses "NAME/USDC" for some tokens, "@{token_index}" for others
+            ctx = None
+            if tok_indices:
+                # First try @{token_index} — most reliable
+                ctx = ctx_by_coin.get(f"@{tok_indices[0]}")
+            if ctx is None:
+                # Try named pair format
+                ctx = ctx_by_coin.get(f"{internal_name}/USDC")
+            if ctx is None:
+                # Last fallback: try universe index
+                ctx = ctx_by_coin.get(f"@{i}")
+
+            # Only include tokens with an active market (markPx > 0)
+            if ctx is not None:
+                mark_px = float(ctx.get('markPx', 0) or 0)
+                if mark_px <= 0:
+                    continue
+            # If no ctx found, include anyway (API may be slow/missing data)
 
             seen_display.add(display_name)
 
