@@ -578,6 +578,11 @@ class AsyncEngine:
                             if msg.get('channel') == 'allMids':
                                 mids = msg.get('data', {}).get('mids', {})
                                 if mids:
+                                    # DEBUG — log keys once to see exact format
+                                    if not getattr(price_cache, '_logged_keys', False):
+                                        sample = list(mids.items())[:20]
+                                        logger.info(f"WS allMids sample keys: {sample}")
+                                        price_cache._logged_keys = True
                                     price_cache.update(mids)
                         except Exception as e:
                             logger.warning(f"WS parse error: {e}")
