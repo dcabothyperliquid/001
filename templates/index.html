@@ -772,7 +772,7 @@ function renderEvents() {
   list.innerHTML = localEvents.slice(0, 50).map(ev => {
     const tag  = EV_TAGS[ev.type]  || 'info';
     const icon = EV_ICONS[ev.type] || 'ℹ️';
-    const t    = ev.time ? new Date(ev.time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—';
+    const t    = ev.time ? new Date(ev.time).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Asia/Kolkata',hour12:false}) : '—';
     return `<div class="ev-item">
       <span class="ev-time">${t}</span>
       <span class="ev-icon">${icon}</span>
@@ -1113,7 +1113,7 @@ async function refreshAll() {
   if (trades)   renderTrades(trades);
   if (stats)    renderStats(stats);
   if (status)   { setRunning(status.running, status.live_mode); renderWalletStatus(status); }
-  document.getElementById('lastUpd').textContent = 'UPDATED ' + new Date().toLocaleTimeString();
+  document.getElementById('lastUpd').textContent = 'UPDATED ' + new Date().toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Asia/Kolkata',hour12:false});
 }
 
 function startRefresh() {
