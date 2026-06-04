@@ -265,25 +265,10 @@ class HyperliquidClient:
                 token_idx_to_name[tidx] = tname
 
         def _clean_display(raw: str) -> str:
-            """Strip HL-specific prefixes/suffixes to get human display name.
-            USOL→SOL, UBTC→BTC, HPEPE→PEPE, HPUMP→PUMPFUN,
-            TRX1→TRX, BNB0→BNB, AVAX0→AVAX etc.
+            """Return display name. Only PRIORITY_DISPLAY handles remapping.
+            Everything else shows as-is (ADHD, ANON, AAPL etc.)
             """
-            s = raw.upper().strip()
-            # known special cases
-            _special = {
-                'HPUMP': 'PUMPFUN', 'HPENGU': 'PENGU',
-                'HPEPE': 'PEPE', 'FXRP': 'XRP',
-            }
-            if s in _special:
-                return _special[s]
-            # U-prefix: USOL→SOL, UBTC→BTC, UETH→ETH, UZEC→ZEC etc.
-            if s.startswith('U') and len(s) > 1 and s[1:].isalpha():
-                return s[1:]
-            # trailing digit: TRX1→TRX, BNB0→BNB, XMR1→XMR, TAO1→TAO
-            if _re.match(r'^[A-Z]+\d$', s):
-                return s[:-1]
-            return s
+            return raw.upper().strip()
 
         # Build a lookup: coin identifier -> markPx context
         # asset_ctxs[j].coin can be "PURR/USDC" or "@{token_index}"
