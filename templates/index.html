@@ -1245,7 +1245,7 @@ function renderEvents() {
     list.innerHTML = '<div class="ev-empty">BOT NOT RUNNING — EVENTS WILL APPEAR HERE</div>';
     return;
   }
-  list.innerHTML = localEvents.slice(0,50).map(ev => {
+  list.innerHTML = localEvents.slice(0,200).map(ev => {
     const tag  = EV_TAGS[ev.type]  || 'info';
     const icon = EV_ICONS[ev.type] || 'ℹ️';
     const t    = ev.time ? ev.time.substr(11,8) + ' IST' : '—';
@@ -1271,7 +1271,7 @@ async function pollEvents() {
         added = true;
       }
     }
-    if (localEvents.length > 100) localEvents = localEvents.slice(0,100);
+    if (localEvents.length > 500) localEvents = localEvents.slice(0,500);
     if (added) renderEvents();
     // Feed into notification system
     ingestEvents(data);
@@ -1611,7 +1611,7 @@ function startEvents()  { if (eventsTimer) clearInterval(eventsTimer); pollEvent
   const status = await api('/bot/status');
   if (status) {
     renderWalletStatus(status);
-    if (!status.running && status.key_configured) {
+    if (!status.running && status.key_configured && !status.user_stopped) {
       const r = await api('/bot/start', 'POST', {});
       if (r && r.success) {
         toastRich('Auto-restarted: ' + r.mode + ' mode', '', 'ok');

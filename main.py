@@ -171,10 +171,15 @@ class HyperliquidClient:
         self.session.headers.update({'Content-Type': 'application/json'})
         self._meta_cache = None
         self._meta_ts    = 0
-        # Build index map: symbol.upper() → universe_index  (rebuilt on meta refresh)
         self._sym_index: dict = {}
-        self._markpx_cache: dict = {}   # universe_idx → markPx (from spotMetaAndAssetCtxs)
+        self._markpx_cache: dict = {}
         self._markpx_ts: float  = 0
+        # Eagerly warm sym_index on startup (non-fatal if it fails)
+        try:
+            self.get_spot_meta(force=True)
+            logger.info(f"✅ spotMeta pre-loaded — {len(self._sym_index)} symbols indexed")
+        except Exception as e:
+            logger.warning(f"spotMeta pre-load failed (will retry on demand): {e}")
 
     # ── sync HTTP ─────────────────────────────────────────────────────────────
     def _post(self, payload):
@@ -225,7 +230,13 @@ class HyperliquidClient:
                 'ZEC': 'UZEC', 'WLD': 'UWLD', 'MOG': 'UMOG',
                 'PUMP': 'UPUMP', 'PENGU': 'HPENGU', 'PEPE': 'HPEPE',
                 'PUMPFUN': 'HPUMP', 'XMR': 'XMR1', 'TAO': 'TAO1',
+                'HYPE': 'HYPE',  # HYPE is its own name on HL spot
             }
+            # Also add direct self-mapping for any symbol already in idx_map
+            for sym in list(idx_map.keys()):
+                alias = sym.upper()
+                if alias not in ALIASES:
+                    ALIASES[alias] = alias
             for alias, real in ALIASES.items():
                 if real in idx_map and alias not in idx_map:
                     idx_map[alias] = idx_map[real]
@@ -345,10 +356,14 @@ class HyperliquidClient:
 
     def get_spot_price(self, symbol):
         idx = self.sym_to_index(symbol)
+        # If idx not found, force a meta refresh once and retry
+        if idx is None:
+            self.get_spot_meta(force=True)
+            idx = self.sym_to_index(symbol)
         if idx is not None:
             # Try live WS cache first
             p = price_cache.get(f"@{10000 + idx}")
-            if p: return p
+            if p and p > 0: return p
         # Fallback: REST allMids
         mids = self.get_all_mids()
         if idx is not None and f"@{10000 + idx}" in mids:
@@ -571,7 +586,20 @@ class AsyncEngine:
             self.bot._push_event('monitor',
                 f"{symbol} | score={mtf_score} | {direction} | {confidence} | {best_tf} | {price:.6f}",
                 {'symbol': symbol, 'score': mtf_score, 'direction': direction,
-                 'confidence': confidence, 'price': price})
+                 'confidence': confidence, 'price': price,
+                 'tf_breakdown': mtf.get('tf_breakdown', {})})
+
+            # Push per-TF breakdown events so all timeframes show in Live Events
+            tf_breakdown = mtf.get('tf_breakdown', {})
+            for tf_key in SCAN_TIMEFRAMES:
+                tf_sig = tf_breakdown.get(tf_key, 'neutral')
+                tf_data = (mtf.get('tf_results') or {}).get(tf_key, {})
+                rsi_val = tf_data.get('rsi', '—') if tf_data else '—'
+                self.bot._push_event('monitor',
+                    f"{symbol} | score={SIGNAL_SCORES.get(tf_sig,0)} | {tf_sig} | {'high' if tf_key == best_tf else 'low'} | {tf_key} | {price:.6f}",
+                    {'symbol': symbol, 'score': SIGNAL_SCORES.get(tf_sig, 0),
+                     'direction': tf_sig, 'confidence': 'high' if tf_key == best_tf else 'low',
+                     'price': price, 'timeframe': tf_key})
 
             if has_holding:
                 if self.bot._check_trailing_stop(symbol, price):
@@ -639,7 +667,8 @@ class BotEngine:
         self.trades   = []
         self.stats    = {'total_trades': 0, 'winning_trades': 0,
                          'total_profit': 0.0, 'daily_profit': 0.0, 'start_time': None}
-        self._events     = deque(maxlen=50)
+        self._events     = deque(maxlen=200)
+        self._user_stopped = False   # set True when user manually stops; prevents auto-restart
         self._async_eng  = AsyncEngine(client, self)
         self._load_data()
 
@@ -864,6 +893,7 @@ class BotEngine:
         wallet = self.wallet or os.environ.get('WALLET_ADDRESS','')
         return {'running': self.running, 'live_mode': self.live_mode,
                 'sdk_available': SDK_AVAILABLE,
+                'user_stopped': self._user_stopped,
                 'coins_monitored': len(self.coins),
                 'active_holdings': len([h for h in self.holdings.values() if h.get('entries')]),
                 'wallet_masked': (wallet[:6]+'...'+wallet[-4:]) if len(wallet)>10 else wallet,
@@ -949,6 +979,7 @@ class BotEngine:
                 'direction': direction, 'best_timeframe': best_tf,
                 'capital_pct': capital_pct,
                 'tf_breakdown': {tf: v['signal'] for tf,v in tf_results.items()},
+                'tf_results': tf_results,
                 'rsi': best['rsi'], 'macd_signal': best['macd'], 'volume_signal': best['vol'],
                 'signal': direction if direction!='neutral' else 'neutral'}
 
@@ -1087,6 +1118,7 @@ class BotEngine:
             return {'success': False, 'error': 'Live trading init failed — check WALLET_ADDRESS and PRIVATE_KEY'}
         mode = 'LIVE'
         self.running = True
+        self._user_stopped = False
         self.stats['start_time'] = now_ist()
         self._async_eng.start()
         coins = list(self.coins.keys())
@@ -1097,6 +1129,7 @@ class BotEngine:
 
     def stop(self):
         self.running = False; self.live_mode = False; self.exchange = None
+        self._user_stopped = True
         self._push_event('monitor','Bot stopped',{})
         return {'success':True,'message':'Bot stopped'}
 
