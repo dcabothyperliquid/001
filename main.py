@@ -360,18 +360,46 @@ class HyperliquidClient:
         return self._post({"type": "allMids"}) or {}
 
     def _refresh_markpx(self):
-        """Seed markPx cache from spotMetaAndAssetCtxs (refreshed every 5s)."""
+        """Seed markPx cache from spotMetaAndAssetCtxs (refreshed every 5s).
+        Key = universe index (extracted from coin field e.g. @{tok_index}
+        mapped back via token→universe index).
+        """
         if time.time() - self._markpx_ts < 5:
             return
         data = self._post({"type": "spotMetaAndAssetCtxs"})
         if data and isinstance(data, list) and len(data) > 1:
+            meta = data[0]
             ctxs = data[1]
+            # Build token_index → universe_index map from meta
+            token_idx_to_uni = {}
+            for uni_i, u in enumerate(meta.get('universe', [])):
+                for tok_idx in u.get('tokens', []):
+                    token_idx_to_uni[tok_idx] = uni_i
             cache = {}
-            for i, ctx in enumerate(ctxs):
-                px = ctx.get('markPx')
-                if px:
-                    try: cache[i] = float(px)
-                    except: pass
+            for ctx in ctxs:
+                coin = ctx.get('coin', '')
+                px   = ctx.get('markPx')
+                if not px or not coin:
+                    continue
+                try:
+                    px_f = float(px)
+                except:
+                    continue
+                # coin is "@{token_index}" or "NAME/USDC"
+                if coin.startswith('@'):
+                    try:
+                        tok_idx = int(coin[1:])
+                        uni_idx = token_idx_to_uni.get(tok_idx)
+                        if uni_idx is not None:
+                            cache[uni_idx] = px_f
+                    except:
+                        pass
+                # named pairs (PURR/USDC) — find universe index by name
+                elif '/' in coin:
+                    name = coin.split('/')[0].upper()
+                    idx = self._sym_index.get(name)
+                    if idx is not None:
+                        cache[idx] = px_f
             if cache:
                 self._markpx_cache = cache
                 self._markpx_ts    = time.time()
