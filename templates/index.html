@@ -1176,8 +1176,11 @@ function renderDropdown() {
     </div>`).join('');
 }
 function selectCoin(actualName, displayName) {
-  document.getElementById('inpSym').value = actualName;
+  // Show the friendly display name (ETH, SOL, BTC) in the input
+  // Backend alias map handles ETH→UETH, SOL→USOL etc automatically
+  document.getElementById('inpSym').value = displayName;
   document.getElementById('inpSym').setAttribute('data-actual', actualName);
+  document.getElementById('inpSym').setAttribute('data-display', displayName);
   hideCoinsDropdown();
 }
 function hideCoinsDropdown() { document.getElementById('coinDropdown').style.display = 'none'; }
@@ -1372,7 +1375,9 @@ async function fetchBalance() {
 // COIN MANAGEMENT
 // ═══════════════════════════════════════════════════════════════
 async function addCoin() {
-  const symbol        = document.getElementById('inpSym').value.trim().toUpperCase();
+  const inp           = document.getElementById('inpSym');
+  // Prefer data-display (set by dropdown select), else use raw input value
+  const symbol        = (inp.getAttribute('data-display') || inp.value).trim().toUpperCase();
   const capital       = parseFloat(document.getElementById('inpCap').value);
   const stop_loss     = parseFloat(document.getElementById('inpSl').value);
   const trailing_stop = parseFloat(document.getElementById('inpTs').value);
@@ -1381,7 +1386,9 @@ async function addCoin() {
   const r = await api('/coins', 'POST', { symbol, capital, timeframe:'auto', stop_loss, trailing_stop });
   if (r?.success) {
     toastRich(`${symbol} added ✓`, `Capital: $${capital}`, 'ok');
-    document.getElementById('inpSym').value = '';
+    inp.value = '';
+    inp.removeAttribute('data-actual');
+    inp.removeAttribute('data-display');
     refreshAll();
     setTimeout(refreshAll, 2500);
   } else {
@@ -1460,10 +1467,11 @@ function renderCoins(coins) {
     const pnlTxt  = pnlVal !== 0 ? `${pnlVal > 0 ? '+' : ''}${pnlVal}%` : '—';
     const rc      = rsiColor(c.rsi);
     const price   = c.price && c.price > 0 ? `$${fp(c.price)}` : '—';
+    const label   = c.display_name || c.symbol;   // show ETH not UETH
     return `
     <div class="coin-card ${cardCls}">
       <div class="cc-top">
-        <span class="cc-sym">${c.symbol}</span>
+        <span class="cc-sym">${label}</span>
         <div class="cc-actions">
           ${isHold ? `<button class="btn btn-sell" onclick="manualSell('${c.symbol}')">SELL</button>` : ''}
           <button class="btn btn-rm" onclick="removeCoin('${c.symbol}')">✕</button>
@@ -1575,8 +1583,9 @@ async function updateTicker(coins) {
   const items = coins.map(c => {
     const price = c.price && c.price > 0 ? `$${fp(c.price)}` : '—';
     const chg   = c.pnl_pct || 0;
+    const label = c.display_name || c.symbol;
     return `<span class="ticker-item">
-      <span class="ticker-sym">${c.symbol}</span>
+      <span class="ticker-sym">${label}</span>
       <span class="ticker-px">${price}</span>
       <span class="ticker-chg ${chg >= 0 ? 'up' : 'dn'}">${chg >= 0 ? '▲' : '▼'} ${Math.abs(chg).toFixed(2)}%</span>
     </span>`;

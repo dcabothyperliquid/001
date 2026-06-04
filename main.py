@@ -713,6 +713,7 @@ class BotEngine:
                     self.trades   = d.get('trades', [])
                     self.stats    = d.get('stats', self.stats)
                     logger.info(f"✅ Supabase loaded — {len(self.coins)} coins, {len(self.trades)} trades")
+                    self._backfill_display_names()
                     return
             except Exception as e:
                 logger.error(f"Supabase load error: {e} — falling back to local JSON")
@@ -724,8 +725,29 @@ class BotEngine:
                 self.trades   = d.get('trades', [])
                 self.stats    = d.get('stats', self.stats)
                 logger.info(f"Local JSON loaded — {len(self.coins)} coins")
+                self._backfill_display_names()
             except Exception as e:
                 logger.error(f"Local load error: {e}")
+
+    def _backfill_display_names(self):
+        """Add display_name to coins that don't have it (UBTC→BTC, UETH→ETH etc)."""
+        import re as _re
+        DISPLAY_MAP = {
+            'UBTC':'BTC','USOL':'SOL','UETH':'ETH','UZEC':'ZEC','UWLD':'WLD',
+            'UMOG':'MOG','UPUMP':'PUMP','HPENGU':'PENGU','HPEPE':'PEPE',
+            'HPUMP':'PUMPFUN','FXRP':'XRP','TRX1':'TRX','BNB0':'BNB',
+            'AVAX0':'AVAX','LINK0':'LINK','AAVE0':'AAVE','XMR1':'XMR','TAO1':'TAO',
+        }
+        for sym, cfg in self.coins.items():
+            if not cfg.get('display_name'):
+                if sym in DISPLAY_MAP:
+                    cfg['display_name'] = DISPLAY_MAP[sym]
+                elif sym.startswith('U') and len(sym) > 1 and sym[1:].isalpha():
+                    cfg['display_name'] = sym[1:]
+                elif _re.match(r'^[A-Z]+\d$', sym):
+                    cfg['display_name'] = sym[:-1]
+                else:
+                    cfg['display_name'] = sym
 
     # ── SDK Init ──────────────────────────────────────────────────────────────
     def _init_sdk(self, wallet, private_key):
@@ -796,17 +818,34 @@ class BotEngine:
 
     # ── Coin management ───────────────────────────────────────────────────────
     def add_coin(self, symbol, capital, timeframe='auto', stop_loss=1.5, trailing_stop=1.0):
-        # Validate coin exists on Hyperliquid spot
+        symbol = symbol.upper().strip()
+        # Validate coin exists on Hyperliquid spot — also handles aliases (ETH→UETH etc)
         idx = self.client.sym_to_index(symbol)
         if idx is None:
             return {'success': False, 'error': f'{symbol} not found on Hyperliquid spot market'}
+        # Derive the clean display name for the card (ETH not UETH, SOL not USOL)
+        import re as _re
+        def _display(s):
+            _special = {'HPUMP':'PUMPFUN','HPENGU':'PENGU','HPEPE':'PEPE','FXRP':'XRP'}
+            if s in _special: return _special[s]
+            # Resolve alias → internal → display
+            internal = self.client._sym_index.get(s)  # index value
+            # Find internal name for this index
+            for k, v in self.client._sym_index.items():
+                if v == internal and not k.endswith('/USDC') and 'USDC' not in k:
+                    s2 = k
+                    if s2.startswith('U') and len(s2) > 1 and s2[1:].isalpha(): return s2[1:]
+                    if _re.match(r'^[A-Z]+\d$', s2): return s2[:-1]
+                    if s2 in _special: return _special[s2]
+            return symbol  # fallback: keep as-is
+        display_name = _display(symbol)
         self.coins[symbol] = {
-            'symbol': symbol, 'capital': capital, 'timeframe': timeframe,
+            'symbol': symbol, 'display_name': display_name,
+            'capital': capital, 'timeframe': timeframe,
             'stop_loss': stop_loss, 'trailing_stop': trailing_stop,
             'enabled': True, 'added_at': now_ist()
         }
         self._save_data()
-        # Immediately warm cache for new coin
         self._async_eng.trigger_cache_refresh([symbol])
         return {'success': True, 'coin': self.coins[symbol]}
 
