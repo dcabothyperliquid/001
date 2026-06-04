@@ -678,9 +678,9 @@ async function loadSpotPairs() {
     if (data && Array.isArray(data)) {
       // Filter out index-style names like @106, @107 — only real named coins
       allSpotPairs = data
-        .map(p => p.name)
-        .filter(n => n && !n.startsWith('@') && n.length > 1)
-        .sort();
+        .filter(p => p.name && !p.name.startsWith('@') && p.name.length > 1)
+        .map(p => ({ name: p.name, display: p.name }))
+        .sort((a,b) => a.name.localeCompare(b.name));
     }
   } catch(e) {}
 }
@@ -693,7 +693,7 @@ function showCoinsDropdown() {
 function filterCoinsDropdown() {
   const q = document.getElementById('inpSym').value.trim().toUpperCase();
   filteredPairs = q
-    ? allSpotPairs.filter(n => n.toUpperCase().includes(q))
+    ? allSpotPairs.filter(p => p.display.toUpperCase().includes(q) || p.name.toUpperCase().includes(q))
     : allSpotPairs.slice();
   renderDropdown();
 }
@@ -702,18 +702,23 @@ function renderDropdown() {
   const dd = document.getElementById('coinDropdown');
   if (!filteredPairs.length) { dd.style.display = 'none'; return; }
   dd.style.display = 'block';
-  dd.innerHTML = filteredPairs.slice(0, 60).map(name => `
-    <div onclick="selectCoin('${name}')" style="
+  dd.innerHTML = filteredPairs.slice(0, 60).map(p => `
+    <div onclick="selectCoin('${p.name}','${p.display}')" style="
       padding:8px 12px;font-family:var(--mono);font-size:12px;
       color:var(--text);cursor:pointer;border-bottom:1px solid var(--line);
       transition:background 0.1s;
     " onmouseover="this.style.background='rgba(13,240,224,0.08)'"
-       onmouseout="this.style.background=''">${name}</div>
+       onmouseout="this.style.background=''">
+      <span>${p.display}</span>
+      ${p.display !== p.name ? `<span style="color:var(--muted);font-size:10px;margin-left:6px;">${p.name}</span>` : ''}
+    </div>
   `).join('');
 }
 
-function selectCoin(name) {
-  document.getElementById('inpSym').value = name;
+function selectCoin(actualName, displayName) {
+  // Store actual HL name (e.g. USOL) but show friendly name (SOL) to user
+  document.getElementById('inpSym').value = actualName;
+  document.getElementById('inpSym').setAttribute('data-actual', actualName);
   hideCoinsDropdown();
 }
 
@@ -772,8 +777,7 @@ function renderEvents() {
   list.innerHTML = localEvents.slice(0, 50).map(ev => {
     const tag  = EV_TAGS[ev.type]  || 'info';
     const icon = EV_ICONS[ev.type] || 'ℹ️';
-    const _td = ev.time ? new Date(new Date(ev.time).getTime() + (5.5*3600000)) : null;
-    const t = _td ? _td.toISOString().substr(11,8) + ' IST' : '—';
+    const t = ev.time ? ev.time.substr(11,8) + ' IST' : '—';
     return `<div class="ev-item">
       <span class="ev-time">${t}</span>
       <span class="ev-icon">${icon}</span>
