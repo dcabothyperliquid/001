@@ -1068,8 +1068,8 @@ class BotEngine:
         rsi     = self._calc_rsi(closes)
         _,_,macd_sig = self._calc_macd(closes)
         vol_sig = self._calc_volume_signal(volumes)
-        if   rsi<30 and macd_sig=='bullish':              signal='strong_buy'
-        elif rsi<35 and (macd_sig=='bullish' or vol_sig): signal='buy'
+        if   rsi<40 and macd_sig=='bullish':              signal='strong_buy'
+        elif rsi<50 and (macd_sig=='bullish' or vol_sig): signal='buy'
         elif rsi>70 and macd_sig=='bearish':              signal='strong_sell'
         elif rsi>65 and macd_sig=='bearish':              signal='sell'
         else:                                             signal='neutral'
@@ -1091,14 +1091,14 @@ class BotEngine:
             if abs(score) > abs(best_score):
                 best_score = score; best_tf = tf
 
-        if   total_score >= 3:  direction, confidence = 'buy',  'high'
-        elif total_score >= 2:  direction, confidence = 'buy',  'medium'
+        if   total_score >= 2:  direction, confidence = 'buy',  'high'
+        elif total_score >= 1:  direction, confidence = 'buy',  'medium'
         elif total_score <= -3: direction, confidence = 'sell', 'high'
         elif total_score <= -2: direction, confidence = 'sell', 'medium'
         else:                   direction, confidence = 'neutral', 'low'
 
         abs_s       = abs(total_score)
-        capital_pct = 1.0 if abs_s>=4 else 0.75 if abs_s==3 else 0.50 if abs_s==2 else 0.0
+        capital_pct = 1.0 if abs_s>=3 else 0.75 if abs_s==2 else 0.50 if abs_s==1 else 0.0
         best        = tf_results[best_tf]
         return {'total_score': total_score, 'confidence': confidence,
                 'direction': direction, 'best_timeframe': best_tf,
