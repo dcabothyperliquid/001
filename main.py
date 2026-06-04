@@ -172,6 +172,7 @@ class HyperliquidClient:
         self._meta_cache = None
         self._meta_ts    = 0
         self._sym_index: dict = {}
+        self._tok_idx_map: dict = {}
         self._markpx_cache: dict = {}
         self._markpx_ts: float  = 0
         # Eagerly warm sym_index on startup (non-fatal if it fails)
@@ -208,10 +209,12 @@ class HyperliquidClient:
                 if tidx is not None and tname:
                     token_idx_to_name[tidx] = tname.upper()
             idx_map = {}
+            tok_idx_map = {}   # base_name → token_index (for WS price key @{10000+tok_idx})
             for i, p in enumerate(data.get('universe', [])):
                 tok_idxs = p.get('tokens', [])
                 uni_name = p.get('name', '').strip().upper()
                 base_name = ''
+                tok_idx = tok_idxs[0] if tok_idxs else None
                 if tok_idxs:
                     base_name = token_idx_to_name.get(tok_idxs[0], '')
                 if not base_name and uni_name:
@@ -220,6 +223,8 @@ class HyperliquidClient:
                     idx_map[base_name] = i
                     idx_map[base_name + '/USDC'] = i
                     idx_map[base_name + 'USDC'] = i
+                    if tok_idx is not None:
+                        tok_idx_map[base_name] = tok_idx
             # ── Alias map: user types "SOL" → HL actual name "USOL" ──────────
             # IMPORTANT: These aliases MUST override any native token with same name
             # e.g. HL may have a native "ETH" token at a different index than "UETH"
@@ -238,7 +243,12 @@ class HyperliquidClient:
                     # Force-set alias even if a native token already claimed this key
                     idx_map[alias] = idx_map[real]
                     idx_map[alias + '/USDC'] = idx_map[real]
+            # Apply aliases to tok_idx_map too
+            for alias, real in ALIASES.items():
+                if real in tok_idx_map:
+                    tok_idx_map[alias] = tok_idx_map[real]
             self._sym_index = idx_map
+            self._tok_idx_map = tok_idx_map
             logger.info(f"spotMeta: {len(set(idx_map.values()))} pairs, aliases applied: {[a for a,r in ALIASES.items() if r in idx_map]}")
         return data
 
@@ -418,8 +428,14 @@ class HyperliquidClient:
             if px == 1.0: return False
             return True
 
-        if idx is not None:
-            # 1. Live WS cache (fastest, most current)
+        # Token index for WS/allMids key (@{10000+token_index})
+        tok_idx = self._tok_idx_map.get(symbol.upper())
+
+        if tok_idx is not None:
+            # 1. Live WS cache — HL uses @{10000+token_index} as key
+            p = price_cache.get(f"@{10000 + tok_idx}")
+            if _sane(p): return p
+        elif idx is not None:
             p = price_cache.get(f"@{10000 + idx}")
             if _sane(p): return p
 
@@ -431,9 +447,10 @@ class HyperliquidClient:
 
         # 3. REST allMids fallback
         mids = self.get_all_mids()
-        if idx is not None and f"@{10000 + idx}" in mids:
+        ws_key = f"@{10000 + tok_idx}" if tok_idx is not None else (f"@{10000 + idx}" if idx is not None else None)
+        if ws_key and ws_key in mids:
             try:
-                px = float(mids[f"@{10000 + idx}"])
+                px = float(mids[ws_key])
                 if _sane(px): return px
             except: pass
         for key in [f"{symbol}/USDC", symbol]:
