@@ -684,11 +684,7 @@ class AsyncEngine:
                     await self._run_order(self.bot._execute_sell, symbol, price, 'stop_loss')
                     return
 
-                # 3. DCA — price dropped 3% below avg, buy more
-                if direction == 'buy' and mtf_score >= 1 and trade_cap > 0:
-                    if price < avg_entry * 0.97 and len(entries) < 5:
-                        await self._run_order(self.bot._execute_buy, symbol, trade_cap, price,
-                                              f'dca_{mtf_score}_{best_tf}')
+
             else:
                 if direction == 'buy' and trade_cap > 0:
                     await self._run_order(self.bot._execute_buy, symbol, trade_cap, price,
