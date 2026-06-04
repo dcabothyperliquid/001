@@ -295,11 +295,12 @@ class HyperliquidClient:
             if display_name == 'USDC' or display_name in seen_display:
                 continue
 
-            # Filter out tokens with no real market price (untraded/invalid)
+            # Filter: only show tokens actively traded today (markPx > 0 AND dayNtlVlm > 0)
             if asset_ctxs and i < len(asset_ctxs):
-                ctx = asset_ctxs[i]
-                mark_px = float(ctx.get('markPx', 0) or 0)
-                if mark_px <= 0:
+                ctx      = asset_ctxs[i]
+                mark_px  = float(ctx.get('markPx',    0) or 0)
+                day_vol  = float(ctx.get('dayNtlVlm', 0) or 0)
+                if mark_px <= 0 or day_vol <= 0:
                     continue
 
             seen_display.add(display_name)
