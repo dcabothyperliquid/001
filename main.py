@@ -419,16 +419,22 @@ class HyperliquidClient:
             if px == 1.0: return False
             return True
 
-        # HL allMids/WS spot key = "@{universe_index}" (NOT @{10000+idx})
-        # Docs: "spot index for HYPE is @107 because universe pair @107 has tokens [150,0]"
-        ws_key = f"@{idx}" if idx is not None else None
+        # HL allMids WS format: key = internal token name (e.g. "USOL", "HYPE", "UBTC")
+        # Docs show: {"APE": "4.33", "ARB": "1.21"} — plain token names, NOT @{index}
+        # Resolve alias → internal name (e.g. SOL → USOL, BTC → UBTC)
+        ALIASES = {
+            'BTC':'UBTC','SOL':'USOL','ETH':'UETH','TRX':'TRX1','BNB':'BNB0',
+            'AVAX':'AVAX0','LINK':'LINK0','AAVE':'AAVE0','XRP':'FXRP',
+            'ZEC':'UZEC','WLD':'UWLD','MOG':'UMOG','PUMP':'UPUMP',
+            'PENGU':'HPENGU','PEPE':'HPEPE','PUMPFUN':'HPUMP','XMR':'XMR1','TAO':'TAO1',
+        }
+        internal = ALIASES.get(symbol.upper(), symbol.upper())
 
-        if ws_key:
-            # 1. Live WS cache
-            p = price_cache.get(ws_key)
-            if _sane(p): return p
+        # 1. Live WS cache — key is internal token name
+        p = price_cache.get(internal)
+        if _sane(p): return float(p)
 
-        # 2. markPx from spotMetaAndAssetCtxs (authoritative REST source)
+        # 2. markPx from spotMetaAndAssetCtxs (REST fallback)
         self._refresh_markpx()
         if idx is not None:
             px = self._markpx_cache.get(idx)
@@ -436,12 +442,7 @@ class HyperliquidClient:
 
         # 3. REST allMids fallback
         mids = self.get_all_mids()
-        if ws_key and ws_key in mids:
-            try:
-                px = float(mids[ws_key])
-                if _sane(px): return px
-            except: pass
-        for key in [f"{symbol}/USDC", symbol]:
+        for key in [internal, f"{internal}/USDC", symbol.upper(), f"{symbol}/USDC"]:
             if key in mids:
                 try:
                     px = float(mids[key])
@@ -578,11 +579,6 @@ class AsyncEngine:
                             if msg.get('channel') == 'allMids':
                                 mids = msg.get('data', {}).get('mids', {})
                                 if mids:
-                                    # DEBUG — log keys once to see exact format
-                                    if not getattr(price_cache, '_logged_keys', False):
-                                        sample = list(mids.items())[:20]
-                                        logger.info(f"WS allMids sample keys: {sample}")
-                                        price_cache._logged_keys = True
                                     price_cache.update(mids)
                         except Exception as e:
                             logger.warning(f"WS parse error: {e}")
