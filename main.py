@@ -347,12 +347,12 @@ class HyperliquidClient:
         idx = self.sym_to_index(symbol)
         if idx is not None:
             # Try live WS cache first
-            p = price_cache.get(f"@{idx}")
+            p = price_cache.get(f"@{10000 + idx}")
             if p: return p
         # Fallback: REST allMids
         mids = self.get_all_mids()
-        if idx is not None and f"@{idx}" in mids:
-            px = float(mids[f"@{idx}"])
+        if idx is not None and f"@{10000 + idx}" in mids:
+            px = float(mids[f"@{10000 + idx}"])
             if px > 0: return px
         for key in [f"{symbol}/USDC", symbol]:
             if key in mids:
@@ -379,7 +379,7 @@ class HyperliquidClient:
         start   = now_ms - lookback * ms
 
         idx     = self.sym_to_index(symbol)
-        coin_id = f"@{idx}" if idx is not None else symbol
+        coin_id = f"@{10000 + idx}" if idx is not None else symbol
 
         payload = {"type": "candleSnapshot",
                    "req": {"coin": coin_id, "interval": tf,
@@ -415,7 +415,7 @@ class HyperliquidClient:
         now_ms  = int(time.time() * 1000)
         start   = now_ms - lookback * ms
         idx     = self.sym_to_index(symbol)
-        coin_id = f"@{idx}" if idx is not None else symbol
+        coin_id = f"@{10000 + idx}" if idx is not None else symbol
         raw = self._post({"type": "candleSnapshot",
                           "req": {"coin": coin_id, "interval": tf,
                                   "startTime": start, "endTime": now_ms}})
