@@ -244,6 +244,7 @@ class HyperliquidClient:
         if not data or not isinstance(data, list) or len(data) < 1:
             data = [self.get_spot_meta(), []]
         meta = data[0] if isinstance(data, list) else data
+        asset_ctxs = data[1] if isinstance(data, list) and len(data) > 1 and isinstance(data[1], list) else []
 
         # Build token index → raw name map
         token_idx_to_name = {}
@@ -293,6 +294,14 @@ class HyperliquidClient:
             display_name = _clean_display(internal_name)
             if display_name == 'USDC' or display_name in seen_display:
                 continue
+
+            # Filter out tokens with no real market price (untraded/invalid)
+            if asset_ctxs and i < len(asset_ctxs):
+                ctx = asset_ctxs[i]
+                mark_px = float(ctx.get('markPx', 0) or 0)
+                if mark_px <= 0:
+                    continue
+
             seen_display.add(display_name)
 
             pairs.append({
