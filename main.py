@@ -1066,8 +1066,8 @@ class BotEngine:
         rsi     = self._calc_rsi(closes)
         _,_,macd_sig = self._calc_macd(closes)
         vol_sig = self._calc_volume_signal(volumes)
-        if   rsi<50 and macd_sig=='bullish':  signal='buy'
-        elif rsi>55 and macd_sig=='bearish':  signal='sell'
+        if   rsi<30 and macd_sig=='bullish':  signal='buy'
+        elif rsi>70 and macd_sig=='bearish':  signal='sell'
         else:                                 signal='neutral'
         return signal, rsi, macd_sig, vol_sig
 
