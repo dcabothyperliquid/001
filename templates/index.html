@@ -500,12 +500,12 @@ select option{background:var(--bg2);color:var(--text);}
 /* ══ COINS GRID ══════════════════════════════════ */
 .coins-grid{
   display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
-  gap:8px;
+  grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
+  gap:6px;
 }
 .coin-card{
   background:var(--bg2);border:1px solid var(--line);
-  border-radius:9px;padding:11px 13px;
+  border-radius:7px;padding:7px 9px;
   transition:all 0.15s;position:relative;overflow:hidden;
   cursor:default;
 }
@@ -520,19 +520,19 @@ body.day .coin-card:hover{box-shadow:0 4px 14px rgba(0,0,0,0.08);}
 .coin-card.c-hold::before{background:var(--cyan);}
 .coin-card:hover{border-color:var(--line2);transform:translateY(-1px);}
 
-.cc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
-.cc-sym{font-family:var(--display);font-size:18px;letter-spacing:1px;color:var(--text);}
+.cc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;}
+.cc-sym{font-family:var(--display);font-size:13px;letter-spacing:0.5px;color:var(--text);font-weight:600;}
 .cc-actions{display:flex;gap:5px;align-items:center;}
-.cc-price-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
-.cc-price{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--text);}
-.cc-pnl{font-family:var(--mono);font-size:11px;font-weight:500;}
+.cc-price-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}
+.cc-price{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--text);}
+.cc-pnl{font-family:var(--mono);font-size:10px;font-weight:500;}
 .cc-pnl.up{color:var(--green);}
 .cc-pnl.dn{color:var(--red);}
 .cc-pnl.flat{color:var(--muted2);}
-.cc-metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:7px;}
+.cc-metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;margin-bottom:4px;}
 .cc-met{display:flex;flex-direction:column;gap:1px;}
-.met-label{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:1px;}
-.met-val{font-family:var(--mono);font-size:10px;font-weight:500;color:var(--text);}
+.met-label{font-family:var(--mono);font-size:7px;color:var(--muted);letter-spacing:0.5px;}
+.met-val{font-family:var(--mono);font-size:9px;font-weight:500;color:var(--text);}
 .c-up{color:var(--green);}
 .c-dn{color:var(--red);}
 .c-cy{color:var(--cyan);}
@@ -639,7 +639,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
   .notif-drawer{width:100vw;}
 }
 @media(max-width:480px){
-  .coins-grid{grid-template-columns:1fr 1fr;}
+  .coins-grid{grid-template-columns:repeat(3,1fr);}
   .stats-row{grid-template-columns:1fr 1fr;}
 }
 </style>
@@ -1472,9 +1472,9 @@ function renderCoins(coins) {
     <div class="coin-card ${cardCls}">
       <div class="cc-top">
         <span class="cc-sym">${label}</span>
-        <div class="cc-actions">
-          ${isHold ? `<button class="btn btn-sell" onclick="manualSell('${c.symbol}')">SELL</button>` : ''}
-          <button class="btn btn-rm" onclick="removeCoin('${c.symbol}')">✕</button>
+        <div class="cc-actions" style="gap:3px;">
+          ${isHold ? `<button class="btn btn-sell" style="font-size:8px;padding:2px 5px;" onclick="manualSell('${c.symbol}')">SELL</button>` : ''}
+          <button class="btn btn-rm" style="font-size:9px;padding:1px 5px;line-height:1.4;" onclick="removeCoin('${c.symbol}')">✕</button>
         </div>
       </div>
       <div class="cc-price-row">
@@ -1495,11 +1495,11 @@ function renderCoins(coins) {
           <span class="met-val c-cy">$${c.capital||0}</span>
         </div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
         ${signalBadge(c.signal)}
-        ${isHold ? '<span class="badge badge-hold">HOLDING</span>' : ''}
+        ${isHold ? '<span class="badge badge-hold" style="font-size:7px;padding:1px 4px;">HOLD</span>' : ''}
       </div>
-      <div class="rsi-track"><div class="rsi-fill" style="width:${Math.min(100,c.rsi||0)}%;background:${rc}"></div></div>
+      <div class="rsi-track" style="height:2px;"><div class="rsi-fill" style="width:${Math.min(100,c.rsi||0)}%;background:${rc}"></div></div>
     </div>`;
   }).join('');
 }
