@@ -676,11 +676,11 @@ async function loadSpotPairs() {
   try {
     const data = await api('/spot/pairs');
     if (data && Array.isArray(data)) {
-      // Filter out index-style names like @106, @107 — only real named coins
+      // Use display (clean name like SOL/BTC) for UI, name (internal like USOL/UBTC) for orders
       allSpotPairs = data
         .filter(p => p.name && !p.name.startsWith('@') && p.name.length > 1)
-        .map(p => ({ name: p.name, display: p.name }))
-        .sort((a,b) => a.name.localeCompare(b.name));
+        .map(p => ({ name: p.name, display: p.display || p.name }))
+        .sort((a,b) => a.display.localeCompare(b.display));
     }
   } catch(e) {}
 }

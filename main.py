@@ -233,33 +233,77 @@ class HyperliquidClient:
         return data
 
     def get_spot_pairs(self):
-        # spotMetaAndAssetCtxs gives us the same names as Hyperliquid UI
+        """
+        Fetch live Hyperliquid spot token list.
+        Returns clean display names (SOL, BTC, ETH) while keeping
+        the internal HL name (USOL, UBTC, UETH) for order routing.
+        Auto-updates: new listings appear, delisted tokens disappear.
+        """
+        import re as _re
         data = self._post({"type": "spotMetaAndAssetCtxs"})
         if not data or not isinstance(data, list) or len(data) < 1:
-            # fallback to spotMeta
             data = [self.get_spot_meta(), []]
         meta = data[0] if isinstance(data, list) else data
-        tokens_list = meta.get('tokens', [])
+
+        # Build token index → raw name map
         token_idx_to_name = {}
-        for t in tokens_list:
-            tidx = t.get('index')
+        for t in meta.get('tokens', []):
+            tidx  = t.get('index')
             tname = t.get('name', '').strip()
             if tidx is not None and tname:
                 token_idx_to_name[tidx] = tname
+
+        def _clean_display(raw: str) -> str:
+            """Strip HL-specific prefixes/suffixes to get human display name.
+            USOL→SOL, UBTC→BTC, HPEPE→PEPE, HPUMP→PUMPFUN,
+            TRX1→TRX, BNB0→BNB, AVAX0→AVAX etc.
+            """
+            s = raw.upper().strip()
+            # known special cases
+            _special = {
+                'HPUMP': 'PUMPFUN', 'HPENGU': 'PENGU',
+                'HPEPE': 'PEPE', 'FXRP': 'XRP',
+            }
+            if s in _special:
+                return _special[s]
+            # U-prefix: USOL→SOL, UBTC→BTC, UETH→ETH, UZEC→ZEC etc.
+            if s.startswith('U') and len(s) > 1 and s[1:].isalpha():
+                return s[1:]
+            # trailing digit: TRX1→TRX, BNB0→BNB, XMR1→XMR, TAO1→TAO
+            if _re.match(r'^[A-Z]+\d$', s):
+                return s[:-1]
+            return s
+
         pairs = []
-        seen = set()
+        seen_display = set()
+        seen_internal = set()
         for i, u in enumerate(meta.get('universe', [])):
             tok_indices = u.get('tokens', [])
-            name = ''
+            internal_name = ''
             if tok_indices:
-                name = token_idx_to_name.get(tok_indices[0], '')
-            if not name:
-                name = u.get('name', '').split('/')[0].strip()
-            if not name or name.upper() == 'USDC' or name in seen:
+                internal_name = token_idx_to_name.get(tok_indices[0], '')
+            if not internal_name:
+                internal_name = u.get('name', '').split('/')[0].strip().upper()
+            if not internal_name or internal_name == 'USDC':
                 continue
-            seen.add(name)
-            pairs.append({'index': i, 'name': name, 'display': name, 'asset_id': 10000+i})
-        return sorted(pairs, key=lambda x: x['name'])
+            if internal_name in seen_internal:
+                continue
+            seen_internal.add(internal_name)
+
+            display_name = _clean_display(internal_name)
+            if display_name == 'USDC' or display_name in seen_display:
+                continue
+            seen_display.add(display_name)
+
+            pairs.append({
+                'index':    i,
+                'name':     internal_name,   # used internally for orders
+                'display':  display_name,    # shown to user (SOL, BTC etc.)
+                'asset_id': 10000 + i
+            })
+
+        # Sort by display name so list is alphabetical in UI
+        return sorted(pairs, key=lambda x: x['display'])
 
     def sym_to_index(self, symbol: str):
         """Returns universe index for spot symbol (cached in _sym_index)."""
