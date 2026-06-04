@@ -5,3 +5,6 @@ gunicorn
 hyperliquid-python-sdk
 eth-account
 flask-cors
+supabase
+aiohttp
+websockets
