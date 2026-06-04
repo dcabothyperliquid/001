@@ -670,27 +670,22 @@ class AsyncEngine:
                      'price': price, 'timeframe': tf_key})
 
             if has_holding:
-                if self.bot._check_trailing_stop(symbol, price):
-                    entries   = self.bot.holdings[symbol]['entries']
-                    avg_entry = sum(e['usdt'] for e in entries) / sum(e['amount'] for e in entries)
-                    if price > avg_entry:
-                        await self._run_order(self.bot._execute_sell, symbol, price, 'trailing_stop')
-                        return
+                entries   = self.bot.holdings[symbol]['entries']
+                avg_entry = sum(e['usdt'] for e in entries) / sum(e['amount'] for e in entries)
 
+                # 1. Take Profit — 2% above avg entry
+                tp_pct = self.bot.coins.get(symbol, {}).get('take_profit', 2.0) / 100
+                if price >= avg_entry * (1 + tp_pct):
+                    await self._run_order(self.bot._execute_sell, symbol, price, f'take_profit_{tp_pct*100:.0f}pct')
+                    return
+
+                # 2. Stop Loss
                 if self.bot._check_stop_loss(symbol, price):
                     await self._run_order(self.bot._execute_sell, symbol, price, 'stop_loss')
                     return
 
-                if direction == 'sell' and mtf_score <= -1:
-                    entries   = self.bot.holdings[symbol]['entries']
-                    avg_entry = sum(e['usdt'] for e in entries) / sum(e['amount'] for e in entries)
-                    if price > avg_entry * 1.005:
-                        await self._run_order(self.bot._execute_sell, symbol, price, f'mtf_sell_{mtf_score}')
-                        return
-
+                # 3. DCA — price dropped 3% below avg, buy more
                 if direction == 'buy' and mtf_score >= 1 and trade_cap > 0:
-                    entries   = self.bot.holdings[symbol]['entries']
-                    avg_entry = sum(e['usdt'] for e in entries) / sum(e['amount'] for e in entries)
                     if price < avg_entry * 0.97 and len(entries) < 5:
                         await self._run_order(self.bot._execute_buy, symbol, trade_cap, price,
                                               f'dca_{mtf_score}_{best_tf}')
@@ -1275,8 +1270,8 @@ def add_coin():
     capital       = float(d.get('capital', 10))
     timeframe     = d.get('timeframe','auto')
     stop_loss     = float(d.get('stop_loss', 1.5))
-    trailing_stop = float(d.get('trailing_stop', 1.0))
-    return jsonify(bot_engine.add_coin(symbol, capital, timeframe, stop_loss, trailing_stop))
+    take_profit   = float(d.get('take_profit', 2.0))
+    return jsonify(bot_engine.add_coin(symbol, capital, timeframe, stop_loss, take_profit))
 
 @app.route('/api/coins/<symbol>', methods=['DELETE'])
 def remove_coin(symbol): return jsonify(bot_engine.remove_coin(symbol.upper()))
