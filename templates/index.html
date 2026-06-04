@@ -1383,6 +1383,7 @@ async function addCoin() {
     toastRich(`${symbol} added ✓`, `Capital: $${capital}`, 'ok');
     document.getElementById('inpSym').value = '';
     refreshAll();
+    setTimeout(refreshAll, 2500);
   } else {
     toastRich(r?.error || 'Failed to add coin', '', 'err');
   }
@@ -1598,7 +1599,7 @@ async function refreshAll() {
   const _now = new Date(Date.now() + (5.5*3600000));
   document.getElementById('lastUpd').textContent = 'UPDATED ' + _now.toISOString().substr(11,8) + ' IST';
 }
-function startRefresh() { if (refreshTimer) clearInterval(refreshTimer); refreshTimer = setInterval(refreshAll, 15000); }
+function startRefresh() { if (refreshTimer) clearInterval(refreshTimer); refreshTimer = setInterval(refreshAll, 5000); }
 function stopRefresh()  { if (refreshTimer) clearInterval(refreshTimer); }
 function startEvents()  { if (eventsTimer) clearInterval(eventsTimer); pollEvents(); eventsTimer = setInterval(pollEvents, 5000); }
 
