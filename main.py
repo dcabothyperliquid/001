@@ -696,7 +696,12 @@ class BotEngine:
             if result.get('status') == 'ok':
                 fills     = result.get('response',{}).get('data',{}).get('statuses',[{}])
                 fill      = fills[0] if fills else {}
-                filled_px = float(fill.get('filled',{}).get('avgPx', price)) if fill.get('filled') else price
+                # IOC unfilled: HL returns {'error': 'Order has no fills'} or empty filled
+                if fill.get('error') or not fill.get('filled'):
+                    logger.warning(f"BUY {symbol} IOC not filled: {fill}")
+                    self._push_event('warn', f"BUY {symbol} IOC not filled — no execution", {'symbol': symbol})
+                    return None
+                filled_px = float(fill['filled'].get('avgPx', price))
                 return {'success': True, 'price': filled_px, 'size': size, 'raw': result}
             return None
         except Exception as e: logger.error(f"Live buy error {symbol}: {e}"); return None
@@ -714,7 +719,12 @@ class BotEngine:
             if result.get('status') == 'ok':
                 fills     = result.get('response',{}).get('data',{}).get('statuses',[{}])
                 fill      = fills[0] if fills else {}
-                filled_px = float(fill.get('filled',{}).get('avgPx', price)) if fill.get('filled') else price
+                # IOC unfilled: HL returns {'error': 'Order has no fills'} or empty filled
+                if fill.get('error') or not fill.get('filled'):
+                    logger.warning(f"SELL {symbol} IOC not filled: {fill}")
+                    self._push_event('warn', f"SELL {symbol} IOC not filled — no execution", {'symbol': symbol})
+                    return None
+                filled_px = float(fill['filled'].get('avgPx', price))
                 return {'success': True, 'price': filled_px, 'raw': result}
             return None
         except Exception as e: logger.error(f"Live sell error {symbol}: {e}"); return None
