@@ -1098,7 +1098,7 @@ class BotEngine:
         else:                   direction, confidence = 'neutral', 'low'
 
         abs_s       = abs(total_score)
-        capital_pct = 1.0 if abs_s>=3 else 0.75 if abs_s==2 else 0.50 if abs_s==1 else 0.0
+        capital_pct = 1.0 if abs_s>=1 else 0.0
         best        = tf_results[best_tf]
         return {'total_score': total_score, 'confidence': confidence,
                 'direction': direction, 'best_timeframe': best_tf,
