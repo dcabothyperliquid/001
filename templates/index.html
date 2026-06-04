@@ -549,7 +549,7 @@ tr:hover td{background:rgba(13,240,224,0.015);}
           <div class="fgrp">
             <label>TIMEFRAME</label>
             <div style="background:var(--bg);border:1px solid var(--line2);padding:8px 11px;border-radius:5px;font-family:var(--mono);font-size:12px;color:var(--cyan);">
-              ⚡ AUTO — 1H · 3H · 4H · 1D
+              ⚡ AUTO — 1H · 2H · 4H · 1D
             </div>
           </div>
           <div class="fgrp">
@@ -676,7 +676,11 @@ async function loadSpotPairs() {
   try {
     const data = await api('/spot/pairs');
     if (data && Array.isArray(data)) {
-      allSpotPairs = data.map(p => p.name).filter(Boolean).sort();
+      // Filter out index-style names like @106, @107 — only real named coins
+      allSpotPairs = data
+        .map(p => p.name)
+        .filter(n => n && !n.startsWith('@') && n.length > 1)
+        .sort();
     }
   } catch(e) {}
 }
@@ -901,7 +905,10 @@ async function addCoin() {
     toast(`${symbol} added ✓`);
     document.getElementById('inpSym').value = '';
     refreshAll();
-  } else { toast(r?.error || 'Failed', 'err'); }
+  } else {
+    const errMsg = r?.error || 'Failed to add coin';
+    toast(errMsg, 'err');
+  }
 }
 
 async function removeCoin(sym) {
@@ -954,7 +961,11 @@ function macdIcon(s) {
 }
 
 // ── RENDER COINS — compact grid ───────────────────────────────────────────────
+let _lastCoins = [];  // cache last known coins to prevent flicker
 function renderCoins(coins) {
+  // If server returns empty but we had coins before — skip (transient state)
+  if (coins.length === 0 && _lastCoins.length > 0) return;
+  _lastCoins = coins;
   document.getElementById('s-mon').textContent = coins.length;
   const grid = document.getElementById('coinsGrid');
   if (!coins.length) {
