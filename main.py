@@ -70,7 +70,7 @@ CANDLE_LOOKBACK = 60
 CACHE_TTL       = 300        # 5 minutes candle cache
 PRICE_CACHE_TTL = 3          # 3 seconds price cache (WS updates this faster anyway)
 MAX_WORKERS     = 10         # ThreadPoolExecutor for SDK order calls
-CANDLE_SEMAPHORE = 20        # max parallel candle HTTP requests
+CANDLE_SEMAPHORE = 5         # max parallel candle HTTP requests (rate limit safe)
 
 SIGNAL_SCORES = {
     'buy':     +1,
@@ -364,6 +364,9 @@ class HyperliquidClient:
         """
         if time.time() - self._markpx_ts < 3:
             return
+        # Skip REST call if WebSocket is alive and recently updated
+        if price_cache.age() < 5:
+            return
         mids = self._post({"type": "allMids"})
         if mids and isinstance(mids, dict):
             cache = {}
@@ -415,14 +418,15 @@ class HyperliquidClient:
         px = self._markpx_cache.get(internal)
         if _sane(px): return px
 
-        # 3. REST allMids fallback
-        mids = self.get_all_mids()
-        for key in [internal, f"{internal}/USDC", symbol.upper(), f"{symbol}/USDC"]:
-            if key in mids:
-                try:
-                    px = float(mids[key])
-                    if _sane(px): return px
-                except: pass
+        # 3. REST allMids fallback — only if WS is stale/dead
+        if price_cache.age() >= 5:
+            mids = self.get_all_mids()
+            for key in [internal, f"{internal}/USDC", symbol.upper(), f"{symbol}/USDC"]:
+                if key in mids:
+                    try:
+                        px = float(mids[key])
+                        if _sane(px): return px
+                    except: pass
 
         return None
 
