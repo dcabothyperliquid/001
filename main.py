@@ -1082,16 +1082,28 @@ class BotEngine:
             except Exception:
                 pass
         try:
-            account       = eth_account.Account.from_key(private_key)
-            self.info     = Info(MAINNET_URL, skip_ws=True)
-            self.exchange = Exchange(account, MAINNET_URL,
-                                     account_address=wallet or account.address)
-            self.wallet    = wallet or account.address
-            self.live_mode = True
-            logger.info(f"✅ SDK init — {account.address[:10]}...")
-            return True
+            account = eth_account.Account.from_key(private_key)
         except Exception as e:
-            logger.error(f"SDK init failed: {e}"); self.live_mode = False; return False
+            logger.error(f"SDK init failed (key error): {e}"); self.live_mode = False; return False
+        # Retry Info() init — can 429 on startup rush
+        last_err = None
+        for attempt in range(4):
+            try:
+                self.info     = Info(MAINNET_URL, skip_ws=True)
+                self.exchange = Exchange(account, MAINNET_URL,
+                                         account_address=wallet or account.address)
+                self.wallet    = wallet or account.address
+                self.live_mode = True
+                logger.info(f"✅ SDK init — {account.address[:10]}...")
+                return True
+            except Exception as e:
+                last_err = e
+                wait = 2 ** attempt  # 1s, 2s, 4s, 8s
+                logger.warning(f"SDK init attempt {attempt+1} failed: {e} — retry in {wait}s")
+                time.sleep(wait)
+        logger.error(f"SDK init failed after 4 attempts: {last_err}")
+        self.live_mode = False
+        return False
 
     # ── Spot asset index ──────────────────────────────────────────────────────
     def _get_spot_asset_index(self, symbol):
