@@ -178,14 +178,22 @@ class HyperliquidClient:
 
     # ── sync HTTP ─────────────────────────────────────────────────────────────
     def _post(self, payload):
-        try:
-            r = self.session.post(f"{self.base_url}/info", json=payload, timeout=15)
-            if r.status_code != 200:
-                logger.error(f"API {r.status_code} type={payload.get('type')} — {r.text[:200]}")
-                return None
-            return r.json()
-        except Exception as e:
-            logger.error(f"API error: {e}"); return None
+        for attempt in range(4):
+            try:
+                r = self.session.post(f"{self.base_url}/info", json=payload, timeout=15)
+                if r.status_code == 429:
+                    wait = 2 ** attempt   # 1s, 2s, 4s, 8s
+                    logger.warning(f"API 429 type={payload.get('type')} — retry in {wait}s")
+                    time.sleep(wait)
+                    continue
+                if r.status_code != 200:
+                    logger.error(f"API {r.status_code} type={payload.get('type')} — {r.text[:200]}")
+                    return None
+                return r.json()
+            except Exception as e:
+                logger.error(f"API error: {e}"); return None
+        logger.error(f"API 429 type={payload.get('type')} — gave up after 4 retries")
+        return None
 
     def get_spot_meta(self, force=False):
         now = time.time()
@@ -613,11 +621,11 @@ class AsyncEngine:
         Falls back to REST snapshot on connect to seed the cache.
         """
         backoff = 1
+        subscribed_coins = set()   # persists across reconnects — prevents duplicate seed+subscribe
         while True:
             try:
                 async with websockets.connect(WS_URL, ping_interval=20, ping_timeout=30) as ws:
                     backoff = 1
-                    subscribed_coins = set()
 
                     async def _subscribe_coins():
                         """Subscribe to candles for any new coins."""
@@ -625,23 +633,28 @@ class AsyncEngine:
                         new_coins = [c for c in coins if c not in subscribed_coins]
                         if not new_coins:
                             return
-                        # One shared session for all coins — avoids connection burst
-                        async with aiohttp.ClientSession() as sess:
-                            for sym in new_coins:
-                                # Seed cache via REST — one TF at a time with delay
-                                for tf in SCAN_TIMEFRAMES:
-                                    candles = await self.client.async_get_candles(sess, sym, tf, semaphore=self._sem)
-                                    if candles:
-                                        await candle_cache.set(sym, tf, candles)
-                                    await asyncio.sleep(0.3)   # 300ms gap per TF to avoid burst
-                                # Subscribe via WS for live updates
-                                for tf in SCAN_TIMEFRAMES:
-                                    coin_id = self.client._resolve_candle_coin(sym)
-                                    sub = json.dumps({"method": "subscribe", "subscription": {
-                                        "type": "candle", "coin": coin_id, "interval": tf}})
-                                    await ws.send(sub)
-                                subscribed_coins.add(sym)
-                                logger.info(f"✅ WS candle subscribed: {sym} × {SCAN_TIMEFRAMES}")
+                        # Block _cache_refresh_loop while seeding
+                        self._refreshing = True
+                        try:
+                            # One shared session for all coins — avoids connection burst
+                            async with aiohttp.ClientSession() as sess:
+                                for sym in new_coins:
+                                    # Seed cache via REST — one TF at a time with delay
+                                    for tf in SCAN_TIMEFRAMES:
+                                        candles = await self.client.async_get_candles(sess, sym, tf, semaphore=self._sem)
+                                        if candles:
+                                            await candle_cache.set(sym, tf, candles)
+                                        await asyncio.sleep(0.3)   # 300ms gap per TF to avoid burst
+                                    # Subscribe via WS for live updates
+                                    for tf in SCAN_TIMEFRAMES:
+                                        coin_id = self.client._resolve_candle_coin(sym)
+                                        sub = json.dumps({"method": "subscribe", "subscription": {
+                                            "type": "candle", "coin": coin_id, "interval": tf}})
+                                        await ws.send(sub)
+                                    subscribed_coins.add(sym)
+                                    logger.info(f"✅ WS candle subscribed: {sym} × {SCAN_TIMEFRAMES}")
+                        finally:
+                            self._refreshing = False
 
                     await _subscribe_coins()
 
