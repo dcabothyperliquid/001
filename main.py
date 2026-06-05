@@ -726,9 +726,9 @@ class BotEngine:
         if SUPABASE_OK:
             try:
                 _supabase.table('bot_data').upsert(
-                    {'key': 'state', 'value': payload}
+                    {'key': 'state', 'value': payload, 'updated_at': now_ist()}
                 ).execute()
-                logger.info(f"✅ Supabase saved — {len(self.coins)} coins")
+                logger.info(f"✅ Supabase saved — {len(self.coins)} coins | {list(self.coins.keys())}") 
                 return
             except Exception as e:
                 logger.error(f"Supabase save error: {e} — falling back to local JSON")
