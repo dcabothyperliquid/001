@@ -688,7 +688,7 @@ class AsyncEngine:
     # ── CandleCache refresh (fallback, runs every 5 min as backup) ────────────
     async def _cache_refresh_loop(self):
         """Backup REST refresh every 60s — fills gaps if WS candle misses anything."""
-        await asyncio.sleep(30)
+        await asyncio.sleep(120)  # wait for WS seed to complete before first REST refresh
         while True:
             coins = list(self.bot.coins.keys())
             if coins:
@@ -697,15 +697,22 @@ class AsyncEngine:
 
     async def _refresh_candles(self, coins: list):
         if not coins: return
-        logger.info(f"🔄 Refreshing candles: {len(coins)} coins × {len(SCAN_TIMEFRAMES)} TFs = {len(coins)*len(SCAN_TIMEFRAMES)} requests")
-        t0 = time.time()
-        # Single shared session for all requests — avoids TCP burst
-        async with aiohttp.ClientSession() as session:
-            for sym in coins:
-                for tf in SCAN_TIMEFRAMES:
-                    await self._fetch_and_cache(session, sym, tf)
-                    await asyncio.sleep(0.4)   # 400ms gap per request — safe under HL rate limit
-        logger.info(f"✅ Candle cache refreshed in {time.time()-t0:.2f}s for {len(coins)} coins")
+        if getattr(self, '_refreshing', False):
+            logger.debug("⏭ Candle refresh skipped — already in progress")
+            return
+        self._refreshing = True
+        try:
+            t0 = time.time()
+            logger.info(f"🔄 Refreshing candles: {len(coins)} coins × {len(SCAN_TIMEFRAMES)} TFs = {len(coins)*len(SCAN_TIMEFRAMES)} requests")
+            # Single shared session for all requests — avoids TCP burst
+            async with aiohttp.ClientSession() as session:
+                for sym in coins:
+                    for tf in SCAN_TIMEFRAMES:
+                        await self._fetch_and_cache(session, sym, tf)
+                        await asyncio.sleep(0.4)   # 400ms gap per request — safe under HL rate limit
+            logger.info(f"✅ Candle cache refreshed in {time.time()-t0:.2f}s for {len(coins)} coins")
+        finally:
+            self._refreshing = False
 
     async def _fetch_and_cache(self, session, symbol, tf):
         candles = await self.client.async_get_candles(session, symbol, tf,
