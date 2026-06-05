@@ -1332,28 +1332,17 @@ class BotEngine:
             score = SIGNAL_SCORES.get(signal, 0)
             tf_results[tf] = {'signal': signal, 'score': score, 'rsi': rsi, 'macd': macd, 'vol': vol, 'atr': atr}
 
-        # Conflict check — count buy vs sell signals across all TFs
-        buy_count  = sum(1 for v in tf_results.values() if v['signal'] == 'buy')
-        sell_count = sum(1 for v in tf_results.values() if v['signal'] == 'sell')
-
-        # If sell signals outnumber or equal buy signals — don't buy (conflicting market)
-        if buy_count > 0 and sell_count >= buy_count:
-            direction  = 'neutral'
-            confidence = 'low'
-            best_tf    = '1h'
-            best_atr   = tf_results.get('1h', {}).get('atr', 0.0)
-        else:
-            # Find first TF with a non-neutral signal — single TF trade logic
-            direction  = 'neutral'
-            confidence = 'low'
-            for tf in SCAN_TIMEFRAMES:
-                sig = tf_results[tf]['signal']
-                if sig in ('buy', 'sell'):
-                    direction  = sig
-                    confidence = 'high'
-                    best_tf    = tf
-                    best_atr   = tf_results[tf]['atr']
-                    break
+        # First TF with a non-neutral signal wins — no conflict blocking
+        direction  = 'neutral'
+        confidence = 'low'
+        for tf in SCAN_TIMEFRAMES:
+            sig = tf_results[tf]['signal']
+            if sig in ('buy', 'sell'):
+                direction  = sig
+                confidence = 'high'
+                best_tf    = tf
+                best_atr   = tf_results[tf]['atr']
+                break
 
         if best_tf is None:
             best_tf  = '1h'
