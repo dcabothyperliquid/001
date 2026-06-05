@@ -189,7 +189,7 @@ class HyperliquidClient:
 
     def get_spot_meta(self, force=False):
         now = time.time()
-        if not force and self._meta_cache and now - self._meta_ts < 60:
+        if not force and self._meta_cache and now - self._meta_ts < 300:
             return self._meta_cache
         data = self._post({"type": "spotMeta"})
         if data:
@@ -716,6 +716,8 @@ class BotEngine:
         self._events        = deque(maxlen=200)
         self._user_stopped   = False
         self._persisted_running = None   # loaded from storage
+        self._balance_cache  = {}        # cached USDC balance
+        self._balance_ts     = 0         # timestamp of last balance fetch
         self._async_eng  = AsyncEngine(client, self)
         self._load_data()
 
@@ -898,7 +900,7 @@ class BotEngine:
         except Exception as e: logger.error(f"Live sell error {symbol}: {e}"); return None
 
     # ── Coin management ───────────────────────────────────────────────────────
-    def add_coin(self, symbol, capital, timeframe='auto', stop_loss=1.5, trailing_stop=1.0):
+    def add_coin(self, symbol, capital, timeframe='auto', stop_loss=1.5, trailing_stop=1.0, take_profit=2.0):
         symbol = symbol.upper().strip()
         # Validate coin exists on Hyperliquid spot — also handles aliases (ETH→UETH etc)
         idx = self.client.sym_to_index(symbol)
@@ -924,6 +926,7 @@ class BotEngine:
             'symbol': symbol, 'display_name': display_name,
             'capital': capital, 'timeframe': timeframe,
             'stop_loss': stop_loss, 'trailing_stop': trailing_stop,
+            'take_profit': take_profit,
             'enabled': True, 'added_at': now_ist()
         }
         self._save_data()
@@ -937,7 +940,7 @@ class BotEngine:
 
     def update_coin(self, symbol, data):
         if symbol not in self.coins: return {'success': False, 'error': 'Not found'}
-        for k in ['capital', 'timeframe', 'stop_loss', 'trailing_stop', 'enabled']:
+        for k in ['capital', 'timeframe', 'stop_loss', 'trailing_stop', 'take_profit', 'enabled']:
             if k in data: self.coins[symbol][k] = data[k]
         self._save_data()
         return {'success': True, 'coin': self.coins[symbol]}
@@ -1083,8 +1086,11 @@ class BotEngine:
         best_tf     = '1h'
         best_score  = 0
         for tf in SCAN_TIMEFRAMES:
-            # Always read from cache first; fallback to sync fetch only if cache empty
-            candles = candle_cache.get(symbol, tf) or self.client.get_candles(symbol, tf)
+            # Always read from cache only — never sync REST fetch (causes 429 + blocks event loop)
+            candles = candle_cache.get(symbol, tf)
+            if not candles:
+                tf_results[tf] = {'signal': 'neutral', 'score': 0, 'rsi': 50.0, 'macd': 'neutral', 'vol': False}
+                continue
             signal, rsi, macd, vol = self._signal_for_candles(candles)
             score          = SIGNAL_SCORES.get(signal, 0)
             tf_results[tf] = {'signal': signal, 'score': score, 'rsi': rsi, 'macd': macd, 'vol': vol}
@@ -1128,7 +1134,11 @@ class BotEngine:
     # ── Execute buy ───────────────────────────────────────────────────────────
     def _execute_buy(self, symbol, capital, price, reason):
         if self.live_mode:
-            usdc_bal = self.client.get_spot_balance().get('USDC',{}).get('available',0)
+            # Cache balance for 30s to avoid REST call on every buy attempt
+            if time.time() - self._balance_ts > 30:
+                self._balance_cache = self.client.get_spot_balance()
+                self._balance_ts = time.time()
+            usdc_bal = self._balance_cache.get('USDC', {}).get('available', 0)
             if usdc_bal < capital:
                 msg = f"Insufficient balance — need {capital:.2f} USDC, have {usdc_bal:.2f}"
                 logger.warning(f"[{symbol}] {msg}")
@@ -1161,6 +1171,7 @@ class BotEngine:
         self._push_event('buy', f"[{mode_tag}] BUY {symbol} @ {actual_price:.6f} — {reason}",
                          {'symbol':symbol,'price':actual_price,'usdt':capital,'reason':reason})
         logger.info(f"[{mode_tag}] BUY {symbol} @ {actual_price:.6f} | {capital:.2f} USDC | {reason}")
+        self._balance_ts = 0  # invalidate balance cache after buy
         self._save_data()
         return trade
 
@@ -1251,7 +1262,8 @@ class BotEngine:
     def stop(self):
         self.running = False; self.live_mode = False; self.exchange = None
         self._user_stopped = True
-        self._save_data()   # persist immediately so restart respects user's intent
+        self._balance_ts = 0  # invalidate balance cache
+        self._save_data()
         self._push_event('monitor','Bot stopped',{})
         return {'success':True,'message':'Bot stopped'}
 
@@ -1279,7 +1291,8 @@ def add_coin():
     timeframe     = d.get('timeframe','auto')
     stop_loss     = float(d.get('stop_loss', 1.5))
     trailing_stop = float(d.get('trailing_stop', 1.0))
-    return jsonify(bot_engine.add_coin(symbol, capital, timeframe, stop_loss, trailing_stop))
+    take_profit   = float(d.get('take_profit', 2.0))
+    return jsonify(bot_engine.add_coin(symbol, capital, timeframe, stop_loss, trailing_stop, take_profit))
 
 @app.route('/api/coins/<symbol>', methods=['DELETE'])
 def remove_coin(symbol): return jsonify(bot_engine.remove_coin(symbol.upper()))
