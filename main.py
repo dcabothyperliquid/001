@@ -732,7 +732,7 @@ class BotEngine:
         if SUPABASE_OK:
             try:
                 _supabase.table('bot_data').upsert(
-                    {'key': 'state', 'value': payload, 'updated_at': now_ist()}
+                    {'key': 'state', 'value': payload}
                 ).execute()
                 logger.info(f"✅ Supabase saved — {len(self.coins)} coins | {list(self.coins.keys())}") 
                 return
@@ -1230,6 +1230,7 @@ class BotEngine:
         self.running = True
         self._user_stopped = False
         self.stats['start_time'] = now_ist()
+        self._save_data()
         self._async_eng.start()
         coins = list(self.coins.keys())
         if coins:
@@ -1267,8 +1268,8 @@ def add_coin():
     capital       = float(d.get('capital', 10))
     timeframe     = d.get('timeframe','auto')
     stop_loss     = float(d.get('stop_loss', 1.5))
-    take_profit   = float(d.get('take_profit', 2.0))
-    return jsonify(bot_engine.add_coin(symbol, capital, timeframe, stop_loss, take_profit))
+    trailing_stop = float(d.get('trailing_stop', 1.0))
+    return jsonify(bot_engine.add_coin(symbol, capital, timeframe, stop_loss, trailing_stop))
 
 @app.route('/api/coins/<symbol>', methods=['DELETE'])
 def remove_coin(symbol): return jsonify(bot_engine.remove_coin(symbol.upper()))
