@@ -584,6 +584,9 @@ class AsyncEngine:
         self._refreshing = True   # held until WS seed completes — blocks _cache_refresh_loop on startup
 
     def start(self):
+        if self._thread and self._thread.is_alive():
+            logger.warning("AsyncEngine already running — ignoring duplicate start")
+            return
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name="AsyncEngine")
         self._thread.start()
 
@@ -1578,6 +1581,7 @@ class BotEngine:
         self.running = False; self.live_mode = False; self.exchange = None
         self._user_stopped = True
         self._balance_ts = 0  # invalidate balance cache
+        self._async_eng._thread = None   # allow fresh start on next start()
         self._save_data()
         self._push_event('monitor','Bot stopped',{})
         return {'success':True,'message':'Bot stopped'}
