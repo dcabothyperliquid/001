@@ -378,6 +378,11 @@ class HyperliquidClient:
             if cache:
                 self._markpx_cache = cache
                 self._markpx_ts = time.time()
+                # DEBUG — log key spot tokens once
+                if not getattr(self, '_mids_logged', False):
+                    self._mids_logged = True
+                    for sym in ['USOL','HYPE','UBTC','UETH','UZEC','TRX1','HPUMP']:
+                        logger.info(f"  [allMids] {sym} = {cache.get(sym, 'NOT FOUND')} | SOL={cache.get('SOL','?')} PURR={cache.get('PURR','?')}")
 
     def get_spot_price(self, symbol):
         idx = self.sym_to_index(symbol)
