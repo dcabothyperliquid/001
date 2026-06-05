@@ -1683,6 +1683,7 @@ function renderTrades(trades) {
         <div class="tc-reason">⏱ ${sell.time || '—'} &nbsp;|&nbsp; ${sell.reason || '—'}</div>
       </div>`;
 
+    } else {
       // ── Open buy card ────────────────────────────────────────────────────
       const buySig  = buy.signal_price ? '$'+fp(buy.signal_price) : '—';
       const buyFill = '$'+fp(buy.price);
