@@ -419,21 +419,15 @@ class HyperliquidClient:
 
     def get_spot_price(self, symbol):
         idx = self.sym_to_index(symbol)
-        # If idx not found, force a meta refresh once and retry
         if idx is None:
             self.get_spot_meta(force=True)
             idx = self.sym_to_index(symbol)
 
         def _sane(px):
-            """Reject prices that are clearly wrong (1.0 exactly, 0, negative)."""
             if not px or px <= 0: return False
-            # 1.0 is almost never a real price for majors — likely a placeholder
             if px == 1.0: return False
             return True
 
-        # HL allMids WS format: key = internal token name (e.g. "USOL", "HYPE", "UBTC")
-        # Docs show: {"APE": "4.33", "ARB": "1.21"} — plain token names, NOT @{index}
-        # Resolve alias → internal name (e.g. SOL → USOL, BTC → UBTC)
         ALIASES = {
             'BTC':'UBTC','SOL':'USOL','ETH':'UETH','TRX':'TRX1','BNB':'BNB0',
             'AVAX':'AVAX0','LINK':'LINK0','AAVE':'AAVE0','XRP':'FXRP',
@@ -442,19 +436,12 @@ class HyperliquidClient:
         }
         internal = ALIASES.get(symbol.upper(), symbol.upper())
 
-        # 1. Live WS cache — key is internal token name
+        # 1. WS live price cache — always try first, zero HTTP cost
         p = price_cache.get(internal)
         if _sane(p): return float(p)
 
-        # 2. allMids REST cache — always try, has its own 3s TTL, independent of WS
-        self._refresh_markpx()
-        px = self._markpx_cache.get(internal)
-        if _sane(px): return px
-        # Also try symbol directly (e.g. PURR not in ALIASES)
-        px = self._markpx_cache.get(symbol.upper())
-        if _sane(px): return px
-
-        # 3. REST allMids fallback — only if WS is stale/dead
+        # 2. REST fallback — ONLY when WS is stale/dead (>15s no update)
+        #    Do NOT call _refresh_markpx() every time — it causes 429 burst
         if price_cache.age() >= 15:
             mids = self.get_all_mids()
             for key in [internal, f"{internal}/USDC", symbol.upper(), f"{symbol}/USDC"]:
@@ -463,6 +450,13 @@ class HyperliquidClient:
                         px = float(mids[key])
                         if _sane(px): return px
                     except: pass
+
+        # 3. Last resort — candle close price from cache (no network)
+        for tf in ['1m', '5m', '15m', '1h']:
+            candles = candle_cache.get(symbol, tf)
+            if candles:
+                px = float(candles[-1][4])
+                if _sane(px): return px
 
         return None
 
@@ -629,21 +623,25 @@ class AsyncEngine:
                         """Subscribe to candles for any new coins."""
                         coins = list(self.bot.coins.keys())
                         new_coins = [c for c in coins if c not in subscribed_coins]
-                        for sym in new_coins:
-                            # Seed cache via REST first so signals work immediately
-                            async with aiohttp.ClientSession() as sess:
+                        if not new_coins:
+                            return
+                        # One shared session for all coins — avoids connection burst
+                        async with aiohttp.ClientSession() as sess:
+                            for sym in new_coins:
+                                # Seed cache via REST — one TF at a time with delay
                                 for tf in SCAN_TIMEFRAMES:
-                                    candles = await self.client.async_get_candles(sess, sym, tf)
+                                    candles = await self.client.async_get_candles(sess, sym, tf, semaphore=self._sem)
                                     if candles:
                                         await candle_cache.set(sym, tf, candles)
-                            # Now subscribe via WS for live updates
-                            for tf in SCAN_TIMEFRAMES:
-                                coin_id = self.client._resolve_candle_coin(sym)
-                                sub = json.dumps({"method": "subscribe", "subscription": {
-                                    "type": "candle", "coin": coin_id, "interval": tf}})
-                                await ws.send(sub)
-                            subscribed_coins.add(sym)
-                            logger.info(f"✅ WS candle subscribed: {sym} × {SCAN_TIMEFRAMES}")
+                                    await asyncio.sleep(0.3)   # 300ms gap per TF to avoid burst
+                                # Subscribe via WS for live updates
+                                for tf in SCAN_TIMEFRAMES:
+                                    coin_id = self.client._resolve_candle_coin(sym)
+                                    sub = json.dumps({"method": "subscribe", "subscription": {
+                                        "type": "candle", "coin": coin_id, "interval": tf}})
+                                    await ws.send(sub)
+                                subscribed_coins.add(sym)
+                                logger.info(f"✅ WS candle subscribed: {sym} × {SCAN_TIMEFRAMES}")
 
                     await _subscribe_coins()
 
@@ -701,11 +699,12 @@ class AsyncEngine:
         if not coins: return
         logger.info(f"🔄 Refreshing candles: {len(coins)} coins × {len(SCAN_TIMEFRAMES)} TFs = {len(coins)*len(SCAN_TIMEFRAMES)} requests")
         t0 = time.time()
+        # Single shared session for all requests — avoids TCP burst
         async with aiohttp.ClientSession() as session:
             for sym in coins:
-                tasks = [self._fetch_and_cache(session, sym, tf) for tf in SCAN_TIMEFRAMES]
-                await asyncio.gather(*tasks, return_exceptions=True)
-                await asyncio.sleep(0.5)  # 500ms gap between coins to avoid 429 burst
+                for tf in SCAN_TIMEFRAMES:
+                    await self._fetch_and_cache(session, sym, tf)
+                    await asyncio.sleep(0.4)   # 400ms gap per request — safe under HL rate limit
         logger.info(f"✅ Candle cache refreshed in {time.time()-t0:.2f}s for {len(coins)} coins")
 
     async def _fetch_and_cache(self, session, symbol, tf):
