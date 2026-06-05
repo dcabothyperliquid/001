@@ -12,6 +12,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 import os, json, time, threading, logging, asyncio, aiohttp, websockets, contextlib
+
+# Force eth_hash to use pycryptodome backend — must be set before eth_account import
+os.environ.setdefault('ETH_HASH_BACKEND', 'pycryptodome')
 from datetime import datetime
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -50,6 +53,14 @@ def now_ist(): return datetime.now(IST).isoformat()
 
 # ── SDK ───────────────────────────────────────────────────────────────────────
 try:
+    # Patch eth_hash backend before eth_account imports it — Python 3.14 fix
+    try:
+        import eth_hash.backends.pycryptodome as _ehb
+        if not hasattr(_ehb, 'backend'):
+            from Crypto.Hash import keccak as _kc
+            _ehb.backend = _kc
+    except Exception:
+        pass
     from hyperliquid.exchange import Exchange
     from hyperliquid.info import Info
     import eth_account
