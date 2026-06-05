@@ -365,7 +365,7 @@ class HyperliquidClient:
         if time.time() - self._markpx_ts < 3:
             return
         # Skip REST call if WebSocket is alive and recently updated
-        if price_cache.age() < 5:
+        if price_cache.age() < 15:
             return
         mids = self._post({"type": "allMids"})
         if mids and isinstance(mids, dict):
@@ -419,7 +419,7 @@ class HyperliquidClient:
         if _sane(px): return px
 
         # 3. REST allMids fallback — only if WS is stale/dead
-        if price_cache.age() >= 5:
+        if price_cache.age() >= 15:
             mids = self.get_all_mids()
             for key in [internal, f"{internal}/USDC", symbol.upper(), f"{symbol}/USDC"]:
                 if key in mids:
@@ -450,11 +450,20 @@ class HyperliquidClient:
         try:
             ctx = semaphore if semaphore else asyncio.nullcontext()
             async with ctx:
-                async with session.post(f"{self.base_url}/info", json=payload, timeout=aiohttp.ClientTimeout(total=20)) as resp:
-                    if resp.status != 200:
-                        logger.warning(f"Candle {symbol}/{tf} HTTP {resp.status}")
-                        return []
-                    raw = await resp.json()
+                for attempt in range(3):
+                    async with session.post(f"{self.base_url}/info", json=payload, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                        if resp.status == 429:
+                            wait = 2 ** attempt  # 1s, 2s, 4s
+                            await asyncio.sleep(wait)
+                            continue
+                        if resp.status != 200:
+                            logger.warning(f"Candle {symbol}/{tf} HTTP {resp.status}")
+                            return []
+                        raw = await resp.json()
+                        break
+                else:
+                    logger.warning(f"Candle {symbol}/{tf} — 429 after 3 retries, skipping")
+                    return []
         except Exception as e:
             logger.warning(f"Candle fetch error {symbol}/{tf}: {e}"); return []
 
