@@ -726,9 +726,9 @@ class BotEngine:
         if SUPABASE_OK:
             try:
                 _supabase.table('bot_data').upsert(
-                    {'key': 'state', 'value': payload,
-                     'updated_at': now_ist()}
+                    {'key': 'state', 'value': payload}
                 ).execute()
+                logger.info(f"✅ Supabase saved — {len(self.coins)} coins")
                 return
             except Exception as e:
                 logger.error(f"Supabase save error: {e} — falling back to local JSON")
@@ -742,18 +742,24 @@ class BotEngine:
         if SUPABASE_OK:
             try:
                 res = _supabase.table('bot_data').select('value').eq('key', 'state').execute()
+                logger.info(f"Supabase load response: data={bool(res.data)}, count={len(res.data) if res.data else 0}")
                 if res.data and res.data[0].get('value'):
                     d = res.data[0]['value']
+                    # If value is a string (TEXT column), parse it
+                    if isinstance(d, str):
+                        import json as _json
+                        d = _json.loads(d)
                     self.coins         = d.get('coins', {})
                     self.holdings      = d.get('holdings', {})
                     self.trades        = d.get('trades', [])
                     self.stats         = d.get('stats', self.stats)
                     self._user_stopped = d.get('user_stopped', False)
-                    # bot_running persisted so auto-start knows user's intent
                     self._persisted_running = d.get('bot_running', None)
-                    logger.info(f"✅ Supabase loaded — {len(self.coins)} coins | user_stopped={self._user_stopped} | was_running={self._persisted_running}")
+                    logger.info(f"✅ Supabase loaded — {len(self.coins)} coins | {list(self.coins.keys())}")
                     self._backfill_display_names()
                     return
+                else:
+                    logger.warning(f"⚠️ Supabase returned empty data — coins will be empty")
             except Exception as e:
                 logger.error(f"Supabase load error: {e} — falling back to local JSON")
         if os.path.exists(DATA_FILE):
