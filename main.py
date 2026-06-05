@@ -65,7 +65,7 @@ except ImportError:
 MAINNET_URL     = "https://api.hyperliquid.xyz"
 WS_URL          = "wss://api.hyperliquid.xyz/ws"
 DATA_FILE       = "bot_data.json"
-SCAN_TIMEFRAMES = ['1h', '2h', '4h', '1d']
+SCAN_TIMEFRAMES = ['15m', '30m', '1h', '2h', '4h', '1d']
 CANDLE_LOOKBACK = 60
 CACHE_TTL       = 300        # 5 minutes candle cache
 PRICE_CACHE_TTL = 3          # 3 seconds price cache (WS updates this faster anyway)
@@ -1275,6 +1275,11 @@ class BotEngine:
         for tf in SCAN_TIMEFRAMES:
             sig = tf_results[tf]['signal']
             if sig in ('buy', 'sell'):
+                # 15m/30m require 1H same direction confirmation to filter false signals
+                if tf in ('15m', '30m'):
+                    h1_sig = tf_results.get('1h', {}).get('signal', 'neutral')
+                    if h1_sig != sig:
+                        continue  # skip — no 1H confirmation
                 direction  = sig
                 confidence = 'high'
                 best_tf    = tf
