@@ -21,23 +21,23 @@ import requests
 from flask import Flask, jsonify, request, render_template
 
 # ── Supabase ──────────────────────────────────────────────────────────────────
+_supabase = None
+SUPABASE_OK = False
 try:
-    from supabase import create_client
+    from supabase import create_client, Client
     _SB_URL = os.environ.get('SUPABASE_URL', '').strip()
     _SB_KEY = os.environ.get('SUPABASE_KEY', '').strip()
-    logging.getLogger(__name__).info(f"Supabase env: URL={'SET' if _SB_URL else 'MISSING'} KEY={'SET' if _SB_KEY else 'MISSING'}")
+    logging.getLogger(__name__).info(f"Supabase env check: URL={'SET('+_SB_URL[:20]+')' if _SB_URL else 'MISSING'} KEY={'SET' if _SB_KEY else 'MISSING'}")
     if _SB_URL and _SB_KEY:
         _supabase = create_client(_SB_URL, _SB_KEY)
+        # Test connection immediately
+        test = _supabase.table('bot_data').select('key').limit(1).execute()
         SUPABASE_OK = True
-        logging.getLogger(__name__).info(f"✅ Supabase connected — URL={_SB_URL[:30]}...")
+        logging.getLogger(__name__).info(f"✅ Supabase connected & verified — rows={len(test.data)}")
     else:
-        _supabase = None
-        SUPABASE_OK = False
-        logging.getLogger(__name__).warning("⚠️  SUPABASE_URL/KEY not set — fallback to local JSON")
+        logging.getLogger(__name__).warning(f"⚠️  SUPABASE_URL/KEY missing — local JSON fallback")
 except Exception as e:
-    _supabase = None
-    SUPABASE_OK = False
-    logging.getLogger(__name__).warning(f"⚠️  Supabase init failed: {e}")
+    logging.getLogger(__name__).error(f"❌ Supabase FAILED: {type(e).__name__}: {e}")
 
 try:
     from flask_cors import CORS
