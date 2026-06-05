@@ -657,25 +657,35 @@ class AsyncEngine:
                      'price': price, 'timeframe': tf_key})
 
             if has_holding:
-                entries   = self.bot.holdings[symbol]['entries']
+                holding   = self.bot.holdings[symbol]
+                entries   = holding['entries']
                 avg_entry = sum(e['usdt'] for e in entries) / sum(e['amount'] for e in entries)
+                trade_tf  = holding.get('trade_tf', best_tf)  # usi TF pe monitor karo jis pe buy hua
+                atr       = (mtf.get('tf_results') or {}).get(trade_tf, {}).get('atr', 0.0)
 
-                # 1. Take Profit — 2% above avg entry
-                tp_pct = self.bot.coins.get(symbol, {}).get('take_profit', 2.0) / 100
-                if price >= avg_entry * (1 + tp_pct):
-                    await self._run_order(self.bot._execute_sell, symbol, price, f'take_profit_{tp_pct*100:.0f}pct')
+                # ATR-based trailing stop — 2x ATR below peak price
+                peak = holding.get('peak_price', avg_entry)
+                if price > peak:
+                    holding['peak_price'] = price
+                    peak = price
+
+                atr_sl_price = peak - (2 * atr) if atr > 0 else avg_entry * 0.97
+
+                # 1. ATR trailing stop loss
+                if price <= atr_sl_price:
+                    await self._run_order(self.bot._execute_sell, symbol, price, f'atr_trailing_sl')
                     return
 
-                # 2. Stop Loss
-                if self.bot._check_stop_loss(symbol, price):
-                    await self._run_order(self.bot._execute_sell, symbol, price, 'stop_loss')
+                # 2. Signal-based sell — same TF pe bearish reversal
+                tf_sig = (mtf.get('tf_results') or {}).get(trade_tf, {}).get('signal', 'neutral')
+                if tf_sig == 'sell':
+                    await self._run_order(self.bot._execute_sell, symbol, price, f'signal_sell_{trade_tf}')
                     return
-
 
             else:
                 if direction == 'buy' and trade_cap > 0:
                     await self._run_order(self.bot._execute_buy, symbol, trade_cap, price,
-                                          f'mtf_{mtf_score}_{confidence}_{best_tf}')
+                                          f'signal_buy_{best_tf}')
 
         except Exception as e:
             logger.error(f"Async process error {symbol}: {e}")
@@ -1067,50 +1077,112 @@ class BotEngine:
         if len(volumes) < 20: return False
         return bool(volumes[-1] > np.mean(volumes[-20:-1]) * multiplier)
 
+    def _calc_atr(self, candles, period=14):
+        """Average True Range for dynamic stop loss."""
+        if len(candles) < period + 1: return 0.0
+        trs = []
+        for i in range(1, len(candles)):
+            high  = float(candles[i][2])
+            low   = float(candles[i][3])
+            prev_close = float(candles[i-1][4])
+            trs.append(max(high - low, abs(high - prev_close), abs(low - prev_close)))
+        if not trs: return 0.0
+        atr = sum(trs[:period]) / period
+        for tr in trs[period:]:
+            atr = (atr * (period - 1) + tr) / period
+        return round(atr, 8)
+
     def _signal_for_candles(self, candles):
-        if not candles or len(candles) < 30: return 'neutral', 50.0, 'neutral', False
+        """
+        New strategy: RSI cross + MACD cross + ATR SL
+        BUY:  RSI crosses above 40-50 zone (was below 45, now above 45) + MACD bullish cross
+        SELL: RSI crosses below 55-60 zone (was above 55, now below 55) + MACD bearish cross
+        """
+        if not candles or len(candles) < 35:
+            return 'neutral', 50.0, 'neutral', False, 0.0
+
         closes  = [float(c[4]) for c in candles]
         volumes = [float(c[5]) for c in candles]
-        rsi     = self._calc_rsi(closes)
-        _,_,macd_sig = self._calc_macd(closes)
-        vol_sig = self._calc_volume_signal(volumes)
-        if   rsi<30 and macd_sig=='bullish':  signal='buy'
-        elif rsi>70 and macd_sig=='bearish':  signal='sell'
-        else:                                 signal='neutral'
-        return signal, rsi, macd_sig, vol_sig
+        highs   = [float(c[2]) for c in candles]
+        lows    = [float(c[3]) for c in candles]
 
-    # ── MTF scan (reads from CandleCache — zero network) ─────────────────────
+        rsi_now  = self._calc_rsi(closes)
+        rsi_prev = self._calc_rsi(closes[:-1])
+        atr      = self._calc_atr(candles)
+        vol_sig  = self._calc_volume_signal(volumes)
+
+        # MACD cross detection
+        def ema(data, n):
+            k = 2/(n+1); r = [data[0]]
+            for p in data[1:]: r.append(p*k + r[-1]*(1-k))
+            return r
+
+        ema_f    = ema(closes, 12)
+        ema_s    = ema(closes, 26)
+        macd_ln  = [f - s for f, s in zip(ema_f, ema_s)]
+        sig_ln   = ema(macd_ln, 9)
+        hist     = [m - s for m, s in zip(macd_ln, sig_ln)]
+
+        # Detect actual crossover (not just direction)
+        macd_bull_cross = len(hist) >= 2 and hist[-2] <= 0 and hist[-1] > 0   # crossed above 0
+        macd_bear_cross = len(hist) >= 2 and hist[-2] >= 0 and hist[-1] < 0   # crossed below 0
+        macd_sig_str    = 'bullish' if hist[-1] > 0 else ('bearish' if hist[-1] < 0 else 'neutral')
+
+        # RSI cross detection
+        rsi_bull_cross = rsi_prev < 45 and rsi_now >= 45   # crossed above 45 (bottom reversal)
+        rsi_bear_cross = rsi_prev > 55 and rsi_now <= 55   # crossed below 55 (top reversal)
+
+        # Signal
+        if rsi_bull_cross and macd_bull_cross:
+            signal = 'buy'
+        elif rsi_bear_cross and macd_bear_cross:
+            signal = 'sell'
+        else:
+            signal = 'neutral'
+
+        return signal, rsi_now, macd_sig_str, vol_sig, atr
+
     def _mtf_scan(self, symbol: str) -> dict:
         tf_results  = {}
-        total_score = 0
-        best_tf     = '1h'
-        best_score  = 0
+        best_tf     = None
+        best_atr    = 0.0
+
         for tf in SCAN_TIMEFRAMES:
-            # Always read from cache only — never sync REST fetch (causes 429 + blocks event loop)
             candles = candle_cache.get(symbol, tf)
             if not candles:
-                tf_results[tf] = {'signal': 'neutral', 'score': 0, 'rsi': 50.0, 'macd': 'neutral', 'vol': False}
+                tf_results[tf] = {'signal': 'neutral', 'score': 0, 'rsi': 50.0, 'macd': 'neutral', 'vol': False, 'atr': 0.0}
                 continue
-            signal, rsi, macd, vol = self._signal_for_candles(candles)
-            score          = SIGNAL_SCORES.get(signal, 0)
-            tf_results[tf] = {'signal': signal, 'score': score, 'rsi': rsi, 'macd': macd, 'vol': vol}
-            total_score   += score
-            if abs(score) > abs(best_score):
-                best_score = score; best_tf = tf
+            signal, rsi, macd, vol, atr = self._signal_for_candles(candles)
+            score = SIGNAL_SCORES.get(signal, 0)
+            tf_results[tf] = {'signal': signal, 'score': score, 'rsi': rsi, 'macd': macd, 'vol': vol, 'atr': atr}
 
-        if   total_score >= 1:  direction, confidence = 'buy',  'high'
-        elif total_score <= -1: direction, confidence = 'sell', 'high'
-        else:                   direction, confidence = 'neutral', 'low'
+        # Find first TF with a non-neutral signal — single TF trade logic
+        direction = 'neutral'
+        confidence = 'low'
+        for tf in SCAN_TIMEFRAMES:
+            sig = tf_results[tf]['signal']
+            if sig in ('buy', 'sell'):
+                direction  = sig
+                confidence = 'high'
+                best_tf    = tf
+                best_atr   = tf_results[tf]['atr']
+                break
 
-        capital_pct = 1.0 if direction == 'buy' else 0.0
+        if best_tf is None:
+            best_tf  = '1h'
+            best_atr = tf_results.get('1h', {}).get('atr', 0.0)
+
         best        = tf_results[best_tf]
+        total_score = best['score']
+        capital_pct = 1.0 if direction == 'buy' else 0.0
+
         return {'total_score': total_score, 'confidence': confidence,
                 'direction': direction, 'best_timeframe': best_tf,
-                'capital_pct': capital_pct,
-                'tf_breakdown': {tf: v['signal'] for tf,v in tf_results.items()},
+                'capital_pct': capital_pct, 'atr': best_atr,
+                'tf_breakdown': {tf: v['signal'] for tf, v in tf_results.items()},
                 'tf_results': tf_results,
                 'rsi': best['rsi'], 'macd_signal': best['macd'], 'volume_signal': best['vol'],
-                'signal': direction if direction!='neutral' else 'neutral'}
+                'signal': direction if direction != 'neutral' else 'neutral'}
 
     # ── Market data (for REST API) ────────────────────────────────────────────
     def get_market_data(self, symbol):
@@ -1157,14 +1229,17 @@ class BotEngine:
                 return None
 
         amount = capital / actual_price
+        # Extract TF from reason string e.g. 'signal_buy_4h' → '4h'
+        trade_tf = reason.split('_')[-1] if '_' in reason else '1h'
         trade  = {'type':'BUY','symbol':symbol,'price':actual_price,'amount':amount,
                   'usdt':capital,'reason':reason,'mode':mode_tag,'order_id':order_id,
                   'time':now_ist(),'pnl':None}
         if symbol not in self.holdings:
-            self.holdings[symbol] = {'entries':[],'peak_price':actual_price,'trailing_stop_price':0}
+            self.holdings[symbol] = {'entries':[],'peak_price':actual_price,'trailing_stop_price':0,'trade_tf':trade_tf}
         self.holdings[symbol]['entries'].append(
             {'price':actual_price,'amount':amount,'usdt':capital,'time':trade['time']})
         self.holdings[symbol]['peak_price'] = max(self.holdings[symbol].get('peak_price',actual_price), actual_price)
+        self.holdings[symbol]['trade_tf']   = trade_tf  # always update to latest buy TF
         trail_pct = self.coins.get(symbol,{}).get('trailing_stop',1.0)/100
         self.holdings[symbol]['trailing_stop_price'] = actual_price*(1-trail_pct)
         self.trades.append(trade)
