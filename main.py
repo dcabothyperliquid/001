@@ -591,12 +591,10 @@ class AsyncEngine:
         logger.info(f"🔄 Refreshing candles: {len(coins)} coins × {len(SCAN_TIMEFRAMES)} TFs = {len(coins)*len(SCAN_TIMEFRAMES)} requests")
         t0 = time.time()
         async with aiohttp.ClientSession() as session:
-            tasks = [
-                self._fetch_and_cache(session, sym, tf)
-                for sym in coins
-                for tf in SCAN_TIMEFRAMES
-            ]
-            await asyncio.gather(*tasks, return_exceptions=True)
+            for sym in coins:
+                tasks = [self._fetch_and_cache(session, sym, tf) for tf in SCAN_TIMEFRAMES]
+                await asyncio.gather(*tasks, return_exceptions=True)
+                await asyncio.sleep(0.5)  # 500ms gap between coins to avoid 429 burst
         logger.info(f"✅ Candle cache refreshed in {time.time()-t0:.2f}s for {len(coins)} coins")
 
     async def _fetch_and_cache(self, session, symbol, tf):
