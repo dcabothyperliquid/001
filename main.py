@@ -65,7 +65,7 @@ except ImportError:
 MAINNET_URL     = "https://api.hyperliquid.xyz"
 WS_URL          = "wss://api.hyperliquid.xyz/ws"
 DATA_FILE       = "bot_data.json"
-SCAN_TIMEFRAMES = ['15m', '30m', '1h', '2h', '4h', '1d']
+SCAN_TIMEFRAMES = ['15m', '30m', '1h', '2h', '4h']
 CANDLE_LOOKBACK = 60
 CACHE_TTL       = 300        # 5 minutes candle cache
 PRICE_CACHE_TTL = 3          # 3 seconds price cache (WS updates this faster anyway)
