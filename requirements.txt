@@ -4,6 +4,8 @@ numpy
 gunicorn
 hyperliquid-python-sdk
 eth-account
+eth-hash[pycryptodome]
+pycryptodome>=3.20.0
 flask-cors
 supabase
 aiohttp

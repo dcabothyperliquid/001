@@ -1044,6 +1044,15 @@ class BotEngine:
     def _init_sdk(self, wallet, private_key):
         if not SDK_AVAILABLE: return False
         if not private_key or len(private_key) < 10: return False
+        # Fix eth_hash backend for Python 3.14 — force pycryptodome backend explicitly
+        try:
+            import eth_hash.backends.pycryptodome  # noqa
+            from eth_hash.auto import keccak as _k; _k(b'test')  # warm up
+        except Exception:
+            try:
+                import eth_hash.backends.pysha3  # noqa — fallback backend
+            except Exception:
+                pass
         try:
             account       = eth_account.Account.from_key(private_key)
             self.info     = Info(MAINNET_URL, skip_ws=True)
