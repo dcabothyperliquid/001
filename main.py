@@ -1206,17 +1206,9 @@ class BotEngine:
 
     def _signal_for_candles(self, candles):
         """
-        3-Tier signal strategy — MACD signal line cross + RSI range filter
-        
-        Tier 1 (Strong BUY):  MACD line freshly crosses above signal line + RSI 40-65
-        Tier 2 (Medium BUY):  MACD histogram > 0 (bullish territory) + RSI 35-62
-        SELL:                 MACD line crosses below signal line + RSI > 55
-                              OR MACD histogram < 0 + RSI > 60
-        
-        Why this works:
-        - MACD signal line cross is more frequent than histogram zero-cross
-        - RSI range keeps out overbought late entries (>65) and confirms trend isn't dead
-        - 3-5x more signals than old RSI-cross AND MACD-zero-cross combo
+        Simple strategy: MACD signal line cross + RSI filter
+        BUY:  MACD line crosses above signal line + RSI between 30-65
+        SELL: MACD line crosses below signal line + RSI above 55
         """
         if not candles or len(candles) < 35:
             return 'neutral', 50.0, 'neutral', False, 0.0
@@ -1224,11 +1216,10 @@ class BotEngine:
         closes  = [float(c[4]) for c in candles]
         volumes = [float(c[5]) for c in candles]
 
-        rsi_now  = self._calc_rsi(closes)
-        atr      = self._calc_atr(candles)
-        vol_sig  = self._calc_volume_signal(volumes)
+        rsi_now = self._calc_rsi(closes)
+        atr     = self._calc_atr(candles)
+        vol_sig = self._calc_volume_signal(volumes)
 
-        # MACD components
         def ema(data, n):
             k = 2/(n+1); r = [data[0]]
             for p in data[1:]: r.append(p*k + r[-1]*(1-k))
@@ -1238,35 +1229,19 @@ class BotEngine:
         ema_s   = ema(closes, 26)
         macd_ln = [f - s for f, s in zip(ema_f, ema_s)]
         sig_ln  = ema(macd_ln, 9)
-        hist    = [m - s for m, s in zip(macd_ln, sig_ln)]
 
-        if len(hist) < 2 or len(sig_ln) < 2 or len(macd_ln) < 2:
+        if len(macd_ln) < 2 or len(sig_ln) < 2:
             return 'neutral', rsi_now, 'neutral', vol_sig, atr
 
-        # MACD signal line crossover (macd_ln vs sig_ln) — more frequent than histogram zero-cross
-        macd_bull_cross = macd_ln[-2] <= sig_ln[-2] and macd_ln[-1] > sig_ln[-1]   # fresh bullish cross
-        macd_bear_cross = macd_ln[-2] >= sig_ln[-2] and macd_ln[-1] < sig_ln[-1]   # fresh bearish cross
+        macd_bull_cross = macd_ln[-2] <= sig_ln[-2] and macd_ln[-1] > sig_ln[-1]
+        macd_bear_cross = macd_ln[-2] >= sig_ln[-2] and macd_ln[-1] < sig_ln[-1]
+        hist_now        = macd_ln[-1] - sig_ln[-1]
+        macd_sig_str    = 'bullish' if hist_now > 0 else ('bearish' if hist_now < 0 else 'neutral')
 
-        # MACD direction (histogram above/below zero)
-        macd_bullish = hist[-1] > 0
-        macd_bearish = hist[-1] < 0
-
-        macd_sig_str = 'bullish' if macd_bullish else ('bearish' if macd_bearish else 'neutral')
-
-        # ── Tier 1: Strong BUY — fresh MACD signal cross + RSI in good zone ──
-        if macd_bull_cross and 40 <= rsi_now <= 65:
+        if macd_bull_cross and 30 <= rsi_now <= 65:
             return 'buy', rsi_now, macd_sig_str, vol_sig, atr
 
-        # ── Tier 2: Medium BUY — MACD in bullish territory + RSI not overbought ──
-        if macd_bullish and 35 <= rsi_now <= 62:
-            return 'buy', rsi_now, macd_sig_str, vol_sig, atr
-
-        # ── SELL Tier 1: fresh bearish MACD cross + RSI showing weakness ──
         if macd_bear_cross and rsi_now > 55:
-            return 'sell', rsi_now, macd_sig_str, vol_sig, atr
-
-        # ── SELL Tier 2: MACD bearish + RSI elevated ──
-        if macd_bearish and rsi_now > 60:
             return 'sell', rsi_now, macd_sig_str, vol_sig, atr
 
         return 'neutral', rsi_now, macd_sig_str, vol_sig, atr
