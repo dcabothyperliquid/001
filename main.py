@@ -1455,6 +1455,19 @@ if CORS_AVAILABLE: CORS(app)
 client     = HyperliquidClient()
 bot_engine = BotEngine(client)
 
+# ── Auto-restart bot if it was running before deploy/restart ─────────────────
+def _auto_start():
+    """If bot was running before this deploy, restart it automatically."""
+    if bot_engine._persisted_running and not bot_engine._user_stopped:
+        logger.info("🔄 Auto-restarting bot (was running before deploy)...")
+        result = bot_engine.start()
+        logger.info(f"🔄 Auto-start result: {result}")
+    else:
+        logger.info(f"ℹ️ Auto-start skipped — persisted_running={bot_engine._persisted_running}, user_stopped={bot_engine._user_stopped}")
+
+_auto_start_thread = threading.Thread(target=_auto_start, daemon=True, name="AutoStart")
+_auto_start_thread.start()
+
 @app.route('/')
 def index(): return render_template('index.html')
 
