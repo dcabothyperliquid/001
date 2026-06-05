@@ -933,7 +933,10 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
   <div class="panel" style="margin-bottom:14px;">
     <div class="panel-head">
       <div class="panel-title"><span class="dot amber"></span>RECENT TRADES</div>
-      <span id="tradeCount" style="font-family:var(--mono);font-size:10px;color:var(--muted2);letter-spacing:1px;"></span>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span id="tradeCount" style="font-family:var(--mono);font-size:10px;color:var(--muted2);letter-spacing:1px;"></span>
+        <button class="btn btn-sm btn-ghost" onclick="downloadTrades()" style="font-size:9px;padding:3px 10px;letter-spacing:1px;">⬇ CSV</button>
+      </div>
     </div>
     <div id="tradeCards" style="display:flex;flex-direction:column;gap:10px;padding:4px 0 2px;">
       <div class="empty-state" style="padding:28px 0;text-align:center;color:var(--muted);font-size:11px;letter-spacing:1.5px;">NO TRADES YET</div>
@@ -1588,6 +1591,7 @@ function renderHoldings(holdings) {
 // RENDER TRADES
 // ═══════════════════════════════════════════════════════════════
 function renderTrades(trades) {
+  _cachedTrades = trades || [];   // cache for CSV download
   const wrap = document.getElementById('tradeCards');
   const countEl = document.getElementById('tradeCount');
   if (!trades.length) {
@@ -1631,6 +1635,10 @@ function renderTrades(trades) {
       const selSig  = sell.sell_signal_price ? '$'+fp(sell.sell_signal_price) : '—';
       const selFill = '$'+fp(sell.sell_price || sell.price);
 
+      // Extract TF from reason e.g. 'signal_buy_15m' → '15m'
+      const buyTf  = buy  ? (buy.reason  || '').split('_').pop() : '—';
+      const sellTf = (sell.reason || '').split('_').pop();
+
       return `
       <div class="trade-card ${cardCls}">
         <div class="trade-card-glow"></div>
@@ -1646,7 +1654,7 @@ function renderTrades(trades) {
         </div>
         <div class="tc-grid four">
           <div class="tc-cell">
-            <div class="tc-cell-label">📡 BUY SIGNAL</div>
+            <div class="tc-cell-label">📡 BUY SIGNAL <span style="color:var(--amber);font-size:8px;">${buyTf}</span></div>
             <div class="tc-cell-val sig">${buySig}</div>
           </div>
           <div class="tc-cell">
@@ -1654,7 +1662,7 @@ function renderTrades(trades) {
             <div class="tc-cell-val fill">${buyFill}</div>
           </div>
           <div class="tc-cell">
-            <div class="tc-cell-label">📡 SELL SIGNAL</div>
+            <div class="tc-cell-label">📡 SELL SIGNAL <span style="color:var(--amber);font-size:8px;">${sellTf}</span></div>
             <div class="tc-cell-val sig">${selSig}</div>
           </div>
           <div class="tc-cell">
@@ -1675,11 +1683,11 @@ function renderTrades(trades) {
         <div class="tc-reason">⏱ ${sell.time || '—'} &nbsp;|&nbsp; ${sell.reason || '—'}</div>
       </div>`;
 
-    } else {
       // ── Open buy card ────────────────────────────────────────────────────
       const buySig  = buy.signal_price ? '$'+fp(buy.signal_price) : '—';
       const buyFill = '$'+fp(buy.price);
       const mode    = buy.mode || 'SIM';
+      const buyTf2  = (buy.reason || '').split('_').pop();
       return `
       <div class="trade-card card-buy">
         <div class="trade-card-glow"></div>
@@ -1692,7 +1700,7 @@ function renderTrades(trades) {
         </div>
         <div class="tc-grid">
           <div class="tc-cell">
-            <div class="tc-cell-label">📡 BUY SIGNAL</div>
+            <div class="tc-cell-label">📡 BUY SIGNAL <span style="color:var(--amber);font-size:8px;">${buyTf2}</span></div>
             <div class="tc-cell-val sig">${buySig}</div>
           </div>
           <div class="tc-cell">
@@ -1704,6 +1712,83 @@ function renderTrades(trades) {
       </div>`;
     }
   }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DOWNLOAD TRADES CSV
+// ═══════════════════════════════════════════════════════════════
+let _cachedTrades = [];
+function downloadTrades() {
+  if (!_cachedTrades.length) { alert('No trades to download'); return; }
+
+  const headers = [
+    'type','symbol','buy_tf','sell_tf',
+    'buy_signal_price','buy_fill_price',
+    'sell_signal_price','sell_fill_price',
+    'avg_entry','amount','usdt',
+    'pnl_pct','pnl_usdt','mode',
+    'buy_reason','sell_reason',
+    'buy_time','sell_time'
+  ];
+
+  // Build pairs: match each SELL to its BUY
+  const buys = {};
+  const rows = [];
+  const sorted = [..._cachedTrades].reverse();
+  sorted.forEach(t => {
+    if (t.type === 'BUY') {
+      buys[t.symbol] = t;
+    } else if (t.type === 'SELL') {
+      const buy = buys[t.symbol] || {};
+      const buyTf  = (buy.reason  || '').split('_').pop();
+      const sellTf = (t.reason    || '').split('_').pop();
+      rows.push([
+        'CLOSED',
+        t.symbol,
+        buyTf,
+        sellTf,
+        buy.signal_price  || buy.price  || '',
+        buy.buy_price     || buy.price  || '',
+        t.sell_signal_price || '',
+        t.sell_price      || t.price    || '',
+        t.avg_entry       || '',
+        t.amount          || '',
+        t.usdt            || '',
+        t.pnl_pct         || '',
+        t.pnl_usdt        || '',
+        t.mode            || '',
+        buy.reason        || '',
+        t.reason          || '',
+        buy.time          || '',
+        t.time            || ''
+      ]);
+      delete buys[t.symbol];
+    }
+  });
+  // Open buys
+  Object.values(buys).forEach(b => {
+    const buyTf = (b.reason || '').split('_').pop();
+    rows.push([
+      'OPEN', b.symbol, buyTf, '',
+      b.signal_price || b.price || '', b.buy_price || b.price || '',
+      '', '', '', b.amount || '', b.usdt || '',
+      '', '', b.mode || '', b.reason || '', '',
+      b.time || '', ''
+    ]);
+  });
+
+  const escape = v => `"${String(v).replace(/"/g,'""')}"`;
+  const csv = [headers.map(escape).join(',')]
+    .concat(rows.map(r => r.map(escape).join(',')))
+    .join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `hl_trades_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ═══════════════════════════════════════════════════════════════
