@@ -583,6 +583,7 @@ class AsyncEngine:
         await asyncio.gather(
             self._ws_feed(),
             self._ws_candle_feed(),
+            self._cache_refresh_loop(),
             self._decision_loop(),
         )
 
@@ -659,15 +660,30 @@ class AsyncEngine:
                             msg = json.loads(raw)
                             if msg.get('channel') == 'candle':
                                 data = msg.get('data', {})
-                                if not data or data.get('isSnapshot'): continue
-                                coin_id  = data.get('s', '')   # e.g. "@152" or "HYPE"
-                                interval = data.get('i', '')   # e.g. "1h"
-                                # Resolve coin_id back to symbol
+                                if not data: continue
+                                coin_id  = data.get('s', '')
+                                interval = data.get('i', '')
                                 sym = self.client._resolve_coin_from_id(coin_id)
                                 if not sym or interval not in SCAN_TIMEFRAMES: continue
-                                # Update cache with new candle
+
+                                if data.get('isSnapshot'):
+                                    # Hyperliquid sends historical candles as bulk list on subscribe
+                                    snapshot_candles = data.get('candles', [])
+                                    if snapshot_candles:
+                                        parsed = []
+                                        for c in snapshot_candles:
+                                            if isinstance(c, dict):
+                                                parsed.append([c['t'], float(c['o']), float(c['h']),
+                                                               float(c['l']), float(c['c']), float(c['v'])])
+                                            elif isinstance(c, list) and len(c) >= 6:
+                                                parsed.append(c)
+                                        if parsed:
+                                            await candle_cache.set(sym, interval, parsed)
+                                            logger.info(f"📦 WS snapshot: {sym}/{interval} {len(parsed)} candles")
+                                    continue
+
+                                # Live candle update — replace last or append
                                 existing = candle_cache.get(sym, interval) or []
-                                # Replace last candle (same open time) or append
                                 candle = [data['t'], data['o'], data['h'],
                                           data['l'], data['c'], data['v']]
                                 if existing and existing[-1][0] == data['t']:
@@ -676,7 +692,6 @@ class AsyncEngine:
                                     existing.append(candle)
                                     if len(existing) > 500: existing = existing[-500:]
                                 await candle_cache.set(sym, interval, existing)
-                                # Immediately trigger signal check for this coin
                                 if self.bot.running:
                                     cfg = self.bot.coins.get(sym, {})
                                     asyncio.ensure_future(self._process_coin(sym, cfg))
@@ -690,13 +705,13 @@ class AsyncEngine:
 
     # ── CandleCache refresh (fallback, runs every 5 min as backup) ────────────
     async def _cache_refresh_loop(self):
-        """Backup REST refresh every 5 min — fills gaps if WS candle misses anything."""
+        """Backup REST refresh every 60s — fills gaps if WS candle misses anything."""
         await asyncio.sleep(30)
         while True:
             coins = list(self.bot.coins.keys())
             if coins:
                 await self._refresh_candles(coins)
-            await asyncio.sleep(300)
+            await asyncio.sleep(60)
 
     async def _refresh_candles(self, coins: list):
         if not coins: return
