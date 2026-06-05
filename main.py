@@ -743,11 +743,11 @@ class AsyncEngine:
             mtf_score   = mtf.get('total_score', 0)
             direction   = mtf.get('signal', 'neutral')
             confidence  = mtf.get('confidence', 'low')
-            capital_pct = mtf.get('capital_pct', 0.0)
             best_tf     = mtf.get('best_timeframe', '?')
-            # Use compound_capital (grows with profit) instead of fixed initial capital
+            # Always use full compound_capital for trade — capital is fully committed per coin
             effective_capital = cfg.get('compound_capital', cfg.get('capital', 10))
-            trade_cap   = round(effective_capital * capital_pct, 4)
+            trade_cap   = round(effective_capital, 4)
+            # Hard guard — if already holding this coin, NEVER buy again until sold
             has_holding = bool(self.bot.holdings.get(symbol, {}).get('entries'))
 
             self.bot._push_event('monitor',
@@ -915,7 +915,7 @@ class BotEngine:
         payload = {
             'coins':        self.coins,
             'holdings':     self.holdings,
-            'trades':       self.trades[-200:],
+            'trades':       self.trades[-5000:],
             'stats':        self.stats,
             'user_stopped': self._user_stopped,
             'bot_running':  self.running,
@@ -1201,7 +1201,7 @@ class BotEngine:
                            'trailing_stop_price': h.get('trailing_stop_price',0)})
         return result
 
-    def get_trade_history(self): return list(reversed(self.trades[-100:]))
+    def get_trade_history(self): return list(reversed(self.trades[-5000:]))
 
     def get_stats(self):
         wr = round(self.stats['winning_trades']/self.stats['total_trades']*100,1) \
@@ -1224,17 +1224,20 @@ class BotEngine:
 
     # ── Indicators ────────────────────────────────────────────────────────────
     def _calc_rsi(self, closes, period=14):
-        if len(closes) < period+1: return 50.0
-        deltas   = np.diff(closes)
-        gains    = np.where(deltas>0, deltas, 0)
-        losses   = np.where(deltas<0, -deltas, 0)
-        avg_gain = np.mean(gains[:period])
-        avg_loss = np.mean(losses[:period])
+        """Wilder's smoothed RSI — correct implementation."""
+        if len(closes) < period + 1: return 50.0
+        deltas = np.diff(closes)
+        gains  = np.where(deltas > 0, deltas, 0.0)
+        losses = np.where(deltas < 0, -deltas, 0.0)
+        # Seed with simple average of first `period` bars
+        avg_gain = float(np.mean(gains[:period]))
+        avg_loss = float(np.mean(losses[:period]))
+        # Wilder's smoothing for remaining bars
         for i in range(period, len(gains)):
-            avg_gain = (avg_gain*(period-1)+gains[i])/period
-            avg_loss = (avg_loss*(period-1)+losses[i])/period
+            avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+            avg_loss = (avg_loss * (period - 1) + losses[i]) / period
         if avg_loss == 0: return 100.0
-        return round(100-(100/(1+avg_gain/avg_loss)), 2)
+        return round(100.0 - (100.0 / (1.0 + avg_gain / avg_loss)), 2)
 
     def _calc_macd(self, closes, fast=12, slow=26, signal=9):
         if len(closes) < slow+signal: return 0, 0, 'neutral'
@@ -1273,8 +1276,8 @@ class BotEngine:
 
     def _signal_for_candles(self, candles):
         """
-        Simple strategy: MACD signal line cross + RSI filter
-        BUY:  MACD line crosses above signal line + RSI between 30-65
+        Simple strategy: MACD signal line cross + RSI filter + volume confirmation
+        BUY:  MACD line crosses above signal line + RSI 30-65 + volume above average
         SELL: MACD line crosses below signal line + RSI above 55
         """
         if not candles or len(candles) < 35:
@@ -1305,9 +1308,11 @@ class BotEngine:
         hist_now        = macd_ln[-1] - sig_ln[-1]
         macd_sig_str    = 'bullish' if hist_now > 0 else ('bearish' if hist_now < 0 else 'neutral')
 
-        if macd_bull_cross and 30 <= rsi_now <= 65:
+        # BUY: MACD cross + RSI in range + volume confirms momentum
+        if macd_bull_cross and 30 <= rsi_now <= 65 and vol_sig:
             return 'buy', rsi_now, macd_sig_str, vol_sig, atr
 
+        # SELL: MACD cross + RSI elevated (no volume requirement for exits)
         if macd_bear_cross and rsi_now > 55:
             return 'sell', rsi_now, macd_sig_str, vol_sig, atr
 
@@ -1327,17 +1332,28 @@ class BotEngine:
             score = SIGNAL_SCORES.get(signal, 0)
             tf_results[tf] = {'signal': signal, 'score': score, 'rsi': rsi, 'macd': macd, 'vol': vol, 'atr': atr}
 
-        # Find first TF with a non-neutral signal — single TF trade logic
-        direction = 'neutral'
-        confidence = 'low'
-        for tf in SCAN_TIMEFRAMES:
-            sig = tf_results[tf]['signal']
-            if sig in ('buy', 'sell'):
-                direction  = sig
-                confidence = 'high'
-                best_tf    = tf
-                best_atr   = tf_results[tf]['atr']
-                break
+        # Conflict check — count buy vs sell signals across all TFs
+        buy_count  = sum(1 for v in tf_results.values() if v['signal'] == 'buy')
+        sell_count = sum(1 for v in tf_results.values() if v['signal'] == 'sell')
+
+        # If sell signals outnumber or equal buy signals — don't buy (conflicting market)
+        if buy_count > 0 and sell_count >= buy_count:
+            direction  = 'neutral'
+            confidence = 'low'
+            best_tf    = '1h'
+            best_atr   = tf_results.get('1h', {}).get('atr', 0.0)
+        else:
+            # Find first TF with a non-neutral signal — single TF trade logic
+            direction  = 'neutral'
+            confidence = 'low'
+            for tf in SCAN_TIMEFRAMES:
+                sig = tf_results[tf]['signal']
+                if sig in ('buy', 'sell'):
+                    direction  = sig
+                    confidence = 'high'
+                    best_tf    = tf
+                    best_atr   = tf_results[tf]['atr']
+                    break
 
         if best_tf is None:
             best_tf  = '1h'
