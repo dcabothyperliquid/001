@@ -570,6 +570,7 @@ class AsyncEngine:
         self._executor   = ThreadPoolExecutor(max_workers=MAX_WORKERS)
         self._ws_running = False
         self._sem        = asyncio.Semaphore(CANDLE_SEMAPHORE)   # created in loop
+        self._refreshing = True   # held until WS seed completes — blocks _cache_refresh_loop on startup
 
     def start(self):
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name="AsyncEngine")
@@ -701,7 +702,7 @@ class AsyncEngine:
     # ── CandleCache refresh (fallback, runs every 5 min as backup) ────────────
     async def _cache_refresh_loop(self):
         """Backup REST refresh every 60s — fills gaps if WS candle misses anything."""
-        await asyncio.sleep(120)  # wait for WS seed to complete before first REST refresh
+        await asyncio.sleep(30)  # small buffer after WS seed releases lock
         while True:
             coins = list(self.bot.coins.keys())
             if coins:
