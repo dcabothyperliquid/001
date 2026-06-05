@@ -731,16 +731,19 @@ class BotEngine:
         }
         if SUPABASE_OK:
             try:
-                _supabase.table('bot_data').upsert(
-                    {'key': 'state', 'value': payload}
+                logger.info(f"💾 Attempting Supabase save — {len(self.coins)} coins")
+                res = _supabase.table('bot_data').upsert(
+                    {'key': 'state', 'value': payload, 'updated_at': datetime.now(IST).isoformat()}
                 ).execute()
-                logger.info(f"✅ Supabase saved — {len(self.coins)} coins | {list(self.coins.keys())}") 
+                logger.info(f"✅ Supabase saved — {len(self.coins)} coins | {list(self.coins.keys())}")
                 return
             except Exception as e:
-                logger.error(f"Supabase save error: {e} — falling back to local JSON")
+                logger.error(f"Supabase save error: {type(e).__name__}: {e}")
+                print(f"[SUPABASE SAVE ERROR] {type(e).__name__}: {e}")
         try:
             with open(DATA_FILE, 'w') as f:
                 json.dump(payload, f, indent=2)
+            logger.info(f"💾 Local JSON saved — {len(self.coins)} coins")
         except Exception as e:
             logger.error(f"Local save error: {e}")
 
