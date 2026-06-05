@@ -240,6 +240,42 @@ class HyperliquidClient:
                 logger.info(f"  [idx_map] {dbg_sym} → uni={idx_map.get(dbg_sym)}")
         return data
 
+    def _resolve_candle_coin(self, symbol: str) -> str:
+        """Return the coin string to use for WS candle subscription.
+        Hyperliquid spot candles use '@{uni_index}' format e.g. '@152' for SOL.
+        """
+        idx = self.sym_to_index(symbol)
+        if idx is not None:
+            return f"@{idx}"
+        return symbol.upper()
+
+    def _resolve_coin_from_id(self, coin_id: str) -> str:
+        """Reverse lookup: '@152' → 'SOL' (or whichever symbol the bot uses).
+        Also handles plain name like 'HYPE'.
+        """
+        if coin_id.startswith('@'):
+            try:
+                target_idx = int(coin_id[1:])
+                for sym in self.bot_coins_ref():
+                    idx = self.sym_to_index(sym)
+                    if idx == target_idx:
+                        return sym
+            except ValueError:
+                pass
+        # Plain name fallback
+        for sym in self.bot_coins_ref():
+            internal = self._sym_index.get(sym.upper())
+            if coin_id.upper() in (sym.upper(), str(internal)):
+                return sym
+        return None
+
+    def set_bot_coins_ref(self, coins_dict_ref):
+        """Store reference to bot.coins so _resolve_coin_from_id can look up symbols."""
+        self._bot_coins_ref = coins_dict_ref
+
+    def bot_coins_ref(self):
+        return list(getattr(self, '_bot_coins_ref', {}).keys())
+
     def get_spot_pairs(self):
         """
         Fetch live Hyperliquid spot token list.
@@ -546,7 +582,7 @@ class AsyncEngine:
         logger.info("⚡ AsyncEngine started")
         await asyncio.gather(
             self._ws_feed(),
-            self._cache_refresh_loop(),
+            self._ws_candle_feed(),
             self._decision_loop(),
         )
 
@@ -575,15 +611,92 @@ class AsyncEngine:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
 
-    # ── CandleCache refresh ───────────────────────────────────────────────────
+    # ── WebSocket candle feed — real-time push, replaces REST polling ─────────
+    async def _ws_candle_feed(self):
+        """Subscribe to candle updates for all monitored coins × all TFs via WS.
+        On each candle push → update cache → immediately trigger signal check.
+        Falls back to REST snapshot on connect to seed the cache.
+        """
+        backoff = 1
+        while True:
+            try:
+                async with websockets.connect(WS_URL, ping_interval=20, ping_timeout=30) as ws:
+                    backoff = 1
+                    subscribed_coins = set()
+
+                    async def _subscribe_coins():
+                        """Subscribe to candles for any new coins."""
+                        coins = list(self.bot.coins.keys())
+                        new_coins = [c for c in coins if c not in subscribed_coins]
+                        for sym in new_coins:
+                            # Seed cache via REST first so signals work immediately
+                            async with aiohttp.ClientSession() as sess:
+                                for tf in SCAN_TIMEFRAMES:
+                                    candles = await self.client.async_get_candles(sess, sym, tf)
+                                    if candles:
+                                        await candle_cache.set(sym, tf, candles)
+                            # Now subscribe via WS for live updates
+                            for tf in SCAN_TIMEFRAMES:
+                                coin_id = self.client._resolve_candle_coin(sym)
+                                sub = json.dumps({"method": "subscribe", "subscription": {
+                                    "type": "candle", "coin": coin_id, "interval": tf}})
+                                await ws.send(sub)
+                            subscribed_coins.add(sym)
+                            logger.info(f"✅ WS candle subscribed: {sym} × {SCAN_TIMEFRAMES}")
+
+                    await _subscribe_coins()
+
+                    # Periodic re-check for newly added coins
+                    async def _coin_watcher():
+                        while True:
+                            await asyncio.sleep(10)
+                            await _subscribe_coins()
+
+                    asyncio.ensure_future(_coin_watcher())
+
+                    async for raw in ws:
+                        try:
+                            msg = json.loads(raw)
+                            if msg.get('channel') == 'candle':
+                                data = msg.get('data', {})
+                                if not data or data.get('isSnapshot'): continue
+                                coin_id  = data.get('s', '')   # e.g. "@152" or "HYPE"
+                                interval = data.get('i', '')   # e.g. "1h"
+                                # Resolve coin_id back to symbol
+                                sym = self.client._resolve_coin_from_id(coin_id)
+                                if not sym or interval not in SCAN_TIMEFRAMES: continue
+                                # Update cache with new candle
+                                existing = candle_cache.get(sym, interval) or []
+                                # Replace last candle (same open time) or append
+                                candle = [data['t'], data['o'], data['h'],
+                                          data['l'], data['c'], data['v']]
+                                if existing and existing[-1][0] == data['t']:
+                                    existing[-1] = candle
+                                else:
+                                    existing.append(candle)
+                                    if len(existing) > 500: existing = existing[-500:]
+                                await candle_cache.set(sym, interval, existing)
+                                # Immediately trigger signal check for this coin
+                                if self.bot.running:
+                                    cfg = self.bot.coins.get(sym, {})
+                                    asyncio.ensure_future(self._process_coin(sym, cfg))
+                        except Exception as e:
+                            logger.warning(f"WS candle parse error: {e}")
+
+            except Exception as e:
+                logger.warning(f"WS candle disconnected: {e} — reconnect in {backoff}s")
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60)
+
+    # ── CandleCache refresh (fallback, runs every 5 min as backup) ────────────
     async def _cache_refresh_loop(self):
-        """Refresh candles for ALL monitored coins × ALL timeframes in parallel."""
-        await asyncio.sleep(5)
+        """Backup REST refresh every 5 min — fills gaps if WS candle misses anything."""
+        await asyncio.sleep(30)
         while True:
             coins = list(self.bot.coins.keys())
             if coins:
                 await self._refresh_candles(coins)
-            await asyncio.sleep(30)  # refresh every 30s — near real-time signal detection
+            await asyncio.sleep(300)
 
     async def _refresh_candles(self, coins: list):
         if not coins: return
@@ -698,7 +811,7 @@ class AsyncEngine:
             logger.error(f"Order executor error: {e}")
 
     def trigger_cache_refresh(self, coins: list):
-        """Called when new coin is added — immediately refresh its candles."""
+        """Called when new coin is added — seed cache via REST immediately."""
         if self.loop and self.loop.is_running():
             asyncio.run_coroutine_threadsafe(self._refresh_candles(coins), self.loop)
 
@@ -728,6 +841,7 @@ class BotEngine:
         self._balance_cache  = {}        # cached USDC balance
         self._balance_ts     = 0         # timestamp of last balance fetch
         self._async_eng  = AsyncEngine(client, self)
+        self.client.set_bot_coins_ref(self.coins)
         self._load_data()
 
     # ── Events ────────────────────────────────────────────────────────────────
