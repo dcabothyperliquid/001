@@ -23,20 +23,21 @@ from flask import Flask, jsonify, request, render_template
 # ── Supabase ──────────────────────────────────────────────────────────────────
 try:
     from supabase import create_client
-    _SB_URL = os.environ.get('SUPABASE_URL', '')
-    _SB_KEY = os.environ.get('SUPABASE_KEY', '')
+    _SB_URL = os.environ.get('SUPABASE_URL', '').strip()
+    _SB_KEY = os.environ.get('SUPABASE_KEY', '').strip()
+    logging.getLogger(__name__).info(f"Supabase env: URL={'SET' if _SB_URL else 'MISSING'} KEY={'SET' if _SB_KEY else 'MISSING'}")
     if _SB_URL and _SB_KEY:
         _supabase = create_client(_SB_URL, _SB_KEY)
         SUPABASE_OK = True
-        logging.getLogger(__name__).info("✅ Supabase connected — persistent storage enabled")
+        logging.getLogger(__name__).info(f"✅ Supabase connected — URL={_SB_URL[:30]}...")
     else:
         _supabase = None
         SUPABASE_OK = False
         logging.getLogger(__name__).warning("⚠️  SUPABASE_URL/KEY not set — fallback to local JSON")
-except ImportError:
+except Exception as e:
     _supabase = None
     SUPABASE_OK = False
-    logging.getLogger(__name__).warning("⚠️  supabase-py not installed — fallback to local JSON")
+    logging.getLogger(__name__).warning(f"⚠️  Supabase init failed: {e}")
 
 try:
     from flask_cors import CORS
