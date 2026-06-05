@@ -361,49 +361,23 @@ class HyperliquidClient:
         return self._post({"type": "allMids"}) or {}
 
     def _refresh_markpx(self):
-        """Seed markPx cache from spotMetaAndAssetCtxs (refreshed every 5s).
-        Key = universe index (extracted from coin field e.g. @{tok_index}
-        mapped back via token→universe index).
+        """Cache prices from allMids — returns plain token names as keys.
+        e.g. {"HYPE": "35.2", "USOL": "178.5", "UBTC": "62000"}
+        Refreshed every 3 seconds.
         """
         if time.time() - self._markpx_ts < 3:
             return
-        data = self._post({"type": "spotMetaAndAssetCtxs"})
-        if data and isinstance(data, list) and len(data) > 1:
-            meta = data[0]
-            ctxs = data[1]
-            # Build token_index → universe_index map from meta
-            token_idx_to_uni = {}
-            for uni_i, u in enumerate(meta.get('universe', [])):
-                for tok_idx in u.get('tokens', []):
-                    token_idx_to_uni[tok_idx] = uni_i
+        mids = self._post({"type": "allMids"})
+        if mids and isinstance(mids, dict):
             cache = {}
-            for ctx in ctxs:
-                coin = ctx.get('coin', '')
-                px   = ctx.get('markPx')
-                if not px or not coin:
-                    continue
+            for name, px in mids.items():
                 try:
-                    px_f = float(px)
+                    cache[name] = float(px)
                 except:
-                    continue
-                # coin is "@{token_index}" or "NAME/USDC"
-                if coin.startswith('@'):
-                    try:
-                        tok_idx = int(coin[1:])
-                        uni_idx = token_idx_to_uni.get(tok_idx)
-                        if uni_idx is not None:
-                            cache[uni_idx] = px_f
-                    except:
-                        pass
-                # named pairs (PURR/USDC) — find universe index by name
-                elif '/' in coin:
-                    name = coin.split('/')[0].upper()
-                    idx = self._sym_index.get(name)
-                    if idx is not None:
-                        cache[idx] = px_f
+                    pass
             if cache:
                 self._markpx_cache = cache
-                self._markpx_ts    = time.time()
+                self._markpx_ts = time.time()
 
     def get_spot_price(self, symbol):
         idx = self.sym_to_index(symbol)
@@ -434,11 +408,10 @@ class HyperliquidClient:
         p = price_cache.get(internal)
         if _sane(p): return float(p)
 
-        # 2. markPx from spotMetaAndAssetCtxs (REST fallback)
+        # 2. allMids REST fallback — same key format as WS
         self._refresh_markpx()
-        if idx is not None:
-            px = self._markpx_cache.get(idx)
-            if _sane(px): return px
+        px = self._markpx_cache.get(internal)
+        if _sane(px): return px
 
         # 3. REST allMids fallback
         mids = self.get_all_mids()

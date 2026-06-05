@@ -500,7 +500,7 @@ select option{background:var(--bg2);color:var(--text);}
 /* ══ COINS GRID ══════════════════════════════════ */
 .coins-grid{
   display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
+  grid-template-columns:repeat(3,1fr);
   gap:6px;
 }
 .coin-card{
@@ -631,7 +631,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
 @media(max-width:960px){
   .stats-row{grid-template-columns:repeat(2,1fr);}
   .row-2,.row-3{grid-template-columns:1fr;}
-  .coins-grid{grid-template-columns:repeat(2,1fr);}
+  .coins-grid{grid-template-columns:repeat(3,1fr);}
   .main{padding:12px 12px;}
   .header{padding:0 14px;}
   .header-center{display:none;}
