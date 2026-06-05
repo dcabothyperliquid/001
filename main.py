@@ -742,10 +742,10 @@ class BotEngine:
         if SUPABASE_OK:
             try:
                 res = _supabase.table('bot_data').select('value').eq('key', 'state').execute()
-                logger.info(f"Supabase load response: data={bool(res.data)}, count={len(res.data) if res.data else 0}")
-                if res.data and res.data[0].get('value'):
-                    d = res.data[0]['value']
-                    # If value is a string (TEXT column), parse it
+                rows = res.data if isinstance(res.data, list) else []
+                logger.info(f"Supabase load response: rows={len(rows)}")
+                if len(rows) > 0 and rows[0].get('value'):
+                    d = rows[0]['value']
                     if isinstance(d, str):
                         import json as _json
                         d = _json.loads(d)
@@ -759,7 +759,7 @@ class BotEngine:
                     self._backfill_display_names()
                     return
                 else:
-                    logger.warning(f"⚠️ Supabase returned empty data — coins will be empty")
+                    logger.warning(f"⚠️ Supabase no data found — fresh start (rows={len(rows)})")
             except Exception as e:
                 logger.error(f"Supabase load error: {e} — falling back to local JSON")
         if os.path.exists(DATA_FILE):
