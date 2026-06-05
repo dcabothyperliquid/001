@@ -578,13 +578,12 @@ class AsyncEngine:
     # ── CandleCache refresh ───────────────────────────────────────────────────
     async def _cache_refresh_loop(self):
         """Refresh candles for ALL monitored coins × ALL timeframes in parallel."""
-        # Wait for bot to have coins loaded
         await asyncio.sleep(5)
         while True:
             coins = list(self.bot.coins.keys())
             if coins:
                 await self._refresh_candles(coins)
-            await asyncio.sleep(CACHE_TTL)
+            await asyncio.sleep(60)  # refresh every 60s — catches candle closes quickly
 
     async def _refresh_candles(self, coins: list):
         if not coins: return
@@ -605,7 +604,7 @@ class AsyncEngine:
 
     # ── Decision loop ─────────────────────────────────────────────────────────
     async def _decision_loop(self):
-        """All coins processed in parallel every 30s."""
+        """All coins processed in parallel every 15s."""
         await asyncio.sleep(15)   # let WS + cache warm up first
         while True:
             if not self.bot.running:
@@ -617,7 +616,7 @@ class AsyncEngine:
                 await asyncio.gather(*[self._process_coin(sym, cfg) for sym, cfg in coins],
                                       return_exceptions=True)
                 logger.info(f"⚡ Processed {len(coins)} coins in {time.time()-t0:.2f}s")
-            await asyncio.sleep(30)
+            await asyncio.sleep(15)
 
     async def _process_coin(self, symbol: str, cfg: dict):
         """Async version of _process_coin — reads from cache, offloads orders to executor."""
