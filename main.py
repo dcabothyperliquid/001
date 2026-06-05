@@ -745,7 +745,9 @@ class AsyncEngine:
             confidence  = mtf.get('confidence', 'low')
             capital_pct = mtf.get('capital_pct', 0.0)
             best_tf     = mtf.get('best_timeframe', '?')
-            trade_cap   = round(cfg.get('capital', 10) * capital_pct, 4)
+            # Use compound_capital (grows with profit) instead of fixed initial capital
+            effective_capital = cfg.get('compound_capital', cfg.get('capital', 10))
+            trade_cap   = round(effective_capital * capital_pct, 4)
             has_holding = bool(self.bot.holdings.get(symbol, {}).get('entries'))
 
             self.bot._push_event('monitor',
@@ -917,7 +919,7 @@ class BotEngine:
 
     def _backfill_display_names(self):
         """Add display_name to coins and deduplicate by display_name.
-        If SOL and USOL both exist, keep only the one with canonical key (SOL).
+        Also backfills compound_capital for coins that don't have it yet.
         """
         DISPLAY_MAP = {
             'UBTC':'BTC','USOL':'SOL','UETH':'ETH','UZEC':'ZEC','UWLD':'WLD',
@@ -952,6 +954,11 @@ class BotEngine:
         for sym in to_remove:
             logger.info(f"Dedup: removing duplicate coin key '{sym}' (display already claimed)")
             self.coins.pop(sym, None)
+        # Third pass — backfill compound_capital for old coins that don't have it
+        for sym, cfg in self.coins.items():
+            if 'compound_capital' not in cfg:
+                cfg['compound_capital'] = cfg.get('capital', 10)
+                logger.info(f"💰 Backfilled compound_capital for {sym}: {cfg['compound_capital']}")
 
     # ── SDK Init ──────────────────────────────────────────────────────────────
     def _init_sdk(self, wallet, private_key):
@@ -1045,7 +1052,9 @@ class BotEngine:
         display_name = _display(symbol)
         self.coins[symbol] = {
             'symbol': symbol, 'display_name': display_name,
-            'capital': capital, 'timeframe': timeframe,
+            'capital': capital,           # initial capital set by user
+            'compound_capital': capital,  # grows with profit — this is what bot uses for trades
+            'timeframe': timeframe,
             'stop_loss': stop_loss, 'trailing_stop': trailing_stop,
             'take_profit': take_profit,
             'enabled': True, 'added_at': now_ist()
@@ -1383,6 +1392,15 @@ class BotEngine:
         self.stats['total_trades'] += 1
         self.stats['total_profit']  += pnl_usdt
         if pnl_usdt > 0: self.stats['winning_trades'] += 1
+        # ── Compound profit into this coin's capital pool ──────────────────────
+        if symbol in self.coins:
+            old_cap = self.coins[symbol].get('compound_capital', self.coins[symbol].get('capital', 0))
+            new_cap = round(old_cap + pnl_usdt, 4)
+            # Never let compound_capital go below 10% of initial capital (safety floor)
+            initial = self.coins[symbol].get('capital', old_cap)
+            floor   = round(initial * 0.1, 4)
+            self.coins[symbol]['compound_capital'] = max(new_cap, floor)
+            logger.info(f"💰 Compound [{symbol}]: {old_cap:.4f} → {self.coins[symbol]['compound_capital']:.4f} USDC (pnl: {pnl_usdt:+.4f})")
         self.holdings[symbol] = {'entries':[],'peak_price':0,'trailing_stop_price':0}
         self.trades.append(trade)
         self._push_event('sell',
