@@ -422,19 +422,27 @@ class HyperliquidClient:
         mids = self._post({"type": "allMids"})
         if mids and isinstance(mids, dict):
             cache = {}
+            # Build reverse index: uni_index → symbol name
+            rev = {str(v): k for k, v in self._sym_index.items()}
             for name, px in mids.items():
                 try:
-                    cache[name] = float(px)
+                    fval = float(px)
                 except:
-                    pass
+                    continue
+                cache[name] = fval
+                # Also store under resolved symbol name if key is @idx format
+                if name.startswith('@'):
+                    sym = rev.get(name[1:])
+                    if sym:
+                        cache[sym] = fval
             if cache:
                 self._markpx_cache = cache
                 self._markpx_ts = time.time()
                 # DEBUG — log key spot tokens once
                 if not getattr(self, '_mids_logged', False):
                     self._mids_logged = True
-                    for sym in ['USOL','HYPE','UBTC','UETH','UZEC','TRX1','HPUMP']:
-                        logger.info(f"  [allMids] {sym} = {cache.get(sym, 'NOT FOUND')} | SOL={cache.get('SOL','?')} PURR={cache.get('PURR','?')}")
+                    for sym in ['USOL','HYPE','UBTC','UETH','BNB0','AAVE0','TRX1']:
+                        logger.info(f"  [allMids] {sym} = {cache.get(sym, 'NOT FOUND')} | @152={cache.get('@152','?')}")
 
     def get_spot_price(self, symbol):
         idx = self.sym_to_index(symbol)
@@ -459,12 +467,18 @@ class HyperliquidClient:
         p = price_cache.get(internal)
         if _sane(p): return float(p)
 
+        # 1b. markPx cache — also has @idx resolved names from _refresh_markpx
+        self._refresh_markpx()
+        for key in [internal, symbol.upper(), f'@{idx}' if idx is not None else None]:
+            if key:
+                p = self._markpx_cache.get(key)
+                if _sane(p): return float(p)
+
         # 2. REST fallback — ONLY when WS is stale/dead (>15s no update)
-        #    Do NOT call _refresh_markpx() every time — it causes 429 burst
         if price_cache.age() >= 15:
             mids = self.get_all_mids()
-            for key in [internal, f"{internal}/USDC", symbol.upper(), f"{symbol}/USDC"]:
-                if key in mids:
+            for key in [internal, f"{internal}/USDC", symbol.upper(), f"{symbol}/USDC", f'@{idx}' if idx is not None else None]:
+                if key and key in mids:
                     try:
                         px = float(mids[key])
                         if _sane(px): return px
