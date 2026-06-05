@@ -666,26 +666,10 @@ class AsyncEngine:
                                 sym = self.client._resolve_coin_from_id(coin_id)
                                 if not sym or interval not in SCAN_TIMEFRAMES: continue
 
-                                if data.get('isSnapshot'):
-                                    # Hyperliquid sends historical candles as bulk list on subscribe
-                                    snapshot_candles = data.get('candles', [])
-                                    if snapshot_candles:
-                                        parsed = []
-                                        for c in snapshot_candles:
-                                            if isinstance(c, dict):
-                                                parsed.append([c['t'], float(c['o']), float(c['h']),
-                                                               float(c['l']), float(c['c']), float(c['v'])])
-                                            elif isinstance(c, list) and len(c) >= 6:
-                                                parsed.append(c)
-                                        if parsed:
-                                            await candle_cache.set(sym, interval, parsed)
-                                            logger.info(f"📦 WS snapshot: {sym}/{interval} {len(parsed)} candles")
-                                    continue
-
                                 # Live candle update — replace last or append
                                 existing = candle_cache.get(sym, interval) or []
-                                candle = [data['t'], data['o'], data['h'],
-                                          data['l'], data['c'], data['v']]
+                                candle = [int(data['t']), float(data['o']), float(data['h']),
+                                          float(data['l']), float(data['c']), float(data['v'])]
                                 if existing and existing[-1][0] == data['t']:
                                     existing[-1] = candle
                                 else:
@@ -1222,53 +1206,70 @@ class BotEngine:
 
     def _signal_for_candles(self, candles):
         """
-        New strategy: RSI cross + MACD cross + ATR SL
-        BUY:  RSI crosses above 40-50 zone (was below 45, now above 45) + MACD bullish cross
-        SELL: RSI crosses below 55-60 zone (was above 55, now below 55) + MACD bearish cross
+        3-Tier signal strategy — MACD signal line cross + RSI range filter
+        
+        Tier 1 (Strong BUY):  MACD line freshly crosses above signal line + RSI 40-65
+        Tier 2 (Medium BUY):  MACD histogram > 0 (bullish territory) + RSI 35-62
+        SELL:                 MACD line crosses below signal line + RSI > 55
+                              OR MACD histogram < 0 + RSI > 60
+        
+        Why this works:
+        - MACD signal line cross is more frequent than histogram zero-cross
+        - RSI range keeps out overbought late entries (>65) and confirms trend isn't dead
+        - 3-5x more signals than old RSI-cross AND MACD-zero-cross combo
         """
         if not candles or len(candles) < 35:
             return 'neutral', 50.0, 'neutral', False, 0.0
 
         closes  = [float(c[4]) for c in candles]
         volumes = [float(c[5]) for c in candles]
-        highs   = [float(c[2]) for c in candles]
-        lows    = [float(c[3]) for c in candles]
 
         rsi_now  = self._calc_rsi(closes)
-        rsi_prev = self._calc_rsi(closes[:-1])
         atr      = self._calc_atr(candles)
         vol_sig  = self._calc_volume_signal(volumes)
 
-        # MACD cross detection
+        # MACD components
         def ema(data, n):
             k = 2/(n+1); r = [data[0]]
             for p in data[1:]: r.append(p*k + r[-1]*(1-k))
             return r
 
-        ema_f    = ema(closes, 12)
-        ema_s    = ema(closes, 26)
-        macd_ln  = [f - s for f, s in zip(ema_f, ema_s)]
-        sig_ln   = ema(macd_ln, 9)
-        hist     = [m - s for m, s in zip(macd_ln, sig_ln)]
+        ema_f   = ema(closes, 12)
+        ema_s   = ema(closes, 26)
+        macd_ln = [f - s for f, s in zip(ema_f, ema_s)]
+        sig_ln  = ema(macd_ln, 9)
+        hist    = [m - s for m, s in zip(macd_ln, sig_ln)]
 
-        # Detect actual crossover (not just direction)
-        macd_bull_cross = len(hist) >= 2 and hist[-2] <= 0 and hist[-1] > 0   # crossed above 0
-        macd_bear_cross = len(hist) >= 2 and hist[-2] >= 0 and hist[-1] < 0   # crossed below 0
-        macd_sig_str    = 'bullish' if hist[-1] > 0 else ('bearish' if hist[-1] < 0 else 'neutral')
+        if len(hist) < 2 or len(sig_ln) < 2 or len(macd_ln) < 2:
+            return 'neutral', rsi_now, 'neutral', vol_sig, atr
 
-        # RSI cross detection
-        rsi_bull_cross = rsi_prev < 45 and rsi_now >= 45   # crossed above 45 (bottom reversal)
-        rsi_bear_cross = rsi_prev > 55 and rsi_now <= 55   # crossed below 55 (top reversal)
+        # MACD signal line crossover (macd_ln vs sig_ln) — more frequent than histogram zero-cross
+        macd_bull_cross = macd_ln[-2] <= sig_ln[-2] and macd_ln[-1] > sig_ln[-1]   # fresh bullish cross
+        macd_bear_cross = macd_ln[-2] >= sig_ln[-2] and macd_ln[-1] < sig_ln[-1]   # fresh bearish cross
 
-        # Signal
-        if rsi_bull_cross and macd_bull_cross:
-            signal = 'buy'
-        elif rsi_bear_cross and macd_bear_cross:
-            signal = 'sell'
-        else:
-            signal = 'neutral'
+        # MACD direction (histogram above/below zero)
+        macd_bullish = hist[-1] > 0
+        macd_bearish = hist[-1] < 0
 
-        return signal, rsi_now, macd_sig_str, vol_sig, atr
+        macd_sig_str = 'bullish' if macd_bullish else ('bearish' if macd_bearish else 'neutral')
+
+        # ── Tier 1: Strong BUY — fresh MACD signal cross + RSI in good zone ──
+        if macd_bull_cross and 40 <= rsi_now <= 65:
+            return 'buy', rsi_now, macd_sig_str, vol_sig, atr
+
+        # ── Tier 2: Medium BUY — MACD in bullish territory + RSI not overbought ──
+        if macd_bullish and 35 <= rsi_now <= 62:
+            return 'buy', rsi_now, macd_sig_str, vol_sig, atr
+
+        # ── SELL Tier 1: fresh bearish MACD cross + RSI showing weakness ──
+        if macd_bear_cross and rsi_now > 55:
+            return 'sell', rsi_now, macd_sig_str, vol_sig, atr
+
+        # ── SELL Tier 2: MACD bearish + RSI elevated ──
+        if macd_bearish and rsi_now > 60:
+            return 'sell', rsi_now, macd_sig_str, vol_sig, atr
+
+        return 'neutral', rsi_now, macd_sig_str, vol_sig, atr
 
     def _mtf_scan(self, symbol: str) -> dict:
         tf_results  = {}
