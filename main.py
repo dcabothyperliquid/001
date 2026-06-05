@@ -583,7 +583,7 @@ class AsyncEngine:
             coins = list(self.bot.coins.keys())
             if coins:
                 await self._refresh_candles(coins)
-            await asyncio.sleep(60)  # refresh every 60s — catches candle closes quickly
+            await asyncio.sleep(30)  # refresh every 30s — near real-time signal detection
 
     async def _refresh_candles(self, coins: list):
         if not coins: return
