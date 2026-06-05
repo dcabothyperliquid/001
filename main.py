@@ -1275,11 +1275,6 @@ class BotEngine:
         for tf in SCAN_TIMEFRAMES:
             sig = tf_results[tf]['signal']
             if sig in ('buy', 'sell'):
-                # 15m/30m require 1H same direction confirmation to filter false signals
-                if tf in ('15m', '30m'):
-                    h1_sig = tf_results.get('1h', {}).get('signal', 'neutral')
-                    if h1_sig != sig:
-                        continue  # skip — no 1H confirmation
                 direction  = sig
                 confidence = 'high'
                 best_tf    = tf
