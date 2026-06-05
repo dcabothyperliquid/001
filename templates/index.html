@@ -1059,7 +1059,13 @@ function ingestEvents(events) {
     addedAny = true;
   }
 
-  if (notifications.length > 200) notifications = notifications.slice(0, 200);
+  if (notifications.length > 500) notifications = notifications.slice(0, 500);
+
+  // Persist important notifications to localStorage so page refresh doesn't lose them
+  try {
+    const important = notifications.filter(n => ['critical','warn','trade'].includes(n._cat));
+    localStorage.setItem('hl_notifs', JSON.stringify(important.slice(0, 200)));
+  } catch(e) {}
 
   if (addedAny) {
     updateBadge();
@@ -1185,6 +1191,7 @@ function closeDrawer() {
 }
 function clearNotifs() {
   notifications = [];
+  try { localStorage.removeItem('hl_notifs'); } catch(e) {}
   updateBadge();
   renderNotifList();
 }
@@ -1778,6 +1785,25 @@ function startEvents()  { if (eventsTimer) clearInterval(eventsTimer); pollEvent
 // INIT
 // ═══════════════════════════════════════════════════════════════
 (async function init() {
+  // Restore persisted critical/warn/trade notifications from localStorage
+  try {
+    const saved = localStorage.getItem('hl_notifs');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length) {
+        const existingKeys = new Set(notifications.map(n => n._key));
+        for (const n of parsed) {
+          if (n._key && !existingKeys.has(n._key)) {
+            notifications.push(n);
+            existingKeys.add(n._key);
+          }
+        }
+        updateBadge();
+        renderNotifList();
+      }
+    }
+  } catch(e) {}
+
   await loadSpotPairs();
   const status = await api('/bot/status');
   if (status) {

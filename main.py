@@ -835,7 +835,8 @@ class BotEngine:
         self.trades   = []
         self.stats    = {'total_trades': 0, 'winning_trades': 0,
                          'total_profit': 0.0, 'daily_profit': 0.0, 'start_time': None}
-        self._events        = deque(maxlen=200)
+        self._events          = deque(maxlen=500)
+        self._critical_events = deque(maxlen=200)  # persisted across restarts
         self._user_stopped   = False
         self._persisted_running = None   # loaded from storage
         self._balance_cache  = {}        # cached USDC balance
@@ -843,13 +844,71 @@ class BotEngine:
         self._async_eng  = AsyncEngine(client, self)
         self.client.set_bot_coins_ref(self.coins)
         self._load_data()
+        self._load_critical_events()
 
     # ── Events ────────────────────────────────────────────────────────────────
     def _push_event(self, etype, msg, data=None):
-        self._events.appendleft({'type': etype, 'message': msg,
-                                  'data': data or {}, 'time': now_ist()})
+        event = {'type': etype, 'message': msg, 'data': data or {}, 'time': now_ist()}
+        self._events.appendleft(event)
+        # Persist critical/error/buy/sell events so they survive restarts
+        if etype in ('error', 'critical', 'buy', 'sell', 'warn'):
+            self._critical_events.appendleft(event)
+            self._save_critical_events()
 
-    def get_events(self): return list(self._events)
+    def get_events(self):
+        # Merge live events with persisted critical events (deduplicated by time+message)
+        live = list(self._events)
+        persisted = list(self._critical_events)
+        seen = set()
+        merged = []
+        for e in live + persisted:
+            key = f"{e.get('time','')}|{e.get('message','')[:60]}"
+            if key not in seen:
+                seen.add(key)
+                merged.append(e)
+        # Sort newest first
+        merged.sort(key=lambda x: x.get('time',''), reverse=True)
+        return merged[:500]
+
+    def _save_critical_events(self):
+        events_list = list(self._critical_events)
+        if SUPABASE_OK:
+            try:
+                _supabase.table('bot_data').upsert(
+                    {'key': 'critical_events', 'value': events_list,
+                     'updated_at': datetime.now(IST).isoformat()}
+                ).execute()
+            except Exception:
+                pass
+        try:
+            with open('critical_events.json', 'w') as f:
+                json.dump(events_list, f)
+        except Exception:
+            pass
+
+    def _load_critical_events(self):
+        if SUPABASE_OK:
+            try:
+                res = _supabase.table('bot_data').select('value').eq('key','critical_events').execute()
+                rows = res.data if isinstance(res.data, list) else []
+                if rows and rows[0].get('value'):
+                    d = rows[0]['value']
+                    if isinstance(d, str):
+                        import json as _j; d = _j.loads(d)
+                    if isinstance(d, list):
+                        for e in d: self._critical_events.appendleft(e)
+                        logger.info(f"✅ Loaded {len(d)} persisted critical events")
+                        return
+            except Exception as e:
+                logger.warning(f"Critical events Supabase load: {e}")
+        if os.path.exists('critical_events.json'):
+            try:
+                with open('critical_events.json') as f:
+                    d = json.load(f)
+                for e in d: self._critical_events.appendleft(e)
+                logger.info(f"✅ Loaded {len(d)} critical events from local JSON")
+            except Exception:
+                pass
 
     # ── Persistence (Supabase primary, local JSON fallback) ─────────────────
     def _save_data(self):
