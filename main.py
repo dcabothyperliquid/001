@@ -771,24 +771,42 @@ class BotEngine:
                 logger.error(f"Local load error: {e}")
 
     def _backfill_display_names(self):
-        """Add display_name to coins that don't have it (UBTC→BTC, UETH→ETH etc)."""
-        import re as _re
+        """Add display_name to coins and deduplicate by display_name.
+        If SOL and USOL both exist, keep only the one with canonical key (SOL).
+        """
         DISPLAY_MAP = {
             'UBTC':'BTC','USOL':'SOL','UETH':'ETH','UZEC':'ZEC','UWLD':'WLD',
             'UMOG':'MOG','UPUMP':'PUMP','HPENGU':'PENGU','HPEPE':'PEPE',
             'HPUMP':'PUMPFUN','FXRP':'XRP','TRX1':'TRX','BNB0':'BNB',
             'AVAX0':'AVAX','LINK0':'LINK','AAVE0':'AAVE','XMR1':'XMR','TAO1':'TAO',
         }
+        # Reverse map — display_name → canonical symbol key (prefer shorter/cleaner key)
+        CANONICAL = {v: k for k, v in DISPLAY_MAP.items()}
+        # First pass — assign display names
         for sym, cfg in self.coins.items():
             if not cfg.get('display_name'):
                 if sym in DISPLAY_MAP:
                     cfg['display_name'] = DISPLAY_MAP[sym]
-                elif sym.startswith('U') and len(sym) > 1 and sym[1:].isalpha():
-                    cfg['display_name'] = sym[1:]
-                elif _re.match(r'^[A-Z]+\d$', sym):
-                    cfg['display_name'] = sym[:-1]
                 else:
                     cfg['display_name'] = sym
+        # Second pass — deduplicate: if same display_name appears twice, remove the internal one
+        seen_display = {}
+        to_remove = []
+        for sym, cfg in self.coins.items():
+            dn = cfg.get('display_name', sym)
+            if dn in seen_display:
+                prev_sym = seen_display[dn]
+                # Keep the one whose key matches display_name (e.g. SOL over USOL)
+                if sym == dn:
+                    to_remove.append(prev_sym)
+                    seen_display[dn] = sym
+                else:
+                    to_remove.append(sym)
+            else:
+                seen_display[dn] = sym
+        for sym in to_remove:
+            logger.info(f"Dedup: removing duplicate coin key '{sym}' (display already claimed)")
+            self.coins.pop(sym, None)
 
     # ── SDK Init ──────────────────────────────────────────────────────────────
     def _init_sdk(self, wallet, private_key):
