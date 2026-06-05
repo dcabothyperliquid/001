@@ -595,6 +595,62 @@ body.day tr:hover td{background:rgba(0,114,181,0.04);}
 .td-sim{color:var(--amber);font-size:9px;}
 .empty-state{text-align:center;padding:32px;color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:1px;}
 
+/* ══ TRADE CARDS ══════════════════════════════════ */
+.trade-card{
+  background:var(--bg1);
+  border:1px solid var(--line2);
+  border-radius:10px;
+  padding:14px 16px;
+  position:relative;
+  overflow:hidden;
+  transition:border-color 0.2s,box-shadow 0.2s;
+}
+.trade-card:hover{border-color:var(--muted2);box-shadow:0 4px 20px rgba(0,0,0,0.3);}
+.trade-card.card-win{border-left:3px solid var(--green);}
+.trade-card.card-loss{border-left:3px solid var(--red);}
+.trade-card.card-buy{border-left:3px solid var(--blue);}
+.trade-card-glow{
+  position:absolute;top:0;left:0;right:0;height:1px;
+  opacity:0.5;
+}
+.card-win .trade-card-glow{background:linear-gradient(90deg,transparent,var(--green),transparent);}
+.card-loss .trade-card-glow{background:linear-gradient(90deg,transparent,var(--red),transparent);}
+.card-buy .trade-card-glow{background:linear-gradient(90deg,transparent,var(--blue),transparent);}
+.tc-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.tc-badge{
+  font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:2px;
+  padding:3px 9px;border-radius:4px;
+}
+.tc-badge.buy{background:rgba(48,144,255,0.15);color:var(--blue);border:1px solid rgba(48,144,255,0.3);}
+.tc-badge.sell{background:rgba(13,255,140,0.1);color:var(--green);border:1px solid rgba(13,255,140,0.25);}
+.tc-badge.sell.loss{background:rgba(255,48,96,0.1);color:var(--red);border:1px solid rgba(255,48,96,0.25);}
+.tc-symbol{font-family:var(--display);font-size:20px;letter-spacing:1px;color:var(--text);}
+.tc-pnl{font-family:var(--mono);font-size:16px;font-weight:700;}
+.tc-pnl.win{color:var(--green);}
+.tc-pnl.loss{color:var(--red);}
+.tc-time{font-family:var(--mono);font-size:9px;color:var(--muted2);letter-spacing:0.5px;}
+.tc-mode{font-family:var(--mono);font-size:9px;letter-spacing:1.5px;padding:2px 7px;border-radius:3px;}
+.tc-mode.live{background:rgba(13,240,224,0.1);color:var(--cyan);border:1px solid rgba(13,240,224,0.2);}
+.tc-mode.sim{background:rgba(255,176,32,0.1);color:var(--amber);border:1px solid rgba(255,176,32,0.2);}
+.tc-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.tc-grid.four{grid-template-columns:1fr 1fr 1fr 1fr;}
+.tc-cell{
+  background:var(--bg2);border:1px solid var(--line);border-radius:7px;
+  padding:8px 10px;
+}
+.tc-cell-label{font-family:var(--mono);font-size:8px;color:var(--muted2);letter-spacing:1.5px;margin-bottom:3px;}
+.tc-cell-val{font-family:var(--mono);font-size:11px;color:var(--text);font-weight:500;}
+.tc-cell-val.sig{color:var(--amber);}
+.tc-cell-val.fill{color:var(--cyan);}
+.tc-cell-val.profit{color:var(--green);}
+.tc-cell-val.loss{color:var(--red);}
+.tc-reason{
+  margin-top:8px;font-family:var(--mono);font-size:9px;
+  color:var(--muted2);letter-spacing:0.5px;
+  padding:5px 8px;background:var(--bg2);border-radius:5px;
+  border:1px solid var(--line);
+}
+
 /* ══ MODAL ════════════════════════════════════════ */
 .modal-overlay{
   position:fixed;inset:0;background:rgba(0,0,0,0.8);
@@ -877,16 +933,10 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
   <div class="panel" style="margin-bottom:14px;">
     <div class="panel-head">
       <div class="panel-title"><span class="dot amber"></span>RECENT TRADES</div>
+      <span id="tradeCount" style="font-family:var(--mono);font-size:10px;color:var(--muted2);letter-spacing:1px;"></span>
     </div>
-    <div class="tbl-wrap" style="max-height:340px;overflow-y:auto;">
-      <table>
-        <thead>
-          <tr><th>TYPE</th><th>COIN</th><th>PRICE</th><th>P&amp;L</th><th>MODE</th></tr>
-        </thead>
-        <tbody id="tradesBody">
-          <tr><td colspan="5" class="empty-state">NO TRADES YET</td></tr>
-        </tbody>
-      </table>
+    <div id="tradeCards" style="display:flex;flex-direction:column;gap:10px;padding:4px 0 2px;">
+      <div class="empty-state" style="padding:28px 0;text-align:center;color:var(--muted);font-size:11px;letter-spacing:1.5px;">NO TRADES YET</div>
     </div>
   </div>
 
@@ -1531,18 +1581,122 @@ function renderHoldings(holdings) {
 // RENDER TRADES
 // ═══════════════════════════════════════════════════════════════
 function renderTrades(trades) {
-  const tb = document.getElementById('tradesBody');
-  if (!trades.length) { tb.innerHTML = '<tr><td colspan="5" class="empty-state">NO TRADES YET</td></tr>'; return; }
-  tb.innerHTML = trades.slice(0,60).map(t => `
-    <tr>
-      <td class="${t.type === 'BUY' ? 'td-buy' : 'td-sell'}">${t.type}</td>
-      <td><strong>${t.symbol}</strong></td>
-      <td>$${fp(t.price)}</td>
-      <td>${t.pnl_pct !== undefined && t.pnl_pct !== null
-        ? `<span class="${t.pnl_pct >= 0 ? 'td-pnl-up' : 'td-pnl-dn'}">${t.pnl_pct > 0 ? '+' : ''}${t.pnl_pct}%</span>`
-        : '—'}</td>
-      <td><span class="${t.mode === 'LIVE' ? 'td-live' : 'td-sim'}">${t.mode || 'SIM'}</span></td>
-    </tr>`).join('');
+  const wrap = document.getElementById('tradeCards');
+  const countEl = document.getElementById('tradeCount');
+  if (!trades.length) {
+    wrap.innerHTML = '<div class="empty-state" style="padding:28px 0;text-align:center;color:var(--muted);font-size:11px;letter-spacing:1.5px;">NO TRADES YET</div>';
+    if (countEl) countEl.textContent = '';
+    return;
+  }
+  if (countEl) countEl.textContent = trades.length + ' TRADES';
+
+  // Group BUY+SELL pairs — match each SELL to its preceding BUY
+  const pairs = [];
+  const buys  = {};
+  // Walk chronologically (oldest first)
+  const sorted = [...trades].reverse();
+  sorted.forEach(t => {
+    if (t.type === 'BUY') {
+      buys[t.symbol] = t;
+    } else if (t.type === 'SELL') {
+      pairs.push({ sell: t, buy: buys[t.symbol] || null });
+      delete buys[t.symbol];
+    }
+  });
+  // Remaining open buys
+  Object.values(buys).forEach(b => pairs.push({ buy: b, sell: null }));
+  // Newest first
+  pairs.reverse();
+
+  wrap.innerHTML = pairs.slice(0, 40).map(({ buy, sell }) => {
+    if (sell) {
+      // ── Completed trade card ──────────────────────────────────────────────
+      const win      = sell.pnl_pct >= 0;
+      const pnlSign  = sell.pnl_pct > 0 ? '+' : '';
+      const cardCls  = win ? 'card-win' : 'card-loss';
+      const pnlCls   = win ? 'win' : 'loss';
+      const badgeCls = win ? 'sell' : 'sell loss';
+      const mode     = sell.mode || 'SIM';
+
+      // Price fields — use dedicated fields if available, fall back to price
+      const buySig  = sell.buy_signal_price  ? '$'+fp(sell.buy_signal_price)  : (buy ? '$'+fp(buy.signal_price||buy.price) : '—');
+      const buyFill = sell.buy_price         ? '$'+fp(sell.buy_price)          : (buy ? '$'+fp(buy.price) : '—');
+      const selSig  = sell.sell_signal_price ? '$'+fp(sell.sell_signal_price) : '—';
+      const selFill = '$'+fp(sell.sell_price || sell.price);
+
+      return `
+      <div class="trade-card ${cardCls}">
+        <div class="trade-card-glow"></div>
+        <div class="tc-header">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="tc-badge ${badgeCls}">● CLOSED</span>
+            <span class="tc-symbol">${sell.symbol}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="tc-pnl ${pnlCls}">${pnlSign}${sell.pnl_pct}%</span>
+            <span class="tc-mode ${mode==='LIVE'?'live':'sim'}">${mode}</span>
+          </div>
+        </div>
+        <div class="tc-grid four">
+          <div class="tc-cell">
+            <div class="tc-cell-label">📡 BUY SIGNAL</div>
+            <div class="tc-cell-val sig">${buySig}</div>
+          </div>
+          <div class="tc-cell">
+            <div class="tc-cell-label">✅ BUY FILL</div>
+            <div class="tc-cell-val fill">${buyFill}</div>
+          </div>
+          <div class="tc-cell">
+            <div class="tc-cell-label">📡 SELL SIGNAL</div>
+            <div class="tc-cell-val sig">${selSig}</div>
+          </div>
+          <div class="tc-cell">
+            <div class="tc-cell-label">✅ SELL FILL</div>
+            <div class="tc-cell-val fill">${selFill}</div>
+          </div>
+        </div>
+        <div class="tc-grid" style="margin-top:8px;">
+          <div class="tc-cell">
+            <div class="tc-cell-label">💰 P&L USDT</div>
+            <div class="tc-cell-val ${win?'profit':'loss'}">${sell.pnl_usdt > 0?'+':''}${sell.pnl_usdt} USDC</div>
+          </div>
+          <div class="tc-cell">
+            <div class="tc-cell-label">📦 SIZE</div>
+            <div class="tc-cell-val">${fp(sell.amount)} ${sell.symbol}</div>
+          </div>
+        </div>
+        <div class="tc-reason">⏱ ${sell.time || '—'} &nbsp;|&nbsp; ${sell.reason || '—'}</div>
+      </div>`;
+
+    } else {
+      // ── Open buy card ────────────────────────────────────────────────────
+      const buySig  = buy.signal_price ? '$'+fp(buy.signal_price) : '—';
+      const buyFill = '$'+fp(buy.price);
+      const mode    = buy.mode || 'SIM';
+      return `
+      <div class="trade-card card-buy">
+        <div class="trade-card-glow"></div>
+        <div class="tc-header">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="tc-badge buy">● OPEN</span>
+            <span class="tc-symbol">${buy.symbol}</span>
+          </div>
+          <span class="tc-mode ${mode==='LIVE'?'live':'sim'}">${mode}</span>
+        </div>
+        <div class="tc-grid">
+          <div class="tc-cell">
+            <div class="tc-cell-label">📡 BUY SIGNAL</div>
+            <div class="tc-cell-val sig">${buySig}</div>
+          </div>
+          <div class="tc-cell">
+            <div class="tc-cell-label">✅ BUY FILL</div>
+            <div class="tc-cell-val fill">${buyFill}</div>
+          </div>
+        </div>
+        <div class="tc-reason">⏱ ${buy.time || '—'} &nbsp;|&nbsp; ${buy.reason || '—'}</div>
+      </div>`;
+    }
+  }).join('');
 }
 
 // ═══════════════════════════════════════════════════════════════

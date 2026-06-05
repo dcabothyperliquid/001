@@ -1345,6 +1345,8 @@ class BotEngine:
         trade_tf = reason.split('_')[-1] if '_' in reason else '1h'
         trade  = {'type':'BUY','symbol':symbol,'price':actual_price,'amount':amount,
                   'usdt':capital,'reason':reason,'mode':mode_tag,'order_id':order_id,
+                  'signal_price': price,       # price when signal fired
+                  'buy_price':    actual_price, # actual fill price
                   'time':now_ist(),'pnl':None}
         if symbol not in self.holdings:
             self.holdings[symbol] = {'entries':[],'peak_price':actual_price,'trailing_stop_price':0,'trade_tf':trade_tf}
@@ -1384,10 +1386,21 @@ class BotEngine:
 
         pnl_usdt = (actual_price-avg_entry)*total_amt
         pnl_pct  = (actual_price-avg_entry)/avg_entry*100
+        # Find the matching buy trade to pull signal_price and buy_price
+        buy_signal_price = None; buy_fill_price = None
+        for tr in reversed(self.trades):
+            if tr.get('type') == 'BUY' and tr.get('symbol') == symbol:
+                buy_signal_price = tr.get('signal_price')
+                buy_fill_price   = tr.get('buy_price', tr.get('price'))
+                break
         trade    = {'type':'SELL','symbol':symbol,'price':actual_price,'amount':total_amt,
                     'usdt':actual_price*total_amt,'avg_entry':avg_entry,
                     'pnl_usdt':round(pnl_usdt,4),'pnl_pct':round(pnl_pct,2),
                     'reason':reason,'mode':mode_tag,'order_id':order_id,
+                    'buy_signal_price':  buy_signal_price,
+                    'buy_price':         buy_fill_price,
+                    'sell_signal_price': price,        # price when sell signal fired
+                    'sell_price':        actual_price, # actual fill price
                     'dca_count':len(entries),'time':now_ist()}
         self.stats['total_trades'] += 1
         self.stats['total_profit']  += pnl_usdt
