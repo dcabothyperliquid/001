@@ -11,7 +11,7 @@
 #   • Supports 20+ coins with no degradation as more coins are added
 # ─────────────────────────────────────────────────────────────────────────────
 
-import os, json, time, threading, logging, asyncio, aiohttp, websockets
+import os, json, time, threading, logging, asyncio, aiohttp, websockets, contextlib
 from datetime import datetime
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -484,7 +484,7 @@ class HyperliquidClient:
                    "req": {"coin": coin_id, "interval": tf,
                             "startTime": start, "endTime": now_ms}}
         try:
-            ctx = semaphore if semaphore else asyncio.nullcontext()
+            ctx = semaphore if semaphore else contextlib.AsyncExitStack()
             async with ctx:
                 for attempt in range(3):
                     async with session.post(f"{self.base_url}/info", json=payload, timeout=aiohttp.ClientTimeout(total=20)) as resp:
