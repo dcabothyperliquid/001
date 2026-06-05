@@ -364,9 +364,6 @@ class HyperliquidClient:
         """
         if time.time() - self._markpx_ts < 3:
             return
-        # Skip REST call if WebSocket is alive and recently updated
-        if price_cache.age() < 15:
-            return
         mids = self._post({"type": "allMids"})
         if mids and isinstance(mids, dict):
             cache = {}
@@ -413,9 +410,12 @@ class HyperliquidClient:
         p = price_cache.get(internal)
         if _sane(p): return float(p)
 
-        # 2. allMids REST fallback — same key format as WS
+        # 2. allMids REST cache — always try, has its own 3s TTL, independent of WS
         self._refresh_markpx()
         px = self._markpx_cache.get(internal)
+        if _sane(px): return px
+        # Also try symbol directly (e.g. PURR not in ALIASES)
+        px = self._markpx_cache.get(symbol.upper())
         if _sane(px): return px
 
         # 3. REST allMids fallback — only if WS is stale/dead
