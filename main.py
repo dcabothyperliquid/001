@@ -1237,6 +1237,7 @@ class BotEngine:
                 'persisted_running': self._persisted_running,
                 'coins_monitored': len(self.coins),
                 'active_holdings': len([h for h in self.holdings.values() if h.get('entries')]),
+                'wallet_configured': bool(wallet),
                 'wallet_masked': (wallet[:6]+'...'+wallet[-4:]) if len(wallet)>10 else wallet,
                 'key_configured': bool(self.private_key or os.environ.get('PRIVATE_KEY','')),
                 'ws_price_age_s': round(price_cache.age(), 1),
