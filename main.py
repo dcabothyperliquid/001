@@ -488,38 +488,25 @@ class HyperliquidClient:
         }
         internal = ALIASES.get(symbol.upper(), symbol.upper())
 
-        # 1. markPx cache from spotMetaAndAssetCtxs (spot-only, refreshed every 3s)
-        # This is the primary price source — guaranteed spot, no perp contamination
+        # 1. markPx cache from spotMetaAndAssetCtxs (spot-only API, refreshed every 3s)
         self._refresh_markpx()
         for key in [internal, f'@{idx}' if idx is not None else None]:
             if key:
                 p = self._markpx_cache.get(key)
                 if _sane(p): return float(p)
 
-        # 1b. WS live price cache — @idx keys only (plain names filtered out)
+        # 2. Force fresh fetch if cache missed (bypasses 3s TTL)
+        self._markpx_ts = 0
+        self._refresh_markpx()
+        for key in [internal, f'@{idx}' if idx is not None else None]:
+            if key:
+                p = self._markpx_cache.get(key)
+                if _sane(p): return float(p)
+
+        # 3. WS cache — @idx only (plain names are perp in allMids)
         if idx is not None:
             p = price_cache.get(f'@{idx}')
             if _sane(p): return float(p)
-
-        # 2. REST fallback — ONLY when WS is stale/dead (>15s no update)
-        if price_cache.age() >= 15:
-            mids = self.get_all_mids()
-            for key in [internal, f"{internal}/USDC", f'@{idx}' if idx is not None else None]:
-                if key and key in mids:
-                    try:
-                        px = float(mids[key])
-                        if _sane(px): return px
-                    except: pass
-
-        # 3. Last resort — candle close price from cache (no network)
-        # Use internal spot name (USOL, UBTC) not display name (SOL, BTC)
-        # to avoid accidentally reading perp candle prices
-        for tf in ['1m', '5m', '15m', '1h']:
-            for name in [internal, symbol.upper()]:
-                candles = candle_cache.get(name, tf)
-                if candles:
-                    px = float(candles[-1][4])
-                    if _sane(px): return px
 
         return None
 
