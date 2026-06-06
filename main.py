@@ -413,36 +413,23 @@ class HyperliquidClient:
         return self._post({"type": "allMids"}) or {}
 
     def _refresh_markpx(self):
-        """Cache prices from allMids — returns plain token names as keys.
-        e.g. {"HYPE": "35.2", "USOL": "178.5", "UBTC": "62000"}
+        """Cache spot-only prices using spotMetaAndAssetCtxs — never allMids.
+        allMids contains both perp AND spot prices under the same plain names
+        (e.g. "BTC" = perp price, "SOL" = perp price) so we never use it here.
+        spotMetaAndAssetCtxs is spot-only and keyed by @idx or NAME/USDC.
         Refreshed every 3 seconds.
         """
         if time.time() - self._markpx_ts < 3:
             return
-        mids = self._post({"type": "allMids"})
-        if mids and isinstance(mids, dict):
-            cache = {}
-            rev = {str(v): k for k, v in self._sym_index.items()}
-            for name, px in mids.items():
-                try: fval = float(px)
-                except: continue
-                cache[name] = fval
-                if name.startswith('@'):
-                    sym = rev.get(name[1:])
-                    if sym: cache[sym] = fval
-            if cache:
-                self._markpx_cache = cache
-                self._markpx_ts = time.time()
-
-        # Also fetch spotMetaAndAssetCtxs for guaranteed token_name → price
-        # This covers all tokens regardless of @idx vs name format in allMids
         try:
             data = self._post({"type": "spotMetaAndAssetCtxs"})
             if data and isinstance(data, list) and len(data) >= 2:
                 meta, ctxs = data[0], data[1]
+                # Build token index → internal name map (e.g. idx 5 → "UBTC")
                 tok_map = {t['index']: t['name'].upper()
                            for t in meta.get('tokens', [])
                            if t.get('name','').upper() != 'USDC'}
+                # Build universe index → base token name map
                 uni_map = {}
                 for u in meta.get('universe', []):
                     ui = u.get('index')
@@ -450,6 +437,7 @@ class HyperliquidClient:
                     if ui is not None and toks:
                         base = tok_map.get(toks[0], '')
                         if base: uni_map[ui] = base
+                cache = {}
                 for ctx in ctxs:
                     coin = ctx.get('coin', '')
                     px = ctx.get('markPx') or ctx.get('midPx')
@@ -458,17 +446,23 @@ class HyperliquidClient:
                     except: continue
                     if fval <= 0: continue
                     if coin.startswith('@'):
+                        # "@143" → resolve to internal name e.g. "USOL"
                         name = uni_map.get(int(coin[1:]))
-                        if name: self._markpx_cache[name] = fval
+                        if name:
+                            cache[name] = fval        # "USOL" → price
+                            cache[coin] = fval         # "@143" → price (for @idx lookup)
                     elif '/' in coin:
+                        # "PURR/USDC" → store as "PURR"
                         name = coin.split('/')[0].strip().upper()
                         if name and name != 'USDC':
-                            self._markpx_cache[name] = fval
-                self._markpx_ts = time.time()
-                if not getattr(self, '_mids_logged', False):
-                    self._mids_logged = True
-                    for sym in ['USOL','UBTC','UETH','AAVE0','HYPE','UZEC']:
-                        logger.info(f"  [markpx] {sym} = {self._markpx_cache.get(sym, 'NOT FOUND')}")
+                            cache[name] = fval
+                if cache:
+                    self._markpx_cache = cache
+                    self._markpx_ts = time.time()
+                    if not getattr(self, '_mids_logged', False):
+                        self._mids_logged = True
+                        for sym in ['USOL','UBTC','UETH','AAVE0','HYPE','UZEC']:
+                            logger.info(f"  [markpx] {sym} = {cache.get(sym, 'NOT FOUND')}")
         except Exception as e:
             logger.debug(f"spotMetaAndAssetCtxs price fetch error: {e}")
 
@@ -670,7 +664,12 @@ class AsyncEngine:
                             if msg.get('channel') == 'allMids':
                                 mids = msg.get('data', {}).get('mids', {})
                                 if mids:
-                                    price_cache.update(mids)
+                                    # Only store @idx keys — plain names (BTC/SOL/ETH) are
+                                    # perp prices in allMids, not spot. Spot prices come
+                                    # as "@143" style keys which we resolve via sym_to_index.
+                                    spot_mids = {k: v for k, v in mids.items() if k.startswith('@')}
+                                    if spot_mids:
+                                        price_cache.update(spot_mids)
                         except Exception as e:
                             logger.warning(f"WS parse error: {e}")
             except Exception as e:
