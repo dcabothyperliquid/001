@@ -461,18 +461,17 @@ class HyperliquidClient:
                 if base and base != 'USDC':
                     uni_pair_idx_to_name[pair_idx] = base  # 107 -> "HYPE"
 
-            # ONE-TIME raw debug — log exact API entries for BTC/ETH
+            # ONE-TIME raw debug — print first 5 assetCtxs entries + idx 234/235
             if not getattr(self, '_raw_debug_done', False):
                 self._raw_debug_done = True
-                btc_idx = None; eth_idx = None
-                for k, v in uni_pair_idx_to_name.items():
-                    if v == 'UBTC': btc_idx = k
-                    if v == 'UETH': eth_idx = k
-                logger.info(f"[RAW_DEBUG] UBTC pair_idx={btc_idx}, UETH pair_idx={eth_idx}")
+                logger.info(f"[RAW_DEBUG] uni_pair_idx_to_name sample: { {k:v for k,v in list(uni_pair_idx_to_name.items())[:10]} }")
+                logger.info(f"[RAW_DEBUG] BTC/ETH in map: BTC={uni_pair_idx_to_name.get(234)}, ETH={uni_pair_idx_to_name.get(235)}")
+                logger.info(f"[RAW_DEBUG] first 5 asset_ctxs: {asset_ctxs[:5]}")
+                # Also find entries with coin @234 or @235
                 for ctx2 in asset_ctxs:
                     c2 = ctx2.get('coin','')
-                    if c2 in [f'@{btc_idx}', f'@{eth_idx}', 'UBTC/USDC', 'UETH/USDC']:
-                        logger.info(f"[RAW_DEBUG] coin={c2} full_entry={ctx2}")
+                    if c2 in ['@234','@235','BTC/USDC','ETH/USDC','UBTC/USDC','UETH/USDC']:
+                        logger.info(f"[RAW_DEBUG] FOUND coin={c2} entry={ctx2}")
 
             cache = {}
             for ctx in asset_ctxs:
