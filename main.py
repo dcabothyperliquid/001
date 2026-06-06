@@ -418,15 +418,13 @@ class HyperliquidClient:
     def _refresh_markpx(self):
         """Spot-only price cache using spotMetaAndAssetCtxs endpoint.
 
-        Uses spotMetaAndAssetCtxs instead of allMids to avoid perp/spot key
-        collision. allMids returns plain keys like "BTC","ETH","SOL" for perps
-        AND spot — impossible to distinguish without extra index lookup that
-        was causing wrong (perp) prices to show for BTC/ETH/SOL/HYPE.
+        Official HL docs (asset-ids page) confirm:
+          - HYPE token ID = 150, HYPE spot/pair ID = 107
+          - asset_ctxs[].coin uses UNIVERSE PAIR index (@107 for HYPE), NOT token index (150)
+          - Spot asset ID = 10000 + universe[].index  (the @N number)
 
-        spotMetaAndAssetCtxs is spot-only and returns markPx per token via
-        coin field "@{token_index}" format — unambiguous, no perp contamination.
-
-        get_spot_pairs() already uses the same API and works correctly.
+        Correct map: universe_pair_index -> token_name
+        Built from universe[].index (pair_idx) + universe[].tokens[0] -> tokens[].name
         """
         if time.time() - self._markpx_ts < 3:
             return
@@ -434,10 +432,10 @@ class HyperliquidClient:
             data = self._post({"type": "spotMetaAndAssetCtxs"})
             if not data or not isinstance(data, list) or len(data) < 2:
                 return
-            meta      = data[0] if isinstance(data[0], dict) else {}
+            meta       = data[0] if isinstance(data[0], dict) else {}
             asset_ctxs = data[1] if isinstance(data[1], list) else []
 
-            # Build token_index → internal_name from tokens[]
+            # Step 1: token_index -> token_name  (from tokens[])
             tok_idx_to_name: dict = {}
             for t in meta.get('tokens', []):
                 tidx  = t.get('index')
@@ -445,23 +443,27 @@ class HyperliquidClient:
                 if tidx is not None and tname and tname != 'USDC':
                     tok_idx_to_name[tidx] = tname
 
-            # Build universe pair entry for fallback name resolution
-            # universe[].tokens[0] = base token index
-            uni_tok_to_name: dict = {}  # token_index → name from universe entry
+            # Step 2: universe_pair_index -> token_name  (from universe[])
+            # asset_ctxs[].coin = "@{universe[].index}" i.e. the PAIR index
+            # universe[].tokens[0] = base token token_index -> resolve name
+            uni_pair_idx_to_name: dict = {}
             for u in meta.get('universe', []):
-                tok_idxs = u.get('tokens', [])
+                pair_idx = u.get('index')       # e.g. 107 for HYPE pair
+                tok_idxs = u.get('tokens', [])  # e.g. [150, 0] for HYPE/USDC
                 uni_name = u.get('name', '').strip().upper()
+                if pair_idx is None:
+                    continue
+                base = ''
                 if tok_idxs:
                     base = tok_idx_to_name.get(tok_idxs[0], '')
-                    if not base and '/' in uni_name:
-                        base = uni_name.split('/')[0].strip()
-                    if base and base != 'USDC':
-                        uni_tok_to_name[tok_idxs[0]] = base
+                if not base and '/' in uni_name:
+                    base = uni_name.split('/')[0].strip()
+                if base and base != 'USDC':
+                    uni_pair_idx_to_name[pair_idx] = base  # 107 -> "HYPE"
 
             cache = {}
             for ctx in asset_ctxs:
-                coin = ctx.get('coin', '')
-                # markPx is the spot mid price from the order book
+                coin   = ctx.get('coin', '')
                 px_str = ctx.get('markPx') or ctx.get('midPx')
                 if not px_str:
                     continue
@@ -473,17 +475,17 @@ class HyperliquidClient:
                     continue
 
                 if coin.startswith('@'):
-                    # "@{token_index}" format — most tokens including UBTC, UETH, USOL, HYPE
+                    # "@{universe_pair_index}" e.g. "@107" for HYPE
                     try:
-                        tok_idx = int(coin[1:])
+                        pair_idx = int(coin[1:])
                     except:
                         continue
-                    token_name = tok_idx_to_name.get(tok_idx) or uni_tok_to_name.get(tok_idx)
+                    token_name = uni_pair_idx_to_name.get(pair_idx)
                     if token_name:
-                        cache[token_name] = fval   # "UBTC" → spot price
-                        cache[coin] = fval          # "@1234" → spot price
+                        cache[token_name] = fval  # "HYPE" -> price
+                        cache[coin]       = fval  # "@107" -> price
                 elif '/' in coin:
-                    # "PURR/USDC" named format
+                    # "PURR/USDC" named pair format
                     base = coin.split('/')[0].strip().upper()
                     if base and base != 'USDC':
                         cache.setdefault(base, fval)
@@ -496,7 +498,7 @@ class HyperliquidClient:
                     for sym in ['USOL','UBTC','UETH','AAVE0','HYPE','UZEC']:
                         logger.info(f"  [markpx] {sym} = {cache.get(sym, 'NOT FOUND')}")
             else:
-                logger.warning("[markpx] cache empty — no prices in spotMetaAndAssetCtxs")
+                logger.warning("[markpx] cache empty — spotMetaAndAssetCtxs returned no prices")
         except Exception as e:
             logger.warning(f"_refresh_markpx error: {e}")
 
