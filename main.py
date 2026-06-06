@@ -432,12 +432,22 @@ class HyperliquidClient:
             mids = self._post({"type": "allMids"})
             if not mids or not isinstance(mids, dict):
                 return
-            # Build reverse map: universe_index → token_name from _sym_index
-            # _sym_index maps token_name → universe_index
+            # Build reverse map: universe_index → internal_token_name
+            # Priority: internal names (UBTC, USOL, UETH) over display aliases (BTC, SOL, ETH)
+            # because get_spot_price looks up by internal name
+            INTERNAL_NAMES = {
+                'UBTC','USOL','UETH','AAVE0','UZEC','UWLD','UMOG','UPUMP',
+                'HPENGU','HPEPE','HPUMP','XMR1','TAO1','AVAX0','LINK0','FXRP',
+                'TRX1','HYPE','PURR'
+            }
             rev = {}
+            # First pass: store all clean names
             for name, idx in self._sym_index.items():
-                # Only store clean token names (no /USDC suffix aliases)
                 if '/' not in name and 'USDC' not in name:
+                    rev[idx] = name
+            # Second pass: override with internal names (higher priority)
+            for name, idx in self._sym_index.items():
+                if name in INTERNAL_NAMES:
                     rev[idx] = name
             cache = {}
             for key, px in mids.items():
