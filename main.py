@@ -222,7 +222,10 @@ class HyperliquidClient:
                 if tidx is not None and tname:
                     token_idx_to_name[tidx] = tname.upper()
             idx_map = {}
-            for i, p in enumerate(data.get('universe', [])):
+            for p in data.get('universe', []):
+                uni_index = p.get('index')  # .index field = actual HL universe ID, NOT array position
+                if uni_index is None:
+                    continue
                 tok_idxs = p.get('tokens', [])
                 uni_name = p.get('name', '').strip().upper()
                 base_name = ''
@@ -231,9 +234,9 @@ class HyperliquidClient:
                 if not base_name and uni_name:
                     base_name = uni_name.split('/')[0].strip()
                 if base_name:
-                    idx_map[base_name] = i
-                    idx_map[base_name + '/USDC'] = i
-                    idx_map[base_name + 'USDC'] = i
+                    idx_map[base_name] = uni_index
+                    idx_map[base_name + '/USDC'] = uni_index
+                    idx_map[base_name + 'USDC'] = uni_index
             # ── Alias map: user types "SOL" → HL actual name "USOL" ──────────
             # IMPORTANT: These aliases MUST override any native token with same name
             # e.g. HL may have a native "ETH" token at a different index than "UETH"
