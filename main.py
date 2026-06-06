@@ -1820,8 +1820,10 @@ def debug_btceth():
                 result['ctx_hits'].append(c)
         result['ws_cache_234'] = price_cache.get('@234')
         result['ws_cache_235'] = price_cache.get('@235')
-        result['markpx_cache_btc'] = bot.client._markpx_cache.get('BTC') if bot else None
-        result['markpx_cache_ubtc'] = bot.client._markpx_cache.get('UBTC') if bot else None
+        result['markpx_cache_btc'] = client._markpx_cache.get('BTC')
+        result['markpx_cache_ubtc'] = client._markpx_cache.get('UBTC')
+        result['markpx_cache_eth'] = client._markpx_cache.get('ETH')
+        result['markpx_cache_ueth'] = client._markpx_cache.get('UETH')
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)})
