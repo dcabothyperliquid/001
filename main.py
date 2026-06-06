@@ -440,25 +440,29 @@ class HyperliquidClient:
                     if ui is not None and toks:
                         base = tok_map.get(toks[0], '')
                         if base: uni_map[ui] = base
+                # ctxs is a plain array — position i matches universe[i].index
+                # There is NO 'coin' field. Use enumeration to match uni_map.
+                # uni_map keys are universe .index values (e.g. 234 for UBTC)
+                # We need array-position → universe-index mapping
+                uni_index_by_pos = {}
+                for u in meta.get('universe', []):
+                    ui = u.get('index')
+                    if ui is not None:
+                        uni_index_by_pos[len(uni_index_by_pos)] = ui
+
                 cache = {}
-                for ctx in ctxs:
-                    coin = ctx.get('coin', '')
-                    px = ctx.get('markPx') or ctx.get('midPx')
+                for arr_pos, ctx in enumerate(ctxs):
+                    px = ctx.get('midPx') or ctx.get('markPx')
                     if not px: continue
                     try: fval = float(px)
                     except: continue
                     if fval <= 0: continue
-                    if coin.startswith('@'):
-                        # "@143" → resolve to internal name e.g. "USOL"
-                        name = uni_map.get(int(coin[1:]))
-                        if name:
-                            cache[name] = fval        # "USOL" → price
-                            cache[coin] = fval         # "@143" → price (for @idx lookup)
-                    elif '/' in coin:
-                        # "PURR/USDC" → store as "PURR"
-                        name = coin.split('/')[0].strip().upper()
-                        if name and name != 'USDC':
-                            cache[name] = fval
+                    uni_idx = uni_index_by_pos.get(arr_pos)
+                    if uni_idx is None: continue
+                    name = uni_map.get(uni_idx)  # e.g. "UBTC", "USOL"
+                    if name:
+                        cache[name] = fval           # "UBTC" → price
+                        cache[f'@{uni_idx}'] = fval  # "@234" → price
                 if cache:
                     self._markpx_cache = cache
                     self._markpx_ts = time.time()
