@@ -488,20 +488,18 @@ class HyperliquidClient:
         }
         internal = ALIASES.get(symbol.upper(), symbol.upper())
 
-        # 1. WS live price cache — always try first, zero HTTP cost
-        # allMids WS feed stores spot prices as "@{idx}" keys, not token names
-        for ws_key in ([internal, f'@{idx}'] if idx is not None else [internal]):
-            p = price_cache.get(ws_key)
-            if _sane(p): return float(p)
-
-        # 1b. markPx cache — also has @idx resolved names from _refresh_markpx
-        # NOTE: do NOT lookup plain symbol.upper() (e.g. "SOL") — that key holds
-        # the perp price in allMids. Use only internal spot name or @idx.
+        # 1. markPx cache from spotMetaAndAssetCtxs (spot-only, refreshed every 3s)
+        # This is the primary price source — guaranteed spot, no perp contamination
         self._refresh_markpx()
         for key in [internal, f'@{idx}' if idx is not None else None]:
             if key:
                 p = self._markpx_cache.get(key)
                 if _sane(p): return float(p)
+
+        # 1b. WS live price cache — @idx keys only (plain names filtered out)
+        if idx is not None:
+            p = price_cache.get(f'@{idx}')
+            if _sane(p): return float(p)
 
         # 2. REST fallback — ONLY when WS is stale/dead (>15s no update)
         if price_cache.age() >= 15:
