@@ -575,12 +575,22 @@ class HyperliquidClient:
         }
         internal = ALIASES.get(symbol.upper(), symbol.upper())
 
+        # Inactive spot pairs (BTC/ETH): @idx has stale markPx, plain key has live perp price
+        # Detect stale: @idx price == markPx cache price AND plain key differs significantly
+        INACTIVE_SPOT = {'BTC', 'ETH', 'UBTC', 'UETH'}
+
+        if symbol.upper() in INACTIVE_SPOT or internal in INACTIVE_SPOT:
+            # Use plain perp price from allMids — most accurate for inactive HL spot pairs
+            for key in [symbol.upper(), internal.replace('U','',1) if internal.startswith('U') else internal]:
+                p = price_cache.get(key)
+                if _sane(p): return float(p)
+
         # 1. WS allMids cache — @idx spot price
         if idx is not None:
             p = price_cache.get(f'@{idx}')
             if _sane(p): return float(p)
 
-        # 1b. WS allMids perp fallback — for inactive spot pairs (BTC/ETH midPx=null on HL)
+        # 1b. WS allMids plain key fallback
         for key in [symbol.upper(), internal]:
             p = price_cache.get(key)
             if _sane(p): return float(p)
