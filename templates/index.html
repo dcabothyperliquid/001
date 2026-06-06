@@ -883,6 +883,41 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
     </div>
   </div>
 
+  <!-- MEMORY WIDGET -->
+  <div id="memWidget" style="margin-bottom:14px;background:#0a0a0f;border:1px solid #1a1a2e;border-radius:12px;padding:14px 18px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(135deg,rgba(99,102,241,0.04) 0%,transparent 60%);pointer-events:none;"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:3px;height:16px;background:linear-gradient(180deg,#6366f1,#8b5cf6);border-radius:2px;"></div>
+        <span style="font-size:10px;font-weight:700;letter-spacing:2px;color:#888;font-family:monospace;">SERVER MEMORY</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div id="memDot" style="width:6px;height:6px;border-radius:50%;background:#6366f1;animation:pulse 2s infinite;"></div>
+        <span style="font-size:9px;color:#555;font-family:monospace;letter-spacing:1px;">LIVE</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:flex-end;gap:12px;margin-bottom:10px;">
+      <div>
+        <span id="memMB" style="font-size:28px;font-weight:800;color:#e2e8f0;font-family:monospace;letter-spacing:-1px;">—</span>
+        <span style="font-size:11px;color:#555;margin-left:4px;font-family:monospace;">MB</span>
+      </div>
+      <div style="margin-bottom:5px;">
+        <span style="font-size:10px;color:#555;font-family:monospace;">/ 500 MB</span>
+      </div>
+      <div style="margin-bottom:4px;margin-left:auto;">
+        <span id="memPct" style="font-size:13px;font-weight:700;font-family:monospace;color:#6366f1;">—%</span>
+      </div>
+    </div>
+    <div style="background:#111;border-radius:6px;height:6px;overflow:hidden;position:relative;">
+      <div id="memBar" style="height:100%;width:0%;border-radius:6px;transition:width 0.8s cubic-bezier(0.4,0,0.2,1),background 0.5s;background:linear-gradient(90deg,#6366f1,#8b5cf6);"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:6px;">
+      <span style="font-size:9px;color:#333;font-family:monospace;">0</span>
+      <span id="memStatus" style="font-size:9px;font-family:monospace;color:#555;letter-spacing:1px;">CHECKING...</span>
+      <span style="font-size:9px;color:#333;font-family:monospace;">500 MB</span>
+    </div>
+  </div>
+
   <!-- LIVE MONITOR -->
   <div style="margin-bottom:14px;">
     <div class="sec-head">
@@ -1866,6 +1901,40 @@ async function refreshAll() {
 function startRefresh() { if (refreshTimer) clearInterval(refreshTimer); refreshTimer = setInterval(refreshAll, 5000); }
 function stopRefresh()  { if (refreshTimer) clearInterval(refreshTimer); }
 function startEvents()  { if (eventsTimer) clearInterval(eventsTimer); pollEvents(); eventsTimer = setInterval(pollEvents, 5000); }
+
+// MEMORY WIDGET
+async function refreshMemory() {
+  try {
+    const d = await api('/memory');
+    if (!d) return;
+    const mb = d.rss_mb, pct = d.percent, status = d.status;
+    document.getElementById('memMB').textContent = mb.toFixed(1);
+    document.getElementById('memPct').textContent = pct.toFixed(1) + '%';
+    const bar = document.getElementById('memBar');
+    bar.style.width = Math.min(pct, 100) + '%';
+    if (status === 'critical') {
+      bar.style.background = 'linear-gradient(90deg,#ef4444,#dc2626)';
+      document.getElementById('memPct').style.color = '#ef4444';
+      document.getElementById('memDot').style.background = '#ef4444';
+      document.getElementById('memStatus').textContent = 'CRITICAL — NEAR LIMIT';
+      document.getElementById('memStatus').style.color = '#ef4444';
+    } else if (status === 'warning') {
+      bar.style.background = 'linear-gradient(90deg,#f59e0b,#d97706)';
+      document.getElementById('memPct').style.color = '#f59e0b';
+      document.getElementById('memDot').style.background = '#f59e0b';
+      document.getElementById('memStatus').textContent = 'WARNING — MONITOR CLOSELY';
+      document.getElementById('memStatus').style.color = '#f59e0b';
+    } else {
+      bar.style.background = 'linear-gradient(90deg,#6366f1,#8b5cf6)';
+      document.getElementById('memPct').style.color = '#6366f1';
+      document.getElementById('memDot').style.background = '#6366f1';
+      document.getElementById('memStatus').textContent = 'HEALTHY';
+      document.getElementById('memStatus').style.color = '#22c55e';
+    }
+  } catch(e) {}
+}
+setInterval(refreshMemory, 2000);
+refreshMemory();
 
 // ═══════════════════════════════════════════════════════════════
 // INIT

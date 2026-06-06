@@ -11,7 +11,8 @@
 #   • Supports 20+ coins with no degradation as more coins are added
 # ─────────────────────────────────────────────────────────────────────────────
 
-import os, json, time, threading, logging, asyncio, aiohttp, websockets, contextlib
+import os
+import psutil, json, time, threading, logging, asyncio, aiohttp, websockets, contextlib
 
 # Force eth_hash to use pycryptodome backend — must be set before eth_account import
 os.environ.setdefault('ETH_HASH_BACKEND', 'pycryptodome')
@@ -1820,6 +1821,20 @@ def manual_sell(symbol):
 
 @app.route('/api/spot/pairs', methods=['GET'])
 def get_spot_pairs(): return jsonify(client.get_spot_pairs())
+
+@app.route('/api/memory', methods=['GET'])
+def get_memory():
+    proc = psutil.Process(os.getpid())
+    mem = proc.memory_info()
+    rss_mb = mem.rss / 1024 / 1024
+    limit_mb = 500
+    pct = (rss_mb / limit_mb) * 100
+    return jsonify({
+        'rss_mb': round(rss_mb, 1),
+        'limit_mb': limit_mb,
+        'percent': round(pct, 1),
+        'status': 'critical' if pct > 85 else 'warning' if pct > 65 else 'ok'
+    })
 
 @app.route('/api/debug/btceth', methods=['GET'])
 def debug_btceth():
