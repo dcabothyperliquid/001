@@ -575,25 +575,17 @@ class HyperliquidClient:
         }
         internal = ALIASES.get(symbol.upper(), symbol.upper())
 
-        # 1. markPx cache from spotMetaAndAssetCtxs (spot-only API, refreshed every 3s)
-        self._refresh_markpx()
-        for key in [internal, f'@{idx}' if idx is not None else None]:
-            if key:
-                p = self._markpx_cache.get(key)
-                if _sane(p): return float(p)
-
-        # 2. Force fresh fetch if cache missed (bypasses 3s TTL)
-        self._markpx_ts = 0
-        self._refresh_markpx()
-        for key in [internal, f'@{idx}' if idx is not None else None]:
-            if key:
-                p = self._markpx_cache.get(key)
-                if _sane(p): return float(p)
-
-        # 3. WS cache — @idx only (plain names are perp in allMids)
+        # 1. WS allMids cache — fastest, no API call, @idx keys for spot
         if idx is not None:
             p = price_cache.get(f'@{idx}')
             if _sane(p): return float(p)
+
+        # 2. markPx cache from spotMetaAndAssetCtxs (refreshed every 15s, rate-limited)
+        self._refresh_markpx()
+        for key in [internal, f'@{idx}' if idx is not None else None]:
+            if key:
+                p = self._markpx_cache.get(key)
+                if _sane(p): return float(p)
 
         return None
 
