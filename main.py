@@ -449,21 +449,42 @@ class HyperliquidClient:
             for name, idx in self._sym_index.items():
                 if name in INTERNAL_NAMES:
                     rev[idx] = name
+            # Build name→uni_index map for canonical tokens (UBTC/USDC, UETH/USDC style)
+            # isCanonical=true tokens appear in allMids as "UBTC/USDC" not "@idx"
+            canonical_map = {}  # "UBTC/USDC" → internal_name e.g. "UBTC"
+            for u in self._meta_cache.get('universe', []) if self._meta_cache else []:
+                if u.get('isCanonical'):
+                    uni_name = u.get('name', '')  # e.g. "UBTC/USDC" or "PURR/USDC"
+                    base = uni_name.split('/')[0].strip().upper()
+                    if base and base != 'USDC':
+                        canonical_map[uni_name] = base   # "UBTC/USDC" → "UBTC"
+                        canonical_map[base] = base        # "UBTC" → "UBTC"
+
             cache = {}
             for key, px in mids.items():
-                if not key.startswith('@'):
-                    continue  # skip perp prices (plain names like "BTC", "ETH")
                 try:
-                    uni_idx = int(key[1:])
                     fval = float(px)
                 except:
                     continue
                 if fval <= 0:
                     continue
-                token_name = rev.get(uni_idx)
-                if token_name:
-                    cache[token_name] = fval   # "UBTC" → 76644.0
-                    cache[key] = fval           # "@234" → 76644.0
+
+                if key.startswith('@'):
+                    # Non-canonical spot token — e.g. "@255" for HYPE
+                    try:
+                        uni_idx = int(key[1:])
+                    except:
+                        continue
+                    token_name = rev.get(uni_idx)
+                    if token_name:
+                        cache[token_name] = fval   # "HYPE" → price
+                        cache[key] = fval           # "@255" → price
+                elif '/' in key:
+                    # Canonical spot token — e.g. "UBTC/USDC", "PURR/USDC"
+                    token_name = canonical_map.get(key)
+                    if token_name:
+                        cache[token_name] = fval   # "UBTC" → price
+                # plain names like "BTC","ETH","SOL" = perp prices → skip
             if cache:
                 self._markpx_cache = cache
                 self._markpx_ts = time.time()
