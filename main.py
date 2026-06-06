@@ -255,7 +255,7 @@ class HyperliquidClient:
             self._sym_index = idx_map
             logger.info(f"spotMeta: {len(set(idx_map.values()))} pairs, aliases applied: {[a for a,r in ALIASES.items() if r in idx_map]}")
             # DEBUG — log key tokens to verify index mapping
-            for dbg_sym in ['SOL', 'USOL', 'HYPE', 'BTC', 'UBTC', 'ETH', 'UETH']:
+            for dbg_sym in ['SOL', 'USOL', 'HYPE', 'BTC', 'UBTC', 'ETH', 'UETH', 'SEI', 'HSEI']:
                 logger.info(f"  [idx_map] {dbg_sym} → uni={idx_map.get(dbg_sym)}")
         return data
 
