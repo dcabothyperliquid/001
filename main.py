@@ -240,7 +240,7 @@ class HyperliquidClient:
             # We always want ETH→UETH, SOL→USOL, BTC→UBTC (the wrapped versions)
             ALIASES = {
                 'BTC': 'UBTC', 'SOL': 'USOL', 'ETH': 'UETH',
-                'TRX': 'TRX1', 'BNB': 'BNB0', 'AVAX': 'AVAX0',
+                'BNB': 'BNB0', 'AVAX': 'AVAX0',
                 'LINK': 'LINK0', 'AAVE': 'AAVE0', 'XRP': 'FXRP',
                 'ZEC': 'UZEC', 'WLD': 'UWLD', 'MOG': 'UMOG',
                 'PUMP': 'UPUMP', 'PENGU': 'HPENGU', 'PEPE': 'HPEPE',
@@ -339,7 +339,7 @@ class HyperliquidClient:
             'UBTC':'BTC','USOL':'SOL','UETH':'ETH',
             'UZEC':'ZEC','UWLD':'WLD','UMOG':'MOG','UPUMP':'PUMP',
             'HPENGU':'PENGU','HPEPE':'PEPE','HPUMP':'PUMPFUN','FXRP':'XRP',
-            'TRX1':'TRX','BNB0':'BNB','AVAX0':'AVAX','LINK0':'LINK',
+            'BNB0':'BNB','AVAX0':'AVAX','LINK0':'LINK',
             'AAVE0':'AAVE','XMR1':'XMR','TAO1':'TAO','HYPE':'HYPE',
         }
         for i, u in enumerate(meta.get('universe', [])):
