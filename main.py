@@ -422,8 +422,18 @@ class HyperliquidClient:
         mids = self._post({"type": "allMids"})
         if mids and isinstance(mids, dict):
             cache = {}
-            # Build reverse index: uni_index → symbol name
-            rev = {str(v): k for k, v in self._sym_index.items()}
+            # Build reverse index: uni_index → best symbol name
+            # Prefer short base names (USOL, TRX1) over /USDC or USDC suffixed keys
+            rev = {}
+            for k, v in self._sym_index.items():
+                s = str(v)
+                existing = rev.get(s, '')
+                # Prefer: no suffix, shortest name wins among same-length
+                if not existing or (
+                    '/USDC' not in k and 'USDC' not in k and
+                    (('/USDC' in existing or 'USDC' in existing) or len(k) <= len(existing))
+                ):
+                    rev[s] = k
             for name, px in mids.items():
                 try:
                     fval = float(px)
