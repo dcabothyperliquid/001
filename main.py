@@ -464,7 +464,13 @@ class HyperliquidClient:
             cache = {}
             for ctx in asset_ctxs:
                 coin   = ctx.get('coin', '')
-                px_str = ctx.get('markPx') or ctx.get('midPx')
+                _mpx = ctx.get('markPx')
+                _mipx = ctx.get('midPx')
+                # markPx is "0" (string zero) for BTC/ETH spot — must check float value
+                try:
+                    px_str = _mpx if _mpx and float(_mpx) > 0 else _mipx
+                except (TypeError, ValueError):
+                    px_str = _mipx
                 if not px_str:
                     continue
                 try:
