@@ -318,9 +318,16 @@ class HyperliquidClient:
                 token_idx_to_name[tidx] = tname
 
         def _clean_display(raw: str) -> str:
-            """Return display name. Only PRIORITY_DISPLAY handles remapping.
-            Everything else shows as-is (ADHD, ANON, AAPL etc.)
-            """
+            import re as _re
+            # H + 2-6 uppercase letters → strip H  (HSEI→SEI, HSUI→SUI, HINJ→INJ)
+            m = _re.match(r'^H([A-Z]{2,6})$', raw)
+            if m: return m.group(1)
+            # U + 2-5 uppercase letters → strip U (USOL handled in priority, catch others)
+            m = _re.match(r'^U([A-Z]{2,5})$', raw)
+            if m: return m.group(1)
+            # Token ending in 0 or 1 → strip suffix (BNB0→BNB, XMR1→XMR, TRX1→TRX1 stays if >6 chars)
+            m = _re.match(r'^([A-Z]{2,6})[01]$', raw)
+            if m: return m.group(1)
             return raw.upper().strip()
 
         # Build a lookup: coin identifier -> markPx context
@@ -334,7 +341,7 @@ class HyperliquidClient:
         pairs = []
         seen_display = set()
         seen_internal = set()
-        # Priority list — these must always appear with their canonical display name
+        # Priority list — exact overrides for ambiguous/special names
         PRIORITY_DISPLAY = {
             'UBTC':'BTC','USOL':'SOL','UETH':'ETH',
             'UZEC':'ZEC','UWLD':'WLD','UMOG':'MOG','UPUMP':'PUMP',
