@@ -1814,10 +1814,16 @@ def debug_btceth():
         for u in meta.get('universe', []):
             if u.get('index') == 234: result['universe_234'] = u
             if u.get('index') == 235: result['universe_235'] = u
-        for c in ctxs:
+        # Find UBTC/UETH by name match in ctxs
+        for i, c in enumerate(ctxs):
             coin = c.get('coin','')
             if coin in ['@234','@235','BTC/USDC','ETH/USDC','UBTC/USDC','UETH/USDC']:
-                result['ctx_hits'].append(c)
+                result['ctx_hits'].append({'array_pos': i, **c})
+        # Also search universe array position for UBTC/UETH
+        for pos, u in enumerate(meta.get('universe',[])):
+            if u.get('name','') in ['UBTC/USDC','UETH/USDC']:
+                ctx = ctxs[pos] if pos < len(ctxs) else None
+                result['ctx_hits'].append({'by_position': pos, 'uni_name': u['name'], 'ctx': ctx})
         result['ws_cache_234'] = price_cache.get('@234')
         result['ws_cache_235'] = price_cache.get('@235')
         result['markpx_cache_btc'] = client._markpx_cache.get('BTC')
