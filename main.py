@@ -416,63 +416,55 @@ class HyperliquidClient:
         return self._post({"type": "allMids"}) or {}
 
     def _refresh_markpx(self):
-        """Cache spot-only prices using spotMetaAndAssetCtxs — never allMids.
-        allMids contains both perp AND spot prices under the same plain names
-        (e.g. "BTC" = perp price, "SOL" = perp price) so we never use it here.
-        spotMetaAndAssetCtxs is spot-only and keyed by @idx or NAME/USDC.
+        """Spot-only price cache using allMids REST endpoint.
+        
+        Per official docs: allMids returns BOTH perp and spot prices.
+        Perp keys  = plain name  e.g. "BTC", "ETH", "SOL"
+        Spot keys  = @{universe.index}  e.g. "@234" for UBTC, "@255" for HYPE
+        
+        So we fetch allMids and keep ONLY @idx keys (spot prices).
+        Then resolve @idx → token name via _sym_index reverse map.
         Refreshed every 3 seconds.
         """
         if time.time() - self._markpx_ts < 3:
             return
         try:
-            data = self._post({"type": "spotMetaAndAssetCtxs"})
-            if data and isinstance(data, list) and len(data) >= 2:
-                meta, ctxs = data[0], data[1]
-                # Build token index → internal name map (e.g. idx 5 → "UBTC")
-                tok_map = {t['index']: t['name'].upper()
-                           for t in meta.get('tokens', [])
-                           if t.get('name','').upper() != 'USDC'}
-                # Build universe index → base token name map
-                uni_map = {}
-                for u in meta.get('universe', []):
-                    ui = u.get('index')
-                    toks = u.get('tokens', [])
-                    if ui is not None and toks:
-                        base = tok_map.get(toks[0], '')
-                        if base: uni_map[ui] = base
-                # ctxs each has a 'coin' field — "@{universe.index}" format for spot
-                # e.g. "@234" for UBTC, "@156" for USOL, "@255" for HYPE
-                # uni_map: universe.index → token name (e.g. 234 → "UBTC")
-                cache = {}
-                for ctx in ctxs:
-                    coin = ctx.get('coin', '')
-                    px = ctx.get('midPx') or ctx.get('markPx')
-                    if not px or not coin: continue
-                    try: fval = float(px)
-                    except: continue
-                    if fval <= 0: continue
-                    if coin.startswith('@'):
-                        uni_idx = int(coin[1:])
-                        name = uni_map.get(uni_idx)
-                        if name:
-                            cache[name] = fval      # "UBTC" → price
-                            cache[coin] = fval      # "@234" → price
-                    else:
-                        # plain name like "PURR/USDC" or "HYPE"
-                        name = coin.split('/')[0].strip().upper()
-                        if name and name != 'USDC':
-                            cache[name] = fval
-                if cache:
-                    self._markpx_cache = cache
-                    self._markpx_ts = time.time()
-                    # Always log on every refresh to debug price issues
+            mids = self._post({"type": "allMids"})
+            if not mids or not isinstance(mids, dict):
+                return
+            # Build reverse map: universe_index → token_name from _sym_index
+            # _sym_index maps token_name → universe_index
+            rev = {}
+            for name, idx in self._sym_index.items():
+                # Only store clean token names (no /USDC suffix aliases)
+                if '/' not in name and 'USDC' not in name:
+                    rev[idx] = name
+            cache = {}
+            for key, px in mids.items():
+                if not key.startswith('@'):
+                    continue  # skip perp prices (plain names like "BTC", "ETH")
+                try:
+                    uni_idx = int(key[1:])
+                    fval = float(px)
+                except:
+                    continue
+                if fval <= 0:
+                    continue
+                token_name = rev.get(uni_idx)
+                if token_name:
+                    cache[token_name] = fval   # "UBTC" → 76644.0
+                    cache[key] = fval           # "@234" → 76644.0
+            if cache:
+                self._markpx_cache = cache
+                self._markpx_ts = time.time()
+                if not getattr(self, '_mids_logged', False):
+                    self._mids_logged = True
                     for sym in ['USOL','UBTC','UETH','AAVE0','HYPE','UZEC']:
                         logger.info(f"  [markpx] {sym} = {cache.get(sym, 'NOT FOUND')}")
-                    logger.info(f"  [markpx] total keys={len(cache)} sample={list(cache.items())[:5]}")
-                else:
-                    logger.warning("[markpx] cache is EMPTY after spotMetaAndAssetCtxs fetch")
+            else:
+                logger.warning("[markpx] cache empty — no @idx keys found in allMids")
         except Exception as e:
-            logger.debug(f"spotMetaAndAssetCtxs price fetch error: {e}")
+            logger.warning(f"_refresh_markpx error: {e}")
 
     def get_spot_price(self, symbol):
         idx = self.sym_to_index(symbol)
