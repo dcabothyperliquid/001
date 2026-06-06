@@ -461,6 +461,19 @@ class HyperliquidClient:
                 if base and base != 'USDC':
                     uni_pair_idx_to_name[pair_idx] = base  # 107 -> "HYPE"
 
+            # ONE-TIME raw debug — log exact API entries for BTC/ETH
+            if not getattr(self, '_raw_debug_done', False):
+                self._raw_debug_done = True
+                btc_idx = None; eth_idx = None
+                for k, v in uni_pair_idx_to_name.items():
+                    if v == 'UBTC': btc_idx = k
+                    if v == 'UETH': eth_idx = k
+                logger.info(f"[RAW_DEBUG] UBTC pair_idx={btc_idx}, UETH pair_idx={eth_idx}")
+                for ctx2 in asset_ctxs:
+                    c2 = ctx2.get('coin','')
+                    if c2 in [f'@{btc_idx}', f'@{eth_idx}', 'UBTC/USDC', 'UETH/USDC']:
+                        logger.info(f"[RAW_DEBUG] coin={c2} full_entry={ctx2}")
+
             cache = {}
             for ctx in asset_ctxs:
                 coin   = ctx.get('coin', '')
@@ -491,21 +504,25 @@ class HyperliquidClient:
                         cache[token_name] = fval  # "HYPE" -> price
                         cache[coin]       = fval  # "@107" -> price
                 elif '/' in coin:
-                    # "UBTC/USDC", "UETH/USDC", "PURR/USDC" named pair format
+                    # "BTC/USDC", "ETH/USDC", "UBTC/USDC", "PURR/USDC" named pair format
                     base = coin.split('/')[0].strip().upper()
                     if base and base != 'USDC':
-                        cache[base] = fval  # always set (don't use setdefault)
-                        # Also store alias key so get_spot_price finds via internal name
-                        # e.g. UBTC->BTC, UETH->ETH lookups both work
-                        SPOT_ALIASES_REV = {
+                        cache[base] = fval
+                        # Store both alias directions so all lookups hit
+                        SPOT_ALIASES_BIDIR = {
                             'UBTC': 'BTC', 'UETH': 'ETH', 'USOL': 'SOL',
                             'UZEC': 'ZEC', 'UWLD': 'WLD', 'UMOG': 'MOG',
                             'UPUMP': 'PUMP', 'AAVE0': 'AAVE', 'AVAX0': 'AVAX',
                             'LINK0': 'LINK', 'FXRP': 'XRP', 'HPENGU': 'PENGU',
                             'HPEPE': 'PEPE', 'HPUMP': 'PUMPFUN', 'XMR1': 'XMR',
                             'TAO1': 'TAO',
+                            # plain -> wrapped (when API sends "BTC/USDC" not "UBTC/USDC")
+                            'BTC': 'UBTC', 'ETH': 'UETH', 'SOL': 'USOL',
+                            'ZEC': 'UZEC', 'WLD': 'UWLD', 'MOG': 'UMOG',
+                            'PUMP': 'UPUMP', 'AAVE': 'AAVE0', 'AVAX': 'AVAX0',
+                            'LINK': 'LINK0', 'XRP': 'FXRP',
                         }
-                        alias = SPOT_ALIASES_REV.get(base)
+                        alias = SPOT_ALIASES_BIDIR.get(base)
                         if alias:
                             cache[alias] = fval
 
