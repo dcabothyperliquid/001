@@ -485,17 +485,30 @@ class HyperliquidClient:
                         cache[token_name] = fval  # "HYPE" -> price
                         cache[coin]       = fval  # "@107" -> price
                 elif '/' in coin:
-                    # "PURR/USDC" named pair format
+                    # "UBTC/USDC", "UETH/USDC", "PURR/USDC" named pair format
                     base = coin.split('/')[0].strip().upper()
                     if base and base != 'USDC':
-                        cache.setdefault(base, fval)
+                        cache[base] = fval  # always set (don't use setdefault)
+                        # Also store alias key so get_spot_price finds via internal name
+                        # e.g. UBTC->BTC, UETH->ETH lookups both work
+                        SPOT_ALIASES_REV = {
+                            'UBTC': 'BTC', 'UETH': 'ETH', 'USOL': 'SOL',
+                            'UZEC': 'ZEC', 'UWLD': 'WLD', 'UMOG': 'MOG',
+                            'UPUMP': 'PUMP', 'AAVE0': 'AAVE', 'AVAX0': 'AVAX',
+                            'LINK0': 'LINK', 'FXRP': 'XRP', 'HPENGU': 'PENGU',
+                            'HPEPE': 'PEPE', 'HPUMP': 'PUMPFUN', 'XMR1': 'XMR',
+                            'TAO1': 'TAO',
+                        }
+                        alias = SPOT_ALIASES_REV.get(base)
+                        if alias:
+                            cache[alias] = fval
 
             if cache:
                 self._markpx_cache = cache
                 self._markpx_ts = time.time()
                 if not getattr(self, '_mids_logged', False):
                     self._mids_logged = True
-                    for sym in ['USOL','UBTC','UETH','AAVE0','HYPE','UZEC']:
+                    for sym in ['USOL','UBTC','UETH','BTC','ETH','AAVE0','HYPE','UZEC']:
                         logger.info(f"  [markpx] {sym} = {cache.get(sym, 'NOT FOUND')}")
             else:
                 logger.warning("[markpx] cache empty — spotMetaAndAssetCtxs returned no prices")
