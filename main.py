@@ -1835,10 +1835,22 @@ def debug_btceth():
                 result['ctx_hits'].append({'by_position': pos, 'uni_name': u['name'], 'ctx': ctx})
         result['ws_cache_234'] = price_cache.get('@234')
         result['ws_cache_235'] = price_cache.get('@235')
+        result['ws_cache_BTC'] = price_cache.get('BTC')
+        result['ws_cache_ETH'] = price_cache.get('ETH')
         result['markpx_cache_btc'] = client._markpx_cache.get('BTC')
         result['markpx_cache_ubtc'] = client._markpx_cache.get('UBTC')
         result['markpx_cache_eth'] = client._markpx_cache.get('ETH')
         result['markpx_cache_ueth'] = client._markpx_cache.get('UETH')
+        # Also fetch allMids directly
+        try:
+            r2 = _req.post('https://api.hyperliquid.xyz/info', json={'type': 'allMids'}, timeout=5)
+            mids = r2.json()
+            result['allMids_BTC'] = mids.get('BTC')
+            result['allMids_ETH'] = mids.get('ETH')
+            result['allMids_@234'] = mids.get('@234')
+            result['allMids_@235'] = mids.get('@235')
+        except Exception as e2:
+            result['allMids_error'] = str(e2)
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)})
