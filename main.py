@@ -245,7 +245,7 @@ class HyperliquidClient:
                 'ZEC': 'UZEC', 'WLD': 'UWLD', 'MOG': 'UMOG',
                 'PUMP': 'UPUMP', 'PENGU': 'HPENGU', 'PEPE': 'HPEPE',
                 'PUMPFUN': 'HPUMP', 'XMR': 'XMR1', 'TAO': 'TAO1',
-                'HYPE': 'HYPE', 'SEI': 'HSEI',
+                'HYPE': 'HYPE',
             }
             for alias, real in ALIASES.items():
                 if real in idx_map:
@@ -348,7 +348,6 @@ class HyperliquidClient:
             'HPENGU':'PENGU','HPEPE':'PEPE','HPUMP':'PUMPFUN','FXRP':'XRP',
             'BNB0':'BNB','AVAX0':'AVAX','LINK0':'LINK',
             'AAVE0':'AAVE','XMR1':'XMR','TAO1':'TAO','HYPE':'HYPE',
-            'HSEI':'SEI',
         }
         for i, u in enumerate(meta.get('universe', [])):
             tok_indices = u.get('tokens', [])
@@ -430,20 +429,17 @@ class HyperliquidClient:
         mids = self._post({"type": "allMids"})
         if mids and isinstance(mids, dict):
             cache = {}
-            # Build reverse: uni_index → internal HL token name
-            # Priority order: internal names (USOL,UBTC,BNB0,HSEI) > aliases (SOL,BTC) > /USDC suffix
-            PREFER = {'USOL','UBTC','UETH','BNB0','AVAX0','LINK0','AAVE0','UZEC','UWLD',
-                      'UMOG','UPUMP','HPENGU','HPEPE','HPUMP','FXRP','XMR1','TAO1',
-                      'HSEI','HYPE','TRX1','PURR'}
+            # Build reverse index: uni_index → best symbol name
+            # Prefer short base names (USOL, TRX1) over /USDC or USDC suffixed keys
             rev = {}
-            # First pass: only preferred internal names
-            for k, v in self._sym_index.items():
-                if k in PREFER:
-                    rev[str(v)] = k
-            # Second pass: fill gaps with any non-/USDC key
             for k, v in self._sym_index.items():
                 s = str(v)
-                if s not in rev and '/USDC' not in k and 'USDC' not in k:
+                existing = rev.get(s, '')
+                # Prefer: no suffix, shortest name wins among same-length
+                if not existing or (
+                    '/USDC' not in k and 'USDC' not in k and
+                    (('/USDC' in existing or 'USDC' in existing) or len(k) <= len(existing))
+                ):
                     rev[s] = k
             for name, px in mids.items():
                 try:
@@ -451,6 +447,7 @@ class HyperliquidClient:
                 except:
                     continue
                 cache[name] = fval
+                # Also store under resolved symbol name if key is @idx format
                 if name.startswith('@'):
                     sym = rev.get(name[1:])
                     if sym:
@@ -458,10 +455,11 @@ class HyperliquidClient:
             if cache:
                 self._markpx_cache = cache
                 self._markpx_ts = time.time()
+                # DEBUG — log key spot tokens once
                 if not getattr(self, '_mids_logged', False):
                     self._mids_logged = True
-                    for sym in ['USOL','UBTC','UETH','BNB0','AAVE0','HSEI','HYPE']:
-                        logger.info(f"  [markpx] {sym} = {cache.get(sym, 'NOT FOUND')}")
+                    for sym in ['USOL','HYPE','UBTC','UETH','BNB0','AAVE0','TRX1']:
+                        logger.info(f"  [allMids] {sym} = {cache.get(sym, 'NOT FOUND')} | @152={cache.get('@152','?')}")
 
     def get_spot_price(self, symbol):
         idx = self.sym_to_index(symbol)
