@@ -485,11 +485,14 @@ class HyperliquidClient:
                     except: pass
 
         # 3. Last resort — candle close price from cache (no network)
+        # Use internal spot name (USOL, UBTC) not display name (SOL, BTC)
+        # to avoid accidentally reading perp candle prices
         for tf in ['1m', '5m', '15m', '1h']:
-            candles = candle_cache.get(symbol, tf)
-            if candles:
-                px = float(candles[-1][4])
-                if _sane(px): return px
+            for name in [internal, symbol.upper()]:
+                candles = candle_cache.get(name, tf)
+                if candles:
+                    px = float(candles[-1][4])
+                    if _sane(px): return px
 
         return None
 
