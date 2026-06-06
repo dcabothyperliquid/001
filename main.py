@@ -417,14 +417,16 @@ class HyperliquidClient:
 
     def _refresh_markpx(self):
         """Spot-only price cache using allMids REST endpoint.
-        
+
         Per official docs: allMids returns BOTH perp and spot prices.
         Perp keys  = plain name  e.g. "BTC", "ETH", "SOL"
-        Spot keys  = @{universe.index}  e.g. "@234" for UBTC, "@255" for HYPE
-        
-        So we fetch allMids and keep ONLY @idx keys (spot prices).
-        Then resolve @idx → token name via _sym_index reverse map.
-        Refreshed every 3 seconds.
+        Spot keys  = @{token.index}  e.g. "@234" for UBTC token
+
+        IMPORTANT: allMids uses TOKEN index (tokens[].index), NOT universe pair index.
+        _sym_index stores universe pair index — do NOT use it to resolve @idx keys.
+
+        Fix: build rev map directly from _meta_cache['tokens'] using token.index.
+        Also handle "NAME/USDC" keys (both canonical and non-canonical) via name lookup.
         """
         if time.time() - self._markpx_ts < 3:
             return
@@ -432,33 +434,40 @@ class HyperliquidClient:
             mids = self._post({"type": "allMids"})
             if not mids or not isinstance(mids, dict):
                 return
-            # Build reverse map: universe_index → internal_token_name
-            # Priority: internal names (UBTC, USOL, UETH) over display aliases (BTC, SOL, ETH)
-            # because get_spot_price looks up by internal name
+
+            meta = self._meta_cache or {}
+
+            # ── Build token_index → internal_name map from tokens[] ──────────
+            # allMids spot keys are "@{token.index}" — must use token index, NOT pair index
             INTERNAL_NAMES = {
                 'UBTC','USOL','UETH','AAVE0','UZEC','UWLD','UMOG','UPUMP',
                 'HPENGU','HPEPE','HPUMP','XMR1','TAO1','AVAX0','LINK0','FXRP',
                 'TRX1','HYPE','PURR'
             }
-            rev = {}
-            # First pass: store all clean names
-            for name, idx in self._sym_index.items():
-                if '/' not in name and 'USDC' not in name:
-                    rev[idx] = name
-            # Second pass: override with internal names (higher priority)
-            for name, idx in self._sym_index.items():
-                if name in INTERNAL_NAMES:
-                    rev[idx] = name
-            # Build name→uni_index map for canonical tokens (UBTC/USDC, UETH/USDC style)
-            # isCanonical=true tokens appear in allMids as "UBTC/USDC" not "@idx"
-            canonical_map = {}  # "UBTC/USDC" → internal_name e.g. "UBTC"
-            for u in self._meta_cache.get('universe', []) if self._meta_cache else []:
-                if u.get('isCanonical'):
-                    uni_name = u.get('name', '')  # e.g. "UBTC/USDC" or "PURR/USDC"
-                    base = uni_name.split('/')[0].strip().upper()
+            # token_idx → token name (e.g. 1242 → "UETH")
+            tok_idx_to_name: dict = {}
+            for t in meta.get('tokens', []):
+                tidx  = t.get('index')
+                tname = t.get('name', '').strip().upper()
+                if tidx is not None and tname and tname != 'USDC':
+                    tok_idx_to_name[tidx] = tname
+
+            # ── Build name/USDC → internal_name map for slash-key tokens ─────
+            # allMids also emits "PURR/USDC", "UBTC/USDC" etc. as keys.
+            # Build lookup for ALL universe pairs (not just isCanonical).
+            slash_map: dict = {}  # "UBTC/USDC" → "UBTC"
+            for u in meta.get('universe', []):
+                uni_name = u.get('name', '').strip().upper()
+                tok_idxs = u.get('tokens', [])
+                if '/' in uni_name:
+                    base = uni_name.split('/')[0].strip()
                     if base and base != 'USDC':
-                        canonical_map[uni_name] = base   # "UBTC/USDC" → "UBTC"
-                        canonical_map[base] = base        # "UBTC" → "UBTC"
+                        slash_map[uni_name] = base
+                elif tok_idxs:
+                    # name like "@1" — derive from token list
+                    base = tok_idx_to_name.get(tok_idxs[0], '')
+                    if base:
+                        slash_map[f"{base}/USDC"] = base
 
             cache = {}
             for key, px in mids.items():
@@ -470,21 +479,23 @@ class HyperliquidClient:
                     continue
 
                 if key.startswith('@'):
-                    # Non-canonical spot token — e.g. "@255" for HYPE
+                    # Spot token by token index — e.g. "@1242" for UETH
                     try:
-                        uni_idx = int(key[1:])
+                        tok_idx = int(key[1:])
                     except:
                         continue
-                    token_name = rev.get(uni_idx)
-                    if token_name:
-                        cache[token_name] = fval   # "HYPE" → price
-                        cache[key] = fval           # "@255" → price
-                elif '/' in key:
-                    # Canonical spot token — e.g. "UBTC/USDC", "PURR/USDC"
-                    token_name = canonical_map.get(key)
+                    token_name = tok_idx_to_name.get(tok_idx)
                     if token_name:
                         cache[token_name] = fval   # "UBTC" → price
+                        cache[key] = fval           # "@234" → price
+                elif '/' in key:
+                    # Slash-pair key — e.g. "UBTC/USDC", "PURR/USDC"
+                    token_name = slash_map.get(key)
+                    if token_name:
+                        # Only store if not already set by @idx (prefer @idx — more reliable)
+                        cache.setdefault(token_name, fval)
                 # plain names like "BTC","ETH","SOL" = perp prices → skip
+
             if cache:
                 self._markpx_cache = cache
                 self._markpx_ts = time.time()
@@ -493,7 +504,7 @@ class HyperliquidClient:
                     for sym in ['USOL','UBTC','UETH','AAVE0','HYPE','UZEC']:
                         logger.info(f"  [markpx] {sym} = {cache.get(sym, 'NOT FOUND')}")
             else:
-                logger.warning("[markpx] cache empty — no @idx keys found in allMids")
+                logger.warning("[markpx] cache empty — no spot keys found in allMids")
         except Exception as e:
             logger.warning(f"_refresh_markpx error: {e}")
 
