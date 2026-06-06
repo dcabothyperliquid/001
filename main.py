@@ -422,27 +422,55 @@ class HyperliquidClient:
         mids = self._post({"type": "allMids"})
         if mids and isinstance(mids, dict):
             cache = {}
-            # Build reverse index: uni_index → symbol name
             rev = {str(v): k for k, v in self._sym_index.items()}
             for name, px in mids.items():
-                try:
-                    fval = float(px)
-                except:
-                    continue
+                try: fval = float(px)
+                except: continue
                 cache[name] = fval
-                # Also store under resolved symbol name if key is @idx format
                 if name.startswith('@'):
                     sym = rev.get(name[1:])
-                    if sym:
-                        cache[sym] = fval
+                    if sym: cache[sym] = fval
             if cache:
                 self._markpx_cache = cache
                 self._markpx_ts = time.time()
-                # DEBUG — log key spot tokens once
+
+        # Also fetch spotMetaAndAssetCtxs for guaranteed token_name → price
+        # This covers all tokens regardless of @idx vs name format in allMids
+        try:
+            data = self._post({"type": "spotMetaAndAssetCtxs"})
+            if data and isinstance(data, list) and len(data) >= 2:
+                meta, ctxs = data[0], data[1]
+                tok_map = {t['index']: t['name'].upper()
+                           for t in meta.get('tokens', [])
+                           if t.get('name','').upper() != 'USDC'}
+                uni_map = {}
+                for u in meta.get('universe', []):
+                    ui = u.get('index')
+                    toks = u.get('tokens', [])
+                    if ui is not None and toks:
+                        base = tok_map.get(toks[0], '')
+                        if base: uni_map[ui] = base
+                for ctx in ctxs:
+                    coin = ctx.get('coin', '')
+                    px = ctx.get('markPx') or ctx.get('midPx')
+                    if not px: continue
+                    try: fval = float(px)
+                    except: continue
+                    if fval <= 0: continue
+                    if coin.startswith('@'):
+                        name = uni_map.get(int(coin[1:]))
+                        if name: self._markpx_cache[name] = fval
+                    elif '/' in coin:
+                        name = coin.split('/')[0].strip().upper()
+                        if name and name != 'USDC':
+                            self._markpx_cache[name] = fval
+                self._markpx_ts = time.time()
                 if not getattr(self, '_mids_logged', False):
                     self._mids_logged = True
-                    for sym in ['USOL','HYPE','UBTC','UETH','BNB0','AAVE0','TRX1']:
-                        logger.info(f"  [allMids] {sym} = {cache.get(sym, 'NOT FOUND')} | @152={cache.get('@152','?')}")
+                    for sym in ['USOL','UBTC','UETH','AAVE0','HYPE','UZEC']:
+                        logger.info(f"  [markpx] {sym} = {self._markpx_cache.get(sym, 'NOT FOUND')}")
+        except Exception as e:
+            logger.debug(f"spotMetaAndAssetCtxs price fetch error: {e}")
 
     def get_spot_price(self, symbol):
         idx = self.sym_to_index(symbol)
