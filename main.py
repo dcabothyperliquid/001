@@ -1802,6 +1802,30 @@ def manual_sell(symbol):
 @app.route('/api/spot/pairs', methods=['GET'])
 def get_spot_pairs(): return jsonify(client.get_spot_pairs())
 
+@app.route('/api/debug/btceth', methods=['GET'])
+def debug_btceth():
+    import requests as _req
+    try:
+        r = _req.post('https://api.hyperliquid.xyz/info',
+                      json={'type': 'spotMetaAndAssetCtxs'}, timeout=10)
+        data = r.json()
+        meta, ctxs = data[0], data[1]
+        result = {'universe_234': None, 'universe_235': None, 'ctx_hits': [], 'first_3_ctxs': ctxs[:3]}
+        for u in meta.get('universe', []):
+            if u.get('index') == 234: result['universe_234'] = u
+            if u.get('index') == 235: result['universe_235'] = u
+        for c in ctxs:
+            coin = c.get('coin','')
+            if coin in ['@234','@235','BTC/USDC','ETH/USDC','UBTC/USDC','UETH/USDC']:
+                result['ctx_hits'].append(c)
+        result['ws_cache_234'] = price_cache.get('@234')
+        result['ws_cache_235'] = price_cache.get('@235')
+        result['markpx_cache_btc'] = bot.client._markpx_cache.get('BTC') if bot else None
+        result['markpx_cache_ubtc'] = bot.client._markpx_cache.get('UBTC') if bot else None
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
