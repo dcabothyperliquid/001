@@ -180,6 +180,7 @@ class HyperliquidClient:
         self._sym_index: dict = {}
         self._markpx_cache: dict = {}
         self._markpx_ts: float  = 0
+        self._markpx_lock = __import__('threading').Lock()
         # Eagerly warm sym_index on startup (non-fatal if it fails)
         try:
             self.get_spot_meta(force=True)
@@ -426,8 +427,10 @@ class HyperliquidClient:
         Correct map: universe_pair_index -> token_name
         Built from universe[].index (pair_idx) + universe[].tokens[0] -> tokens[].name
         """
-        if time.time() - self._markpx_ts < 3:
+        if time.time() - self._markpx_ts < 15:
             return
+        if not self._markpx_lock.acquire(blocking=False):
+            return  # another thread is already fetching
         try:
             data = self._post({"type": "spotMetaAndAssetCtxs"})
             if not data or not isinstance(data, list) or len(data) < 2:
@@ -549,6 +552,9 @@ class HyperliquidClient:
                 logger.warning("[markpx] cache empty — spotMetaAndAssetCtxs returned no prices")
         except Exception as e:
             logger.warning(f"_refresh_markpx error: {e}")
+        finally:
+            try: self._markpx_lock.release()
+            except RuntimeError: pass
 
     def get_spot_price(self, symbol):
         idx = self.sym_to_index(symbol)
