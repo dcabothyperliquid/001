@@ -575,9 +575,14 @@ class HyperliquidClient:
         }
         internal = ALIASES.get(symbol.upper(), symbol.upper())
 
-        # 1. WS allMids cache — fastest, no API call, @idx keys for spot
+        # 1. WS allMids cache — @idx spot price
         if idx is not None:
             p = price_cache.get(f'@{idx}')
+            if _sane(p): return float(p)
+
+        # 1b. WS allMids perp fallback — for inactive spot pairs (BTC/ETH midPx=null on HL)
+        for key in [symbol.upper(), internal]:
+            p = price_cache.get(key)
             if _sane(p): return float(p)
 
         # 2. markPx cache from spotMetaAndAssetCtxs (refreshed every 15s, rate-limited)
@@ -731,12 +736,16 @@ class AsyncEngine:
                             if msg.get('channel') == 'allMids':
                                 mids = msg.get('data', {}).get('mids', {})
                                 if mids:
-                                    # Only store @idx keys — plain names (BTC/SOL/ETH) are
-                                    # perp prices in allMids, not spot. Spot prices come
-                                    # as "@143" style keys which we resolve via sym_to_index.
+                                    # Store @idx spot prices
                                     spot_mids = {k: v for k, v in mids.items() if k.startswith('@')}
                                     if spot_mids:
                                         price_cache.update(spot_mids)
+                                    # Also store plain names as perp fallback for inactive spot pairs
+                                    # BTC/ETH spot on HL have midPx=null, perp price is accurate enough
+                                    PERP_FALLBACK = {'BTC','ETH','SOL','AVAX','LINK','AAVE','XRP','ZEC','WLD','MOG','HYPE'}
+                                    perp_mids = {k: v for k, v in mids.items() if k in PERP_FALLBACK}
+                                    if perp_mids:
+                                        price_cache.update(perp_mids)
                         except Exception as e:
                             logger.warning(f"WS parse error: {e}")
             except Exception as e:
