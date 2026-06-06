@@ -466,10 +466,12 @@ class HyperliquidClient:
                 if cache:
                     self._markpx_cache = cache
                     self._markpx_ts = time.time()
-                    if not getattr(self, '_mids_logged', False):
-                        self._mids_logged = True
-                        for sym in ['USOL','UBTC','UETH','AAVE0','HYPE','UZEC']:
-                            logger.info(f"  [markpx] {sym} = {cache.get(sym, 'NOT FOUND')}")
+                    # Always log on every refresh to debug price issues
+                    for sym in ['USOL','UBTC','UETH','AAVE0','HYPE','UZEC']:
+                        logger.info(f"  [markpx] {sym} = {cache.get(sym, 'NOT FOUND')}")
+                    logger.info(f"  [markpx] total keys={len(cache)} sample={list(cache.items())[:5]}")
+                else:
+                    logger.warning("[markpx] cache is EMPTY after spotMetaAndAssetCtxs fetch")
         except Exception as e:
             logger.debug(f"spotMetaAndAssetCtxs price fetch error: {e}")
 
