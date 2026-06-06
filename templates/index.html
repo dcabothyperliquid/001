@@ -696,10 +696,14 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
   .header-center{display:none;}
   .main.drawer-open{margin-right:0;}
   .notif-drawer{width:100vw;}
+  .wallet-addcoin-grid{grid-template-columns:1fr!important;}
+  .addcoin-form-grid{grid-template-columns:1fr 1fr!important;}
 }
 @media(max-width:480px){
   .coins-grid{grid-template-columns:repeat(2,1fr);}
   .stats-row{grid-template-columns:1fr 1fr!important;}
+  .wallet-addcoin-grid{grid-template-columns:1fr!important;}
+  .addcoin-form-grid{grid-template-columns:1fr 1fr!important;}
 }
 </style>
 </head>
@@ -834,7 +838,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
   </div>
 
   <!-- WALLET + ADD COIN -->
-  <div style="display:grid;grid-template-columns:1fr 2fr;gap:14px;margin-bottom:14px;">
+  <div style="display:grid;grid-template-columns:1fr 2fr;gap:14px;margin-bottom:14px;" class="wallet-addcoin-grid">
     <div class="panel">
       <div class="panel-head">
         <div class="panel-title"><span class="dot"></span>WALLET</div>
@@ -864,7 +868,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
         <div class="panel-title"><span class="dot green"></span>ADD COIN TO MONITOR</div>
       </div>
       <div class="panel-body" style="padding:12px 14px;">
-        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;align-items:end;">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;align-items:end;" class="addcoin-form-grid">
           <div class="fgrp" style="position:relative;">
             <label>SYMBOL</label>
             <input id="inpSym" type="text" placeholder="Search coin… (e.g. SOL)"
@@ -892,11 +896,11 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
             <input id="inpTp" type="number" value="2.0" min="0.5" max="50" step="0.5" />
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
-          <div style="background:var(--bg);border:1px solid var(--line2);padding:7px 11px;border-radius:5px;font-family:var(--mono);font-size:11px;color:var(--cyan);flex:1;">
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;">
+          <div style="background:var(--bg);border:1px solid var(--line2);padding:7px 11px;border-radius:5px;font-family:var(--mono);font-size:11px;color:var(--cyan);flex:1;min-width:160px;">
             ⚡ AUTO — 1H · 2H · 4H · 1D
           </div>
-          <button class="btn btn-primary" onclick="addCoin()" style="padding:8px 24px;white-space:nowrap;">+ ADD COIN</button>
+          <button class="btn btn-primary" onclick="addCoin()" style="padding:8px 24px;white-space:nowrap;flex-shrink:0;">+ ADD COIN</button>
         </div>
       </div>
     </div>
