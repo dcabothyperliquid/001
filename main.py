@@ -494,15 +494,28 @@ class HyperliquidClient:
                     continue
 
                 if coin.startswith('@'):
-                    # "@{universe_pair_index}" e.g. "@107" for HYPE
+                    # "@{universe_pair_index}" e.g. "@107" for HYPE/BTC/ETH
                     try:
                         pair_idx = int(coin[1:])
                     except:
                         continue
+                    # Always store by @idx key so get_spot_price fallback works
+                    cache[coin] = fval  # "@107" -> price (always)
                     token_name = uni_pair_idx_to_name.get(pair_idx)
                     if token_name:
-                        cache[token_name] = fval  # "HYPE" -> price
-                        cache[coin]       = fval  # "@107" -> price
+                        cache[token_name] = fval  # "UBTC" -> price
+                        # Bidirectional alias
+                        ALIASES_FWD = {
+                            'UBTC': 'BTC', 'UETH': 'ETH', 'USOL': 'SOL',
+                            'UZEC': 'ZEC', 'UWLD': 'WLD', 'UMOG': 'MOG',
+                            'UPUMP': 'PUMP', 'AAVE0': 'AAVE', 'AVAX0': 'AVAX',
+                            'LINK0': 'LINK', 'FXRP': 'XRP', 'HPENGU': 'PENGU',
+                            'HPEPE': 'PEPE', 'HPUMP': 'PUMPFUN', 'XMR1': 'XMR',
+                            'TAO1': 'TAO',
+                        }
+                        plain = ALIASES_FWD.get(token_name)
+                        if plain:
+                            cache[plain] = fval  # "BTC" -> price
                 elif '/' in coin:
                     # "BTC/USDC", "ETH/USDC", "UBTC/USDC", "PURR/USDC" named pair format
                     base = coin.split('/')[0].strip().upper()
