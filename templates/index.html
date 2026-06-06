@@ -684,8 +684,11 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
 ::-webkit-scrollbar-thumb{background:var(--line2);border-radius:2px;}
 
 /* ══ RESPONSIVE ══════════════════════════════════ */
+@media(max-width:1200px){
+  .stats-row{grid-template-columns:repeat(3,1fr)!important;}
+}
 @media(max-width:960px){
-  .stats-row{grid-template-columns:repeat(2,1fr);}
+  .stats-row{grid-template-columns:repeat(2,1fr)!important;}
   .row-2,.row-3{grid-template-columns:1fr;}
   .coins-grid{grid-template-columns:repeat(3,1fr);}
   .main{padding:12px 12px;}
@@ -695,8 +698,8 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
   .notif-drawer{width:100vw;}
 }
 @media(max-width:480px){
-  .coins-grid{grid-template-columns:repeat(3,1fr);}
-  .stats-row{grid-template-columns:1fr 1fr;}
+  .coins-grid{grid-template-columns:repeat(2,1fr);}
+  .stats-row{grid-template-columns:1fr 1fr!important;}
 }
 </style>
 </head>
@@ -783,7 +786,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
   </div>
 
   <!-- STATS -->
-  <div class="stats-row">
+  <div class="stats-row" style="grid-template-columns:repeat(6,1fr);">
     <div class="stat-card">
       <div class="stat-label">BALANCE</div>
       <div class="stat-val cyan" id="s-bal">—</div>
@@ -809,42 +812,59 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
       <div class="stat-val cyan" id="s-mon">0</div>
       <div class="stat-sub">COINS</div>
     </div>
+    <div class="stat-card" style="position:relative;overflow:hidden;">
+      <div class="stat-label" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>MEMORY</span>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <div id="memDot" class="dot blink" style="background:var(--cyan);"></div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:4px;">
+        <div class="stat-val cyan" id="memMB" style="font-size:22px;">—</div>
+        <span class="stat-sub" style="margin:0;">MB</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
+        <div class="stat-sub"><span id="memPct">—%</span> · 500MB</div>
+        <span id="memStatus" class="stat-sub" style="letter-spacing:1px;">...</span>
+      </div>
+      <div style="background:var(--bg);border-radius:3px;height:3px;overflow:hidden;margin-top:8px;">
+        <div id="memBar" style="height:100%;width:0%;border-radius:3px;background:linear-gradient(90deg,var(--cyan),var(--purple));transition:width 0.8s cubic-bezier(0.4,0,0.2,1),background 0.5s;"></div>
+      </div>
+    </div>
   </div>
 
   <!-- WALLET + ADD COIN -->
-  <div class="row-2">
+  <div style="display:grid;grid-template-columns:1fr 2fr;gap:14px;margin-bottom:14px;">
     <div class="panel">
       <div class="panel-head">
         <div class="panel-title"><span class="dot"></span>WALLET</div>
         <span id="walletMode" class="badge badge-neutral">ENV</span>
       </div>
-      <div class="panel-body">
+      <div class="panel-body" style="padding:12px 14px;">
         <div class="wallet-info">
-          <div class="wallet-row">
+          <div class="wallet-row" style="padding:8px 0;">
             <span class="wallet-key">ADDRESS</span>
-            <span class="wallet-val cyan" id="walletAddr">—</span>
+            <span class="wallet-val cyan" id="walletAddr" style="font-size:10px;">—</span>
           </div>
-          <div class="wallet-row">
+          <div class="wallet-row" style="padding:8px 0;">
             <span class="wallet-key">PRIVATE KEY</span>
             <span id="envKeyStatus" class="env-miss">NOT SET</span>
           </div>
-          <div class="wallet-row">
+          <div class="wallet-row" style="padding:8px 0;">
             <span class="wallet-key">USDC BALANCE</span>
-            <span class="wallet-val" id="balOut">—</span>
+            <span class="wallet-val green" id="balOut">—</span>
           </div>
         </div>
-        <div style="margin-top:14px;">
-          <button class="btn btn-primary" onclick="fetchBalance()">↻ REFRESH BALANCE</button>
-        </div>
+        <button class="btn btn-primary btn-sm" onclick="fetchBalance()" style="margin-top:10px;width:100%;">↻ REFRESH</button>
       </div>
     </div>
 
     <div class="panel">
       <div class="panel-head">
-        <div class="panel-title"><span class="dot green"></span>ADD COIN</div>
+        <div class="panel-title"><span class="dot green"></span>ADD COIN TO MONITOR</div>
       </div>
-      <div class="panel-body">
-        <div class="fgrid">
+      <div class="panel-body" style="padding:12px 14px;">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;align-items:end;">
           <div class="fgrp" style="position:relative;">
             <label>SYMBOL</label>
             <input id="inpSym" type="text" placeholder="Search coin… (e.g. SOL)"
@@ -861,61 +881,24 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
           </div>
           <div class="fgrp">
             <label>CAPITAL (USDC)</label>
-            <input id="inpCap" type="number" value="5" min="0.5" max="10000" step="0.5" min="1" step="0.5" />
-          </div>
-          <div class="fgrp">
-            <label>TIMEFRAME</label>
-            <div style="background:var(--bg);border:1px solid var(--line2);padding:8px 11px;border-radius:5px;font-family:var(--mono);font-size:12px;color:var(--cyan);">
-              ⚡ AUTO — 1H · 2H · 4H · 1D
-            </div>
+            <input id="inpCap" type="number" value="5" min="0.5" max="10000" step="0.5" />
           </div>
           <div class="fgrp">
             <label>STOP LOSS %</label>
             <input id="inpSl" type="number" value="1.5" min="0.5" max="10" step="0.5" />
           </div>
-          <div class="fgrp full">
+          <div class="fgrp">
             <label>TAKE PROFIT %</label>
             <input id="inpTp" type="number" value="2.0" min="0.5" max="50" step="0.5" />
           </div>
         </div>
-        <button class="btn btn-primary" onclick="addCoin()" style="margin-top:12px;width:100%;padding:10px;">+ ADD COIN</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- MEMORY WIDGET -->
-  <div id="memWidget" class="stat-card" style="margin-bottom:14px;padding:14px 18px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <div class="bar" style="background:var(--purple);"></div>
-        <span class="sec-meta">SERVER MEMORY</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:14px;">
-        <span class="stat-sub" style="margin:0;">RENDER FREE · 500 MB LIMIT</span>
-        <div style="display:flex;align-items:center;gap:5px;">
-          <div id="memDot" class="dot blink" style="background:var(--cyan);"></div>
-          <span class="sec-meta">LIVE</span>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
+          <div style="background:var(--bg);border:1px solid var(--line2);padding:7px 11px;border-radius:5px;font-family:var(--mono);font-size:11px;color:var(--cyan);flex:1;">
+            ⚡ AUTO — 1H · 2H · 4H · 1D
+          </div>
+          <button class="btn btn-primary" onclick="addCoin()" style="padding:8px 24px;white-space:nowrap;">+ ADD COIN</button>
         </div>
       </div>
-    </div>
-    <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:12px;">
-      <div style="display:flex;align-items:baseline;gap:6px;">
-        <span id="memMB" class="stat-val cyan">—</span>
-        <span class="sec-meta" style="margin-bottom:3px;">MB</span>
-        <span class="stat-sub" style="margin:0 0 3px 4px;">/ 500 MB</span>
-      </div>
-      <div style="text-align:right;">
-        <div id="memPct" class="stat-val cyan" style="font-size:20px;">—%</div>
-        <div id="memStatus" class="stat-sub" style="margin-top:2px;letter-spacing:1.5px;">CHECKING...</div>
-      </div>
-    </div>
-    <div style="background:var(--bg);border-radius:4px;height:4px;overflow:hidden;">
-      <div id="memBar" style="height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,var(--cyan),var(--purple));transition:width 0.8s cubic-bezier(0.4,0,0.2,1),background 0.5s;"></div>
-    </div>
-    <div style="display:flex;justify-content:space-between;margin-top:5px;">
-      <span class="stat-sub">0 MB</span>
-      <span class="stat-sub">250 MB</span>
-      <span class="stat-sub">500 MB</span>
     </div>
   </div>
 
