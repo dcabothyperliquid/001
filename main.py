@@ -1902,6 +1902,16 @@ def _record_buy_signal(symbol, price, timeframe, score, executed=False):
         sigs_copy = list(_signal_store[key])
     _save_signals_sb(key, sigs_copy)
 
+@app.route('/api/prices', methods=['GET'])
+def get_prices():
+    """Lightweight price-only endpoint — called every 2s for live price updates."""
+    syms = list(bot_engine.coins.keys())
+    prices = {}
+    for sym in syms:
+        p = bot_engine.client.get_spot_price(sym)
+        if p: prices[sym] = p
+    return jsonify(prices)
+
 @app.route('/api/signals/today', methods=['GET'])
 def signals_today():
     from datetime import datetime, timezone, timedelta

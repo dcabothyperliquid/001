@@ -1590,7 +1590,7 @@ function renderCoins(coins) {
     const price   = c.price && c.price > 0 ? `$${fp(c.price)}` : '—';
     const label   = c.display_name || c.symbol;   // show ETH not UETH
     return `
-    <div class="coin-card ${cardCls}">
+    <div class="coin-card ${cardCls}" data-sym="${c.symbol}">
       <div class="cc-top">
         <span class="cc-sym">${label}</span>
         <div class="cc-actions" style="gap:3px;">
@@ -1599,7 +1599,7 @@ function renderCoins(coins) {
         </div>
       </div>
       <div class="cc-price-row">
-        <span class="cc-price">${price}</span>
+        <span class="cc-price" id="px-${c.symbol}">${price}</span>
         <span class="cc-pnl ${pnlCls}">${pnlTxt}</span>
       </div>
       <div class="cc-metrics">
@@ -1924,9 +1924,33 @@ async function refreshAll() {
     _refreshing = false;
   }
 }
-function startRefresh() { if (refreshTimer) clearInterval(refreshTimer); refreshTimer = setInterval(refreshAll, 5000); }
+function startRefresh() { if (refreshTimer) clearInterval(refreshTimer); refreshTimer = setInterval(refreshAll, 2000); }
 function stopRefresh()  { if (refreshTimer) clearInterval(refreshTimer); }
 function startEvents()  { if (eventsTimer) clearInterval(eventsTimer); pollEvents(); eventsTimer = setInterval(pollEvents, 5000); }
+
+// FAST PRICE REFRESH — every 1.5s, only updates price spans
+let _lastPrices = {};
+async function refreshPrices() {
+  try {
+    const prices = await api('/prices');
+    if (!prices) return;
+    for (const [sym, px] of Object.entries(prices)) {
+      const el = document.getElementById('px-' + sym);
+      if (!el) continue;
+      const newTxt = '$' + fp(px);
+      if (el.textContent !== newTxt) {
+        el.textContent = newTxt;
+        // Flash animation on price change
+        const dir = (_lastPrices[sym] || 0) < px ? 'up' : 'down';
+        el.style.color = dir === 'up' ? 'var(--green)' : 'var(--red)';
+        setTimeout(() => { el.style.color = ''; }, 600);
+      }
+      _lastPrices[sym] = px;
+    }
+  } catch(e) {}
+}
+setInterval(refreshPrices, 1500);
+refreshPrices();
 
 // SIGNAL STATS TODAY
 let _sigDayOffset = 0;
