@@ -692,6 +692,19 @@ class HyperliquidClient:
         return self._post({"type": "l2Book", "coin": symbol})
 
 
+# ── Per-coin BUY/SELL cycle state ─────────────────────────────────────────────
+# Prevents duplicate BUY signals being counted until a SELL resets the cycle.
+_coin_signal_state      = {}   # symbol → 'buy' | 'sell' | None
+_coin_signal_state_lock = __import__('threading').Lock()
+
+def _signal_state_get(symbol):
+    with _coin_signal_state_lock:
+        return _coin_signal_state.get(symbol)
+
+def _signal_state_set(symbol, state):
+    with _coin_signal_state_lock:
+        _coin_signal_state[symbol] = state
+
 # ═════════════════════════════════════════════════════════════════════════════
 # AsyncEngine  —  asyncio event loop running in a dedicated thread
 #   • WebSocket allMids feed (reconnect with exponential backoff)
@@ -1694,6 +1707,8 @@ class BotEngine:
             self.coins[symbol]['compound_capital'] = max(new_cap, floor)
             logger.info(f"💰 Compound [{symbol}]: {old_cap:.4f} → {self.coins[symbol]['compound_capital']:.4f} USDC (pnl: {pnl_usdt:+.4f})")
         self.holdings[symbol] = {'entries':[],'peak_price':0,'trailing_stop_price':0}
+        # Reset signal cycle — next BUY for this coin will count again
+        _record_sell_signal(symbol)
         self.trades.append(trade)
         self._push_event('sell',
             f"[{mode_tag}] SELL {symbol} @ {actual_price:.6f} | PnL: {pnl_pct:.2f}% ({pnl_usdt:.4f} USDC)",
@@ -1908,6 +1923,13 @@ _signal_store_lock = __import__('threading').Lock()
 def _record_buy_signal(symbol, price, timeframe, score, executed=False):
     import time as _t
     from datetime import datetime, timezone, timedelta
+
+    # ── Cycle guard: only count BUY if last signal was NOT already a BUY ──────
+    last_state = _signal_state_get(symbol)
+    if last_state == 'buy':
+        return  # duplicate — waiting for SELL before next BUY counts
+    _signal_state_set(symbol, 'buy')
+
     ts  = _t.time()
     key = _ist_day_key(ts)
     IST_OFF = timedelta(hours=5, minutes=30)
@@ -1917,16 +1939,16 @@ def _record_buy_signal(symbol, price, timeframe, score, executed=False):
     with _signal_store_lock:
         if key not in _signal_store:
             _signal_store[key] = _load_signals_sb(key)
-        # Dedupe: same coin within 60s
-        for ex in _signal_store[key]:
-            if ex['symbol'] == symbol and abs(ex['ts'] - ts) < 60:
-                return
         _signal_store[key].append(sig)
         sigs_copy = list(_signal_store[key])
     # Save in background thread — don't block the bot loop
     __import__('threading').Thread(
         target=_save_signals_sb, args=(key, sigs_copy), daemon=True
     ).start()
+
+def _record_sell_signal(symbol):
+    """Call this when a SELL fires — resets the cycle so next BUY will be counted."""
+    _signal_state_set(symbol, 'sell')
 
 @app.route('/api/prices', methods=['GET'])
 def get_prices():
@@ -1950,24 +1972,7 @@ def signals_today():
     with _signal_store_lock:
         if day_key not in _signal_store:
             _signal_store[day_key] = _load_signals_sb(day_key)
-        # Merge live events (catches signals not yet persisted)
-        existing_ts = {s['ts'] for s in _signal_store[day_key]}
-        for e in bot_engine.get_events():
-            ts = e.get('ts', 0)
-            if ts < day_start_ts or ts >= day_end_ts or ts in existing_ts: continue
-            etype = e.get('type',''); meta = e.get('meta', {}); msg = e.get('msg','')
-            is_buy = (
-                (etype == 'monitor' and meta.get('direction') == 'buy' and meta.get('confidence') == 'high') or
-                (etype == 'trade' and 'BUY' in msg.upper())
-            )
-            if not is_buy: continue
-            dt_ist = datetime.fromtimestamp(ts, tz=timezone.utc) + IST_OFF
-            _signal_store[day_key].append({
-                'symbol': meta.get('symbol',''), 'price': meta.get('price', 0),
-                'timeframe': meta.get('timeframe',''), 'score': meta.get('score', 0),
-                'time': dt_ist.strftime('%H:%M:%S'), 'ts': ts, 'executed': etype == 'trade'
-            })
-            existing_ts.add(ts)
+        # Only use _record_buy_signal store — no double-counting from events feed
         signals = sorted(_signal_store[day_key], key=lambda x: x['ts'], reverse=True)
 
     # Per-coin summary
