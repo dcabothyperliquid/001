@@ -1923,7 +1923,10 @@ def _record_buy_signal(symbol, price, timeframe, score, executed=False):
                 return
         _signal_store[key].append(sig)
         sigs_copy = list(_signal_store[key])
-    _save_signals_sb(key, sigs_copy)
+    # Save in background thread — don't block the bot loop
+    __import__('threading').Thread(
+        target=_save_signals_sb, args=(key, sigs_copy), daemon=True
+    ).start()
 
 @app.route('/api/prices', methods=['GET'])
 def get_prices():
