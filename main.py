@@ -1836,6 +1836,72 @@ def get_memory():
         'status': 'critical' if pct > 85 else 'warning' if pct > 65 else 'ok'
     })
 
+@app.route('/api/signals/today', methods=['GET'])
+def signals_today():
+    from datetime import datetime, timezone
+    import time as _time
+    now = datetime.now(timezone.utc)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    
+    events = bot_engine.get_events()
+    buy_signals = []
+    seen = set()
+    
+    for e in events:
+        ts = e.get('ts', 0)
+        if ts < day_start: continue
+        etype = e.get('type','')
+        msg = e.get('msg','')
+        meta = e.get('meta', {})
+        
+        # Capture buy signals from monitor events or buy executions
+        is_buy = (
+            (etype == 'monitor' and meta.get('direction') == 'buy' and meta.get('confidence') == 'high') or
+            (etype == 'trade' and 'BUY' in msg.upper())
+        )
+        if not is_buy: continue
+        
+        sym = meta.get('symbol') or e.get('symbol','')
+        price = meta.get('price', 0)
+        tf = meta.get('timeframe','')
+        score = meta.get('score', 0)
+        dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+        time_str = dt.strftime('%H:%M:%S')
+        
+        key = f'{sym}-{round(ts/60)}'  # dedupe within same minute
+        if key in seen: continue
+        seen.add(key)
+        
+        buy_signals.append({
+            'symbol': sym, 'price': price, 'timeframe': tf,
+            'score': score, 'time': time_str, 'ts': ts,
+            'executed': etype == 'trade'
+        })
+    
+    # Sort newest first
+    buy_signals.sort(key=lambda x: x['ts'], reverse=True)
+    
+    # Per-coin summary
+    coin_counts = {}
+    for s in buy_signals:
+        sym = s['symbol']
+        if sym not in coin_counts:
+            coin_counts[sym] = {'count': 0, 'last_price': 0, 'last_time': '', 'executed': 0}
+        coin_counts[sym]['count'] += 1
+        if s['ts'] > coin_counts[sym].get('_ts', 0):
+            coin_counts[sym]['last_price'] = s['price']
+            coin_counts[sym]['last_time'] = s['time']
+            coin_counts[sym]['_ts'] = s['ts']
+        if s['executed']:
+            coin_counts[sym]['executed'] += 1
+    
+    return jsonify({
+        'total': len(buy_signals),
+        'signals': buy_signals[:50],
+        'by_coin': coin_counts,
+        'date': now.strftime('%d %b %Y')
+    })
+
 @app.route('/api/debug/btceth', methods=['GET'])
 def debug_btceth():
     import requests as _req

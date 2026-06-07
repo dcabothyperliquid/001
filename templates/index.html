@@ -698,6 +698,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
   .notif-drawer{width:100vw;}
   .wallet-addcoin-grid{grid-template-columns:1fr!important;}
   .addcoin-form-grid{grid-template-columns:1fr 1fr!important;}
+  .sig-layout{grid-template-columns:1fr!important;}
 }
 @media(max-width:480px){
   .coins-grid{grid-template-columns:repeat(2,1fr);}
@@ -914,6 +915,39 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
     </div>
     <div class="coins-grid" id="coinsGrid">
       <div class="empty-state" style="grid-column:1/-1;">NO COINS ADDED — ADD A COIN ABOVE TO START MONITORING</div>
+    </div>
+  </div>
+
+  <!-- SIGNAL STATS TODAY -->
+  <div style="margin-bottom:14px;">
+    <div class="sec-head">
+      <div class="sec-title"><div class="bar"></div>BUY SIGNALS TODAY</div>
+      <div class="sec-meta" id="sigDate">—</div>
+    </div>
+    <div style="display:grid;grid-template-columns:200px 1fr;gap:14px;" class="sig-layout">
+      <!-- Summary card -->
+      <div class="panel" style="padding:0;">
+        <div class="panel-body" style="padding:14px;">
+          <div style="text-align:center;padding:10px 0 14px;">
+            <div class="stat-label">TOTAL SIGNALS</div>
+            <div class="stat-val cyan" id="sigTotal" style="font-size:36px;line-height:1;">0</div>
+            <div class="stat-sub" style="margin-top:4px;">SINCE MIDNIGHT UTC</div>
+          </div>
+          <div style="border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:8px;" id="sigByCoin">
+            <div class="empty-state" style="padding:8px 0;font-size:9px;">NO SIGNALS YET</div>
+          </div>
+        </div>
+      </div>
+      <!-- Signal feed -->
+      <div class="panel" style="padding:0;">
+        <div class="panel-head" style="padding:10px 14px;">
+          <div class="panel-title" style="font-size:10px;"><span class="dot green blink"></span>SIGNAL FEED</div>
+          <span class="sec-meta">PRICE · TIMEFRAME · SCORE</span>
+        </div>
+        <div style="max-height:220px;overflow-y:auto;" id="sigFeed">
+          <div class="empty-state" style="padding:20px;">SIGNALS WILL APPEAR HERE</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1889,6 +1923,58 @@ async function refreshAll() {
 function startRefresh() { if (refreshTimer) clearInterval(refreshTimer); refreshTimer = setInterval(refreshAll, 5000); }
 function stopRefresh()  { if (refreshTimer) clearInterval(refreshTimer); }
 function startEvents()  { if (eventsTimer) clearInterval(eventsTimer); pollEvents(); eventsTimer = setInterval(pollEvents, 5000); }
+
+// SIGNAL STATS TODAY
+async function refreshSignals() {
+  try {
+    const d = await api('/signals/today');
+    if (!d) return;
+    document.getElementById('sigTotal').textContent = d.total || 0;
+    document.getElementById('sigDate').textContent = d.date || '';
+
+    const byCoin = d.by_coin || {};
+    const coinEl = document.getElementById('sigByCoin');
+    const coins = Object.entries(byCoin).sort((a,b) => b[1].count - a[1].count);
+    if (!coins.length) {
+      coinEl.innerHTML = '<div class="empty-state" style="padding:8px 0;font-size:9px;">NO SIGNALS YET</div>';
+    } else {
+      coinEl.innerHTML = coins.map(([sym, info]) => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--fg);">${sym}</span>
+            ${info.executed ? '<span style="font-size:8px;background:rgba(0,255,136,0.1);color:var(--green);padding:1px 5px;border-radius:3px;letter-spacing:1px;">EXEC</span>' : ''}
+          </div>
+          <div style="text-align:right;">
+            <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--cyan);">${info.count}</span>
+            <span style="font-size:9px;color:var(--muted);margin-left:3px;">signals</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    const feedEl = document.getElementById('sigFeed');
+    const sigs = d.signals || [];
+    if (!sigs.length) {
+      feedEl.innerHTML = '<div class="empty-state" style="padding:20px;">SIGNALS WILL APPEAR HERE</div>';
+    } else {
+      feedEl.innerHTML = sigs.map(s => {
+        const px = s.price > 1 ? s.price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4}) : s.price.toFixed(6);
+        const exec = s.executed ? '<span style="font-size:8px;background:rgba(0,255,136,0.12);color:var(--green);padding:2px 6px;border-radius:3px;">EXEC</span>' : '';
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--line);font-family:var(--mono);">
+          <span style="font-size:9px;color:var(--muted);min-width:56px;">${s.time}</span>
+          <span style="font-size:11px;font-weight:700;color:var(--fg);min-width:44px;">${s.symbol}</span>
+          <span style="font-size:10px;background:rgba(0,255,136,0.08);color:var(--green);padding:2px 7px;border-radius:3px;letter-spacing:1px;">BUY</span>
+          <span style="font-size:11px;color:var(--cyan);flex:1;">$${px}</span>
+          <span style="font-size:9px;color:var(--muted);">${s.timeframe}</span>
+          <span style="font-size:9px;color:var(--amber);">⚡${s.score}</span>
+          ${exec}
+        </div>`;
+      }).join('');
+    }
+  } catch(e) {}
+}
+setInterval(refreshSignals, 10000);
+refreshSignals();
 
 // MEMORY WIDGET
 async function refreshMemory() {
