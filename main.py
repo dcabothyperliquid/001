@@ -1605,7 +1605,7 @@ class BotEngine:
             if usdc_bal < capital:
                 msg = f"Insufficient balance — need {capital:.2f} USDC, have {usdc_bal:.2f}"
                 logger.warning(f"[{symbol}] {msg}")
-                self._push_event('warn', msg, {'symbol': symbol})
+                # Don't push to UI — just log silently, no screen popup
                 return None
 
         actual_price = price; order_id = None; mode_tag = 'SIM'
