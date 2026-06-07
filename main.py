@@ -1495,17 +1495,31 @@ class BotEngine:
         if len(macd_ln) < 2 or len(sig_ln) < 2:
             return 'neutral', rsi_now, 'neutral', vol_sig, atr
 
-        macd_bull_cross = macd_ln[-2] <= sig_ln[-2] and macd_ln[-1] > sig_ln[-1]
-        macd_bear_cross = macd_ln[-2] >= sig_ln[-2] and macd_ln[-1] < sig_ln[-1]
         hist_now        = macd_ln[-1] - sig_ln[-1]
         macd_sig_str    = 'bullish' if hist_now > 0 else ('bearish' if hist_now < 0 else 'neutral')
 
-        # BUY: MACD cross + RSI in range + volume confirms momentum
-        if macd_bull_cross and 30 <= rsi_now <= 65 and vol_sig:
+        # MACD cross detection — 3 candle window (not just exact cross candle)
+        def _bull_cross_recent(ml, sl, window=3):
+            for i in range(1, min(window+1, len(ml))):
+                if ml[-(i+1)] <= sl[-(i+1)] and ml[-i] > sl[-i]:
+                    return True
+            return False
+        def _bear_cross_recent(ml, sl, window=3):
+            for i in range(1, min(window+1, len(ml))):
+                if ml[-(i+1)] >= sl[-(i+1)] and ml[-i] < sl[-i]:
+                    return True
+            return False
+
+        macd_bull_cross = _bull_cross_recent(macd_ln, sig_ln)
+        macd_bear_cross = _bear_cross_recent(macd_ln, sig_ln)
+
+        # BUY: MACD bull cross (3-candle window) + RSI in range
+        # Volume optional — confirms momentum but not required
+        if macd_bull_cross and 28 <= rsi_now <= 68:
             return 'buy', rsi_now, macd_sig_str, vol_sig, atr
 
-        # SELL: MACD cross + RSI elevated (no volume requirement for exits)
-        if macd_bear_cross and rsi_now > 55:
+        # SELL: MACD bear cross + RSI elevated
+        if macd_bear_cross and rsi_now > 52:
             return 'sell', rsi_now, macd_sig_str, vol_sig, atr
 
         return 'neutral', rsi_now, macd_sig_str, vol_sig, atr
