@@ -705,6 +705,88 @@ def _signal_state_set(symbol, state):
     with _coin_signal_state_lock:
         _coin_signal_state[symbol] = state
 
+# ── Virtual P&L Tracker ───────────────────────────────────────────────────────
+# Tracks hypothetical trades based purely on BUY/SELL signals (no real orders).
+# BUY signal -> assume bought at that price with current fund allocation.
+# SELL signal -> assume sold, calculate P&L, compound fund.
+# Fully independent from live/sim trading logic.
+_vt_lock    = __import__('threading').Lock()
+_vt_fund    = {}   # symbol -> {fund, buy_price, buy_time, amount, timeframe}
+_vt_trades  = []   # completed virtual trade pairs
+_vt_stats   = {}   # symbol -> {total_trades, wins, total_pnl, fund}
+_VT_INITIAL = 10.0 # default starting fund per coin
+
+def _vt_on_buy(symbol, price, timeframe, initial_fund=None):
+    """Record virtual BUY at signal price."""
+    with _vt_lock:
+        if symbol in _vt_fund and _vt_fund[symbol].get('buy_price'):
+            return  # already in position
+        fund   = (_vt_stats.get(symbol) or {}).get('fund', initial_fund or _VT_INITIAL)
+        amount = round(fund / price, 8)
+        _vt_fund[symbol] = {
+            'fund': fund, 'buy_price': price, 'amount': amount,
+            'buy_time': __import__('datetime').datetime.now().strftime('%H:%M:%S'),
+            'timeframe': timeframe,
+        }
+
+def _vt_on_sell(symbol, price):
+    """Record virtual SELL at signal price, compound fund."""
+    with _vt_lock:
+        entry = _vt_fund.get(symbol)
+        if not entry or not entry.get('buy_price'):
+            return
+        buy_price = entry['buy_price']
+        amount    = entry['amount']
+        fund_in   = entry['fund']
+        fund_out  = round(amount * price, 4)
+        pnl_usdt  = round(fund_out - fund_in, 4)
+        pnl_pct   = round((price - buy_price) / buy_price * 100, 2)
+        trade = {
+            'symbol': symbol, 'buy_price': buy_price, 'sell_price': price,
+            'buy_time': entry.get('buy_time', ''),
+            'sell_time': __import__('datetime').datetime.now().strftime('%H:%M:%S'),
+            'timeframe': entry.get('timeframe', ''),
+            'fund_in': fund_in, 'fund_out': fund_out,
+            'pnl_usdt': pnl_usdt, 'pnl_pct': pnl_pct, 'win': pnl_usdt > 0,
+        }
+        _vt_trades.append(trade)
+        if symbol not in _vt_stats:
+            _vt_stats[symbol] = {'total_trades': 0, 'wins': 0, 'total_pnl': 0.0, 'fund': fund_in}
+        _vt_stats[symbol]['total_trades'] += 1
+        _vt_stats[symbol]['total_pnl']     = round(_vt_stats[symbol]['total_pnl'] + pnl_usdt, 4)
+        if pnl_usdt > 0:
+            _vt_stats[symbol]['wins'] += 1
+        new_fund = max(round(fund_out, 4), round(_VT_INITIAL * 0.1, 4))
+        _vt_stats[symbol]['fund'] = new_fund
+        _vt_fund[symbol] = {'fund': new_fund, 'buy_price': None, 'amount': 0, 'timeframe': ''}
+
+def _vt_get_summary():
+    """Returns virtual P&L summary for /api/virtual/summary endpoint."""
+    with _vt_lock:
+        total_pnl    = round(sum(s['total_pnl'] for s in _vt_stats.values()), 4)
+        total_trades = sum(s['total_trades'] for s in _vt_stats.values())
+        total_wins   = sum(s['wins']         for s in _vt_stats.values())
+        win_rate     = round(total_wins / total_trades * 100, 1) if total_trades else 0
+        by_coin = {}
+        for sym, s in _vt_stats.items():
+            op = _vt_fund.get(sym) or {}
+            by_coin[sym] = {
+                'total_trades': s['total_trades'],
+                'wins':  s['wins'],
+                'losses': s['total_trades'] - s['wins'],
+                'win_rate': round(s['wins'] / s['total_trades'] * 100, 1) if s['total_trades'] else 0,
+                'total_pnl':    s['total_pnl'],
+                'current_fund': s['fund'],
+                'in_position':  bool(op.get('buy_price')),
+                'entry_price':  op.get('buy_price'),
+            }
+        return {
+            'total_pnl': total_pnl, 'total_trades': total_trades,
+            'win_rate':  win_rate,  'by_coin': by_coin,
+            'recent_trades': list(reversed(_vt_trades[-50:])),
+        }
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # AsyncEngine  —  asyncio event loop running in a dedicated thread
 #   • WebSocket allMids feed (reconnect with exponential backoff)
@@ -1708,7 +1790,7 @@ class BotEngine:
             logger.info(f"💰 Compound [{symbol}]: {old_cap:.4f} → {self.coins[symbol]['compound_capital']:.4f} USDC (pnl: {pnl_usdt:+.4f})")
         self.holdings[symbol] = {'entries':[],'peak_price':0,'trailing_stop_price':0}
         # Reset signal cycle — next BUY for this coin will count again
-        _record_sell_signal(symbol)
+        _record_sell_signal(symbol, actual_price)
         self.trades.append(trade)
         self._push_event('sell',
             f"[{mode_tag}] SELL {symbol} @ {actual_price:.6f} | PnL: {pnl_pct:.2f}% ({pnl_usdt:.4f} USDC)",
@@ -1929,6 +2011,7 @@ def _record_buy_signal(symbol, price, timeframe, score, executed=False):
     if last_state == 'buy':
         return  # duplicate — waiting for SELL before next BUY counts
     _signal_state_set(symbol, 'buy')
+    _vt_on_buy(symbol, price, timeframe)
 
     ts  = _t.time()
     key = _ist_day_key(ts)
@@ -1946,9 +2029,11 @@ def _record_buy_signal(symbol, price, timeframe, score, executed=False):
         target=_save_signals_sb, args=(key, sigs_copy), daemon=True
     ).start()
 
-def _record_sell_signal(symbol):
+def _record_sell_signal(symbol, price=None):
     """Call this when a SELL fires — resets the cycle so next BUY will be counted."""
     _signal_state_set(symbol, 'sell')
+    if price:
+        _vt_on_sell(symbol, price)
 
 @app.route('/api/prices', methods=['GET'])
 def get_prices():
@@ -1996,6 +2081,21 @@ def signals_today():
         'total': len(signals), 'signals': signals[:100],
         'by_coin': coin_counts, 'date': window, 'day_key': day_key
     })
+@app.route('/api/virtual/summary', methods=['GET'])
+def virtual_summary():
+    """Virtual P&L tracker — shows hypothetical performance based on BUY/SELL signals."""
+    return jsonify(_vt_get_summary())
+
+@app.route('/api/virtual/reset', methods=['POST'])
+def virtual_reset():
+    """Reset virtual P&L tracker (clears all virtual trades and stats)."""
+    global _vt_fund, _vt_trades, _vt_stats
+    with _vt_lock:
+        _vt_fund.clear()
+        _vt_trades.clear()
+        _vt_stats.clear()
+    return jsonify({'success': True, 'message': 'Virtual tracker reset'})
+
 @app.route('/api/debug/btceth', methods=['GET'])
 def debug_btceth():
     import requests as _req
