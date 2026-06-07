@@ -938,6 +938,15 @@ class AsyncEngine:
                      'direction': tf_sig, 'confidence': 'high' if tf_key == best_tf else 'low',
                      'price': price, 'timeframe': tf_key})
 
+            # Record buy signal for daily stats panel
+            if direction == 'buy':
+                _record_buy_signal(
+                    symbol=symbol, price=price,
+                    timeframe=best_tf,
+                    score=mtf_score,
+                    executed=False  # will be updated on actual execution
+                )
+
             if has_holding:
                 holding   = self.bot.holdings[symbol]
                 entries   = holding['entries']
