@@ -955,6 +955,42 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
     </div>
   </div>
 
+
+  <!-- VIRTUAL P&L TRACKER -->
+  <div style="margin-bottom:14px;">
+    <div class="sec-head">
+      <div class="sec-title"><div class="bar" style="background:var(--amber);"></div>VIRTUAL TRACKER</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="sec-meta" id="vtSummaryMeta">SIGNAL-BASED PAPER TRADING</span>
+        <button onclick="resetVirtualTracker()" class="btn btn-sm btn-ghost" style="padding:2px 8px;font-size:9px;color:var(--red);border-color:rgba(255,82,82,0.3);">RESET</button>
+      </div>
+    </div>
+    <!-- Overall summary bar -->
+    <div class="panel" style="padding:12px 16px;margin-bottom:10px;display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">TOTAL P&amp;L</div>
+        <div style="font-family:var(--mono);font-size:20px;font-weight:700;" id="vtTotalPnl">—</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">TRADES</div>
+        <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--fg);" id="vtTotalTrades">—</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">WIN RATE</div>
+        <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--cyan);" id="vtWinRate">—</div>
+      </div>
+      <div style="margin-left:auto;font-size:9px;color:var(--muted);font-family:var(--mono);letter-spacing:1px;text-align:right;">
+        BUY→SELL cycle assumed<br>at signal price · compounding on
+      </div>
+    </div>
+    <!-- Per-coin cards -->
+    <div id="vtCoinCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;">
+      <div class="panel empty-state" style="padding:24px;text-align:center;color:var(--muted);font-size:10px;letter-spacing:1px;grid-column:1/-1;">
+        WAITING FOR FIRST BUY SIGNAL...
+      </div>
+    </div>
+  </div>
+
   <!-- HOLDINGS + EVENTS -->
   <div class="row-3" style="margin-bottom:14px;">
     <div class="panel">
@@ -2019,6 +2055,99 @@ async function refreshSignals() {
 }
 setInterval(() => { if (_sigDayOffset === 0) refreshSignals(); }, 10000);
 refreshSignals();
+
+
+// ── VIRTUAL P&L TRACKER ───────────────────────────────────────────────────────
+async function refreshVirtualTracker() {
+  try {
+    const d = await api('/virtual/summary');
+    if (!d) return;
+
+    // Overall summary bar
+    const totalPnl = d.total_pnl || 0;
+    const pnlEl = document.getElementById('vtTotalPnl');
+    pnlEl.textContent = (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(4) + ' USDC';
+    pnlEl.style.color = totalPnl >= 0 ? 'var(--green)' : 'var(--red)';
+
+    document.getElementById('vtTotalTrades').textContent = d.total_trades || 0;
+    const wr = d.win_rate || 0;
+    const wrEl = document.getElementById('vtWinRate');
+    wrEl.textContent = wr.toFixed(1) + '%';
+    wrEl.style.color = wr >= 50 ? 'var(--green)' : wr >= 35 ? 'var(--amber)' : 'var(--red)';
+
+    // Per-coin cards
+    const byCoin = d.by_coin || {};
+    const cardsEl = document.getElementById('vtCoinCards');
+    const coins = Object.entries(byCoin);
+    if (!coins.length) {
+      cardsEl.innerHTML = '<div class="panel empty-state" style="padding:24px;text-align:center;color:var(--muted);font-size:10px;letter-spacing:1px;grid-column:1/-1;">WAITING FOR FIRST BUY SIGNAL...</div>';
+      return;
+    }
+
+    cardsEl.innerHTML = coins.map(([sym, info]) => {
+      const pnl = info.total_pnl || 0;
+      const pnlColor = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+      const pnlSign = pnl >= 0 ? '+' : '';
+      const growthColor = (info.growth_pct || 0) >= 0 ? 'var(--green)' : 'var(--red)';
+      const growthSign = (info.growth_pct || 0) >= 0 ? '+' : '';
+      const wrColor = (info.win_rate || 0) >= 50 ? 'var(--green)' : (info.win_rate || 0) >= 35 ? 'var(--amber)' : 'var(--red)';
+
+      const inPosHtml = info.in_position && info.entry_price
+        ? `<div style="margin-top:8px;padding:7px 10px;background:rgba(255,184,0,0.07);border:1px solid rgba(255,184,0,0.2);border-radius:6px;">
+            <div style="font-size:8px;color:var(--amber);letter-spacing:1px;margin-bottom:3px;">● IN POSITION</div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--fg);">Entry: $${info.entry_price > 1 ? info.entry_price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4}) : info.entry_price.toFixed(6)}</div>
+            ${info.entry_tf ? `<div style="font-size:9px;color:var(--muted);margin-top:2px;">TF: ${info.entry_tf} · ${info.entry_time || ''}</div>` : ''}
+          </div>`
+        : `<div style="margin-top:8px;padding:5px 10px;background:rgba(255,255,255,0.02);border-radius:6px;font-size:9px;color:var(--muted);letter-spacing:1px;">● WAITING FOR SIGNAL</div>`;
+
+      return `
+      <div class="panel" style="padding:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--fg);">${sym}</span>
+          <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${pnlColor};">${pnlSign}${pnl.toFixed(4)}</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px;">
+          <div style="background:rgba(255,255,255,0.03);border-radius:6px;padding:8px;">
+            <div style="font-size:8px;color:var(--muted);letter-spacing:1px;margin-bottom:3px;">START FUND</div>
+            <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--fg);">$${(info.initial_fund||0).toFixed(2)}</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03);border-radius:6px;padding:8px;">
+            <div style="font-size:8px;color:var(--muted);letter-spacing:1px;margin-bottom:3px;">NOW</div>
+            <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:${growthColor};">$${(info.current_fund||0).toFixed(4)}</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03);border-radius:6px;padding:8px;">
+            <div style="font-size:8px;color:var(--muted);letter-spacing:1px;margin-bottom:3px;">GROWTH</div>
+            <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:${growthColor};">${growthSign}${(info.growth_pct||0).toFixed(2)}%</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03);border-radius:6px;padding:8px;">
+            <div style="font-size:8px;color:var(--muted);letter-spacing:1px;margin-bottom:3px;">WIN RATE</div>
+            <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:${wrColor};">${(info.win_rate||0).toFixed(0)}%</div>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);font-family:var(--mono);padding:0 2px;margin-bottom:2px;">
+          <span>${info.total_trades||0} trades</span>
+          <span style="color:var(--green);">✓ ${info.wins||0} W</span>
+          <span style="color:var(--red);">✗ ${info.losses||0} L</span>
+        </div>
+
+        ${inPosHtml}
+      </div>`;
+    }).join('');
+  } catch(e) {}
+}
+
+async function resetVirtualTracker() {
+  if (!confirm('Reset virtual P&L tracker? This clears all signal-based trade history.')) return;
+  try {
+    await fetch('/api/virtual/reset', { method: 'POST' });
+    refreshVirtualTracker();
+  } catch(e) {}
+}
+
+setInterval(refreshVirtualTracker, 15000);
+refreshVirtualTracker();
 
 // MEMORY WIDGET
 async function refreshMemory() {

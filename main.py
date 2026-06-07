@@ -721,7 +721,15 @@ def _vt_on_buy(symbol, price, timeframe, initial_fund=None):
     with _vt_lock:
         if symbol in _vt_fund and _vt_fund[symbol].get('buy_price'):
             return  # already in position
-        fund   = (_vt_stats.get(symbol) or {}).get('fund', initial_fund or _VT_INITIAL)
+        # Use compounded fund if available, else use the coin's actual capital
+        existing = _vt_stats.get(symbol) or {}
+        fund = existing.get('fund', initial_fund or _VT_INITIAL)
+        # First time: store initial_fund so floor calc works correctly
+        if symbol not in _vt_stats:
+            _vt_stats[symbol] = {
+                'total_trades': 0, 'wins': 0, 'total_pnl': 0.0,
+                'fund': fund, 'initial_fund': fund
+            }
         amount = round(fund / price, 8)
         _vt_fund[symbol] = {
             'fund': fund, 'buy_price': price, 'amount': amount,
@@ -751,12 +759,14 @@ def _vt_on_sell(symbol, price):
         }
         _vt_trades.append(trade)
         if symbol not in _vt_stats:
-            _vt_stats[symbol] = {'total_trades': 0, 'wins': 0, 'total_pnl': 0.0, 'fund': fund_in}
+            _vt_stats[symbol] = {'total_trades': 0, 'wins': 0, 'total_pnl': 0.0, 'fund': fund_in, 'initial_fund': fund_in}
         _vt_stats[symbol]['total_trades'] += 1
         _vt_stats[symbol]['total_pnl']     = round(_vt_stats[symbol]['total_pnl'] + pnl_usdt, 4)
         if pnl_usdt > 0:
             _vt_stats[symbol]['wins'] += 1
-        new_fund = max(round(fund_out, 4), round(_VT_INITIAL * 0.1, 4))
+        # Floor: 10% of this coin's actual starting capital
+        _initial = _vt_stats[symbol].get('initial_fund', fund_in)
+        new_fund = max(round(fund_out, 4), round(_initial * 0.1, 4))
         _vt_stats[symbol]['fund'] = new_fund
         _vt_fund[symbol] = {'fund': new_fund, 'buy_price': None, 'amount': 0, 'timeframe': ''}
 
@@ -770,15 +780,22 @@ def _vt_get_summary():
         by_coin = {}
         for sym, s in _vt_stats.items():
             op = _vt_fund.get(sym) or {}
+            initial = s.get('initial_fund', _VT_INITIAL)
+            cur_fund = s['fund']
+            growth_pct = round((cur_fund - initial) / initial * 100, 2) if initial else 0
             by_coin[sym] = {
-                'total_trades': s['total_trades'],
-                'wins':  s['wins'],
-                'losses': s['total_trades'] - s['wins'],
-                'win_rate': round(s['wins'] / s['total_trades'] * 100, 1) if s['total_trades'] else 0,
-                'total_pnl':    s['total_pnl'],
-                'current_fund': s['fund'],
-                'in_position':  bool(op.get('buy_price')),
-                'entry_price':  op.get('buy_price'),
+                'total_trades':  s['total_trades'],
+                'wins':          s['wins'],
+                'losses':        s['total_trades'] - s['wins'],
+                'win_rate':      round(s['wins'] / s['total_trades'] * 100, 1) if s['total_trades'] else 0,
+                'total_pnl':     s['total_pnl'],
+                'initial_fund':  initial,
+                'current_fund':  cur_fund,
+                'growth_pct':    growth_pct,
+                'in_position':   bool(op.get('buy_price')),
+                'entry_price':   op.get('buy_price'),
+                'entry_time':    op.get('buy_time'),
+                'entry_tf':      op.get('timeframe'),
             }
         return {
             'total_pnl': total_pnl, 'total_trades': total_trades,
@@ -1035,11 +1052,14 @@ class AsyncEngine:
 
             # Record buy signal for daily stats panel
             if direction == 'buy':
+                _coin_capital = self.bot.coins.get(symbol, {}).get('compound_capital',
+                                self.bot.coins.get(symbol, {}).get('capital', _VT_INITIAL))
                 _record_buy_signal(
                     symbol=symbol, price=price,
                     timeframe=best_tf,
                     score=mtf_score,
-                    executed=False  # will be updated on actual execution
+                    executed=False,
+                    capital=_coin_capital
                 )
 
             if has_holding:
@@ -2002,7 +2022,7 @@ def _load_signals_sb(day_key):
 _signal_store      = {}
 _signal_store_lock = __import__('threading').Lock()
 
-def _record_buy_signal(symbol, price, timeframe, score, executed=False):
+def _record_buy_signal(symbol, price, timeframe, score, executed=False, capital=None):
     import time as _t
     from datetime import datetime, timezone, timedelta
 
@@ -2011,7 +2031,7 @@ def _record_buy_signal(symbol, price, timeframe, score, executed=False):
     if last_state == 'buy':
         return  # duplicate — waiting for SELL before next BUY counts
     _signal_state_set(symbol, 'buy')
-    _vt_on_buy(symbol, price, timeframe)
+    _vt_on_buy(symbol, price, timeframe, initial_fund=capital)
 
     ts  = _t.time()
     key = _ist_day_key(ts)
