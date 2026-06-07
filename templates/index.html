@@ -921,8 +921,12 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
   <!-- SIGNAL STATS TODAY -->
   <div style="margin-bottom:14px;">
     <div class="sec-head">
-      <div class="sec-title"><div class="bar"></div>BUY SIGNALS TODAY</div>
-      <div class="sec-meta" id="sigDate">—</div>
+      <div class="sec-title"><div class="bar"></div>BUY SIGNALS</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button onclick="sigNavDay(-1)" class="btn btn-sm btn-ghost" style="padding:2px 8px;font-size:10px;">‹ PREV</button>
+        <span class="sec-meta" id="sigDate" style="min-width:200px;text-align:center;">—</span>
+        <button onclick="sigNavDay(1)" id="sigNextBtn" class="btn btn-sm btn-ghost" style="padding:2px 8px;font-size:10px;">NEXT ›</button>
+      </div>
     </div>
     <div style="display:grid;grid-template-columns:200px 1fr;gap:14px;" class="sig-layout">
       <!-- Summary card -->
@@ -1925,9 +1929,25 @@ function stopRefresh()  { if (refreshTimer) clearInterval(refreshTimer); }
 function startEvents()  { if (eventsTimer) clearInterval(eventsTimer); pollEvents(); eventsTimer = setInterval(pollEvents, 5000); }
 
 // SIGNAL STATS TODAY
+let _sigDayOffset = 0;
+function sigNavDay(dir) {
+  _sigDayOffset += dir;
+  if (_sigDayOffset > 0) _sigDayOffset = 0;
+  document.getElementById('sigNextBtn').style.opacity = _sigDayOffset === 0 ? '0.3' : '1';
+  refreshSignals();
+}
+function _sigDayKey(offset) {
+  const IST_OFF = 5.5 * 3600 * 1000;
+  const now = new Date(Date.now() + IST_OFF);
+  const h = now.getUTCHours(), m = now.getUTCMinutes();
+  if (h < 5 || (h === 5 && m < 30)) now.setUTCDate(now.getUTCDate() - 1);
+  now.setUTCDate(now.getUTCDate() + offset);
+  return now.toISOString().slice(0,10);
+}
 async function refreshSignals() {
   try {
-    const d = await api('/signals/today');
+    const dateKey = _sigDayKey(_sigDayOffset);
+    const d = await api('/signals/today?date=' + dateKey);
     if (!d) return;
     document.getElementById('sigTotal').textContent = d.total || 0;
     document.getElementById('sigDate').textContent = d.date || '';
@@ -1973,7 +1993,7 @@ async function refreshSignals() {
     }
   } catch(e) {}
 }
-setInterval(refreshSignals, 10000);
+setInterval(() => { if (_sigDayOffset === 0) refreshSignals(); }, 10000);
 refreshSignals();
 
 // MEMORY WIDGET

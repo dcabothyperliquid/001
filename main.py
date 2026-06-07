@@ -1836,72 +1836,125 @@ def get_memory():
         'status': 'critical' if pct > 85 else 'warning' if pct > 65 else 'ok'
     })
 
+# ── Signal Store — IST 5:30 AM daily window, Supabase persisted 30 days ──
+def _ist_day_key(ts=None):
+    from datetime import datetime, timezone, timedelta
+    IST_OFF = timedelta(hours=5, minutes=30)
+    dt_utc = datetime.fromtimestamp(ts, tz=timezone.utc) if ts else datetime.now(timezone.utc)
+    dt_ist = dt_utc + IST_OFF
+    if dt_ist.hour < 5 or (dt_ist.hour == 5 and dt_ist.minute < 30):
+        dt_ist -= timedelta(days=1)
+    return dt_ist.strftime('%Y-%m-%d')
+
+def _ist_day_start_ts(day_key):
+    from datetime import datetime, timezone
+    d = datetime.strptime(day_key, '%Y-%m-%d')
+    # 05:30 IST = 00:00 UTC
+    return d.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc).timestamp()
+
+def _save_signals_sb(day_key, signals):
+    if not SUPABASE_OK: return
+    try:
+        from datetime import datetime, timezone, timedelta
+        _supabase.table('bot_data').upsert({
+            'key': f'signals_{day_key}',
+            'value': signals,
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }).execute()
+        # Auto-delete keys older than 30 days
+        cutoff_key = 'signals_' + (datetime.now(timezone.utc) - timedelta(days=30)).strftime('%Y-%m-%d')
+        try:
+            _supabase.table('bot_data').delete().lt('key', cutoff_key).like('key', 'signals_%').execute()
+        except Exception:
+            pass
+    except Exception as e:
+        logger.warning(f'signals sb save: {e}')
+
+def _load_signals_sb(day_key):
+    if not SUPABASE_OK: return []
+    try:
+        res = _supabase.table('bot_data').select('value').eq('key', f'signals_{day_key}').execute()
+        if res.data: return res.data[0].get('value') or []
+    except Exception:
+        pass
+    return []
+
+_signal_store      = {}
+_signal_store_lock = __import__('threading').Lock()
+
+def _record_buy_signal(symbol, price, timeframe, score, executed=False):
+    import time as _t
+    from datetime import datetime, timezone, timedelta
+    ts  = _t.time()
+    key = _ist_day_key(ts)
+    IST_OFF = timedelta(hours=5, minutes=30)
+    time_str = (datetime.fromtimestamp(ts, tz=timezone.utc) + IST_OFF).strftime('%H:%M:%S')
+    sig = {'symbol': symbol, 'price': price, 'timeframe': timeframe,
+           'score': score, 'time': time_str, 'ts': ts, 'executed': executed}
+    with _signal_store_lock:
+        if key not in _signal_store:
+            _signal_store[key] = _load_signals_sb(key)
+        # Dedupe: same coin within 60s
+        for ex in _signal_store[key]:
+            if ex['symbol'] == symbol and abs(ex['ts'] - ts) < 60:
+                return
+        _signal_store[key].append(sig)
+        sigs_copy = list(_signal_store[key])
+    _save_signals_sb(key, sigs_copy)
+
 @app.route('/api/signals/today', methods=['GET'])
 def signals_today():
-    from datetime import datetime, timezone
-    import time as _time
-    now = datetime.now(timezone.utc)
-    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-    
-    events = bot_engine.get_events()
-    buy_signals = []
-    seen = set()
-    
-    for e in events:
-        ts = e.get('ts', 0)
-        if ts < day_start: continue
-        etype = e.get('type','')
-        msg = e.get('msg','')
-        meta = e.get('meta', {})
-        
-        # Capture buy signals from monitor events or buy executions
-        is_buy = (
-            (etype == 'monitor' and meta.get('direction') == 'buy' and meta.get('confidence') == 'high') or
-            (etype == 'trade' and 'BUY' in msg.upper())
-        )
-        if not is_buy: continue
-        
-        sym = meta.get('symbol') or e.get('symbol','')
-        price = meta.get('price', 0)
-        tf = meta.get('timeframe','')
-        score = meta.get('score', 0)
-        dt = datetime.fromtimestamp(ts, tz=timezone.utc)
-        time_str = dt.strftime('%H:%M:%S')
-        
-        key = f'{sym}-{round(ts/60)}'  # dedupe within same minute
-        if key in seen: continue
-        seen.add(key)
-        
-        buy_signals.append({
-            'symbol': sym, 'price': price, 'timeframe': tf,
-            'score': score, 'time': time_str, 'ts': ts,
-            'executed': etype == 'trade'
-        })
-    
-    # Sort newest first
-    buy_signals.sort(key=lambda x: x['ts'], reverse=True)
-    
+    from datetime import datetime, timezone, timedelta
+    req_date = request.args.get('date')
+    day_key  = req_date if req_date else _ist_day_key()
+    IST_OFF  = timedelta(hours=5, minutes=30)
+    day_start_ts = _ist_day_start_ts(day_key)
+    day_end_ts   = day_start_ts + 86400
+
+    with _signal_store_lock:
+        if day_key not in _signal_store:
+            _signal_store[day_key] = _load_signals_sb(day_key)
+        # Merge live events (catches signals not yet persisted)
+        existing_ts = {s['ts'] for s in _signal_store[day_key]}
+        for e in bot_engine.get_events():
+            ts = e.get('ts', 0)
+            if ts < day_start_ts or ts >= day_end_ts or ts in existing_ts: continue
+            etype = e.get('type',''); meta = e.get('meta', {}); msg = e.get('msg','')
+            is_buy = (
+                (etype == 'monitor' and meta.get('direction') == 'buy' and meta.get('confidence') == 'high') or
+                (etype == 'trade' and 'BUY' in msg.upper())
+            )
+            if not is_buy: continue
+            dt_ist = datetime.fromtimestamp(ts, tz=timezone.utc) + IST_OFF
+            _signal_store[day_key].append({
+                'symbol': meta.get('symbol',''), 'price': meta.get('price', 0),
+                'timeframe': meta.get('timeframe',''), 'score': meta.get('score', 0),
+                'time': dt_ist.strftime('%H:%M:%S'), 'ts': ts, 'executed': etype == 'trade'
+            })
+            existing_ts.add(ts)
+        signals = sorted(_signal_store[day_key], key=lambda x: x['ts'], reverse=True)
+
     # Per-coin summary
     coin_counts = {}
-    for s in buy_signals:
+    for s in signals:
         sym = s['symbol']
         if sym not in coin_counts:
-            coin_counts[sym] = {'count': 0, 'last_price': 0, 'last_time': '', 'executed': 0}
+            coin_counts[sym] = {'count': 0, 'last_price': 0, 'last_time': '', 'executed': 0, '_ts': 0}
         coin_counts[sym]['count'] += 1
-        if s['ts'] > coin_counts[sym].get('_ts', 0):
-            coin_counts[sym]['last_price'] = s['price']
-            coin_counts[sym]['last_time'] = s['time']
-            coin_counts[sym]['_ts'] = s['ts']
+        if s['ts'] > coin_counts[sym]['_ts']:
+            coin_counts[sym].update({'last_price': s['price'], 'last_time': s['time'], '_ts': s['ts']})
         if s['executed']:
             coin_counts[sym]['executed'] += 1
-    
-    return jsonify({
-        'total': len(buy_signals),
-        'signals': buy_signals[:50],
-        'by_coin': coin_counts,
-        'date': now.strftime('%d %b %Y')
-    })
+    for v in coin_counts.values(): v.pop('_ts', None)
 
+    d1 = datetime.strptime(day_key, '%Y-%m-%d')
+    d2 = d1 + timedelta(days=1)
+    window = f"{d1.strftime('%d %b')} 05:30 IST → {d2.strftime('%d %b')} 05:30 IST"
+
+    return jsonify({
+        'total': len(signals), 'signals': signals[:100],
+        'by_coin': coin_counts, 'date': window, 'day_key': day_key
+    })
 @app.route('/api/debug/btceth', methods=['GET'])
 def debug_btceth():
     import requests as _req
