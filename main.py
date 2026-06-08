@@ -1104,28 +1104,22 @@ class AsyncEngine:
                     capital=_coin_capital
                 )
 
-            # Virtual tracker sell — signal based, independent of real holdings
+            # Virtual tracker — simple BUY/SELL cycle on same TF
             vt_pos = _vt_fund.get(symbol, {})
             if vt_pos.get('buy_price'):
-                import time as _vt_time
-                vt_entry    = vt_pos['buy_price']
-                vt_tf       = vt_pos.get('timeframe', best_tf)
-                vt_tf_results = mtf.get('tf_results') or {}
-                vt_tf_sig   = vt_tf_results.get(vt_tf, {}).get('signal', 'neutral')
-                vt_atr      = vt_tf_results.get(vt_tf, {}).get('atr', 0.0)
-                vt_sl_price = vt_entry - (2 * vt_atr) if vt_atr > 0 else vt_entry * 0.97
-                vt_entry_ts = vt_pos.get('entry_ts', _vt_time.time())
-                candle_secs = _TF_SECONDS.get(vt_tf, 900)
-                # Exit conditions:
-                # 1. Sell signal on entry TF
-                # 2. ATR stop loss hit
-                # 3. Neutral signal + 3 candles passed (momentum gone)
-                candles_held = (_vt_time.time() - vt_entry_ts) / candle_secs
-                neutral_timeout = vt_tf_sig == 'neutral' and candles_held >= 3
-                if vt_tf_sig == 'sell' or price <= vt_sl_price or neutral_timeout:
-                    reason = 'signal_sell' if vt_tf_sig == 'sell' else ('atr_sl' if price <= vt_sl_price else 'neutral_timeout')
+                # In position — check ONLY the locked TF for sell signal
+                vt_tf     = vt_pos.get('timeframe', best_tf)
+                vt_tf_sig = (mtf.get('tf_results') or {}).get(vt_tf, {}).get('signal', 'neutral')
+                if vt_tf_sig == 'sell':
                     _record_sell_signal(symbol, price)
-                    logger.info(f"[VT] SELL {symbol} @ {price:.4f} | reason={reason} | pnl={((price/vt_entry)-1)*100:.2f}%")
+                    logger.info(f"[VT] SELL {symbol} @ {price:.4f} TF={vt_tf} | pnl={((price/vt_pos['buy_price'])-1)*100:.2f}%")
+            else:
+                # No position — BUY signal on any TF opens virtual position on that TF
+                if direction == 'buy':
+                    _coin_capital = self.bot.coins.get(symbol, {}).get('compound_capital',
+                                    self.bot.coins.get(symbol, {}).get('capital', _VT_INITIAL))
+                    _vt_on_buy(symbol, price, best_tf, initial_fund=_coin_capital)
+                    logger.info(f"[VT] BUY  {symbol} @ {price:.4f} TF={best_tf}")
 
             if has_holding:
                 holding   = self.bot.holdings[symbol]
@@ -2121,8 +2115,7 @@ def _record_buy_signal(symbol, price, timeframe, score, executed=False, capital=
     __import__('threading').Thread(
         target=_save_signals_sb, args=(key, sigs_copy), daemon=True
     ).start()
-    # Virtual tracker — has its own cycle guard inside _vt_on_buy
-    _vt_on_buy(symbol, price, timeframe, initial_fund=capital)
+    # Virtual tracker BUY is handled in _process_coin directly
 
 def _record_sell_signal(symbol, price=None):
     """Call this when a SELL fires — resets the cycle so next BUY will be counted."""
