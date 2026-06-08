@@ -2064,11 +2064,21 @@ async function refreshVirtualTracker() {
     const d = await api('/virtual/summary');
     if (!d) return;
 
-    // Overall summary bar
-    const totalPnl = d.total_pnl || 0;
+    // Overall summary bar — closed P&L + live unrealized P&L
+    const closedPnl = d.total_pnl || 0;
+    const byCoinRaw = d.by_coin || {};
+    const unrealizedTotal = Object.values(byCoinRaw).reduce((sum, c) => sum + (c.unrealized_pnl || 0), 0);
+    const totalPnl = closedPnl + unrealizedTotal;
     const pnlEl = document.getElementById('vtTotalPnl');
+    const prevPnl = parseFloat(pnlEl.dataset.prev ?? 'NaN');
     pnlEl.textContent = (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(4) + ' USDC';
     pnlEl.style.color = totalPnl >= 0 ? 'var(--green)' : 'var(--red)';
+    if (!isNaN(prevPnl) && prevPnl !== totalPnl) {
+      pnlEl.classList.remove('vt-flash-green','vt-flash-red');
+      void pnlEl.offsetWidth;
+      pnlEl.classList.add(totalPnl > prevPnl ? 'vt-flash-green' : 'vt-flash-red');
+    }
+    pnlEl.dataset.prev = totalPnl;
 
     document.getElementById('vtTotalTrades').textContent = d.total_trades || 0;
     const wr = d.win_rate || 0;
