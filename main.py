@@ -755,6 +755,11 @@ def _vt_load():
 # Hyperliquid spot base tier fees (taker = market order, which bot uses)
 _VT_TAKER_FEE = 0.00070   # 0.07% per side
 
+# Virtual Tracker — configurable risk params (same defaults as real bot)
+VT_SL_PCT    = 1.5   # Stop Loss: % below entry price
+VT_TRAIL_PCT = 1.0   # Trailing Stop: % below peak price
+VT_TP_PCT    = 2.0   # Take Profit: % above entry price
+
 def _vt_on_buy(symbol, price, timeframe, initial_fund=None):
     """Record virtual BUY at signal price."""
     with _vt_lock:
@@ -777,12 +782,14 @@ def _vt_on_buy(symbol, price, timeframe, initial_fund=None):
             'buy_fee': buy_fee,
             'buy_time': (__import__('datetime').datetime.utcnow() + __import__('datetime').timedelta(hours=5, minutes=30)).strftime('%H:%M:%S'),
             'timeframe': timeframe, 'entry_ts': _vt_t.time(),
+            'entry_price': price,   # fixed for SL/TP calc
+            'peak_price': price,    # updated as price rises (trailing stop)
         }
         # Track buy fee immediately in stats
         _vt_stats[symbol]['total_fees'] = round(_vt_stats[symbol].get('total_fees', 0.0) + buy_fee, 6)
     __import__('threading').Thread(target=_vt_persist, daemon=True).start()
 
-def _vt_on_sell(symbol, price):
+def _vt_on_sell(symbol, price, exit_reason='signal'):
     """Record virtual SELL at signal price, compound fund."""
     with _vt_lock:
         entry = _vt_fund.get(symbol)
@@ -811,6 +818,7 @@ def _vt_on_sell(symbol, price):
             'buy_fee': buy_fee, 'sell_fee': sell_fee, 'total_fee': total_fee,
             'pnl_gross': pnl_gross,
             'pnl_usdt': pnl_usdt, 'pnl_pct': pnl_pct, 'win': pnl_usdt > 0,
+            'exit_reason': exit_reason,
         }
         _vt_trades.append(trade)
         if symbol not in _vt_stats:
@@ -883,6 +891,11 @@ def _vt_get_summary():
                 'live_price':     live_price,
                 'unrealized_pnl': unrealized_pnl,
                 'unrealized_pct': unrealized_pct,
+                # Risk levels for open positions
+                'vt_sl_price':    round(op.get('entry_price', op.get('buy_price', 0)) * (1 - VT_SL_PCT / 100), 6) if in_pos else None,
+                'vt_tp_price':    round(op.get('entry_price', op.get('buy_price', 0)) * (1 + VT_TP_PCT / 100), 6) if in_pos else None,
+                'vt_trail_price': round(op.get('peak_price', op.get('buy_price', 0)) * (1 - VT_TRAIL_PCT / 100), 6) if in_pos else None,
+                'vt_peak_price':  op.get('peak_price') if in_pos else None,
             }
         return {
             'total_pnl': total_pnl, 'total_fees': total_fees,
@@ -1150,15 +1163,38 @@ class AsyncEngine:
                     capital=_coin_capital
                 )
 
-            # Virtual tracker — simple BUY/SELL cycle on same TF
+            # Virtual tracker — BUY/SELL cycle with SL / TP / Trailing Stop
             vt_pos = _vt_fund.get(symbol, {})
             if vt_pos.get('buy_price'):
-                # In position — check ONLY the locked TF for sell signal
-                vt_tf     = vt_pos.get('timeframe', best_tf)
-                vt_tf_sig = (mtf.get('tf_results') or {}).get(vt_tf, {}).get('signal', 'neutral')
-                if vt_tf_sig == 'sell':
-                    _record_sell_signal(symbol, price)
-                    logger.info(f"[VT] SELL {symbol} @ {price:.4f} TF={vt_tf} | pnl={((price/vt_pos['buy_price'])-1)*100:.2f}%")
+                # Update peak price for trailing stop
+                with _vt_lock:
+                    if price > _vt_fund[symbol].get('peak_price', price):
+                        _vt_fund[symbol]['peak_price'] = price
+
+                entry_price = vt_pos.get('entry_price', vt_pos['buy_price'])
+                peak_price  = _vt_fund[symbol].get('peak_price', entry_price)
+
+                sl_price    = entry_price * (1 - VT_SL_PCT    / 100)
+                tp_price    = entry_price * (1 + VT_TP_PCT    / 100)
+                trail_price = peak_price  * (1 - VT_TRAIL_PCT / 100)
+
+                vt_exit_reason = None
+                if price <= sl_price:
+                    vt_exit_reason = f'SL {VT_SL_PCT}%'
+                elif price >= tp_price:
+                    vt_exit_reason = f'TP {VT_TP_PCT}%'
+                elif price <= trail_price and peak_price > entry_price * 1.002:
+                    vt_exit_reason = f'Trail {VT_TRAIL_PCT}%'
+                else:
+                    # No price-based exit — check signal on locked TF
+                    vt_tf     = vt_pos.get('timeframe', best_tf)
+                    vt_tf_sig = (mtf.get('tf_results') or {}).get(vt_tf, {}).get('signal', 'neutral')
+                    if vt_tf_sig == 'sell':
+                        vt_exit_reason = 'signal'
+
+                if vt_exit_reason:
+                    _record_sell_signal(symbol, price, exit_reason=vt_exit_reason)
+                    logger.info(f"[VT] SELL {symbol} @ {price:.4f} reason={vt_exit_reason} | pnl={((price/entry_price)-1)*100:.2f}%")
             else:
                 # No position — BUY signal on any TF opens virtual position on that TF
                 if direction == 'buy':
@@ -2163,11 +2199,11 @@ def _record_buy_signal(symbol, price, timeframe, score, executed=False, capital=
     ).start()
     # Virtual tracker BUY is handled in _process_coin directly
 
-def _record_sell_signal(symbol, price=None):
+def _record_sell_signal(symbol, price=None, exit_reason='signal'):
     """Call this when a SELL fires — resets the cycle so next BUY will be counted."""
     _signal_state_set(symbol, 'sell')
     if price:
-        _vt_on_sell(symbol, price)
+        _vt_on_sell(symbol, price, exit_reason=exit_reason)
 
 @app.route('/api/prices', methods=['GET'])
 def get_prices():
