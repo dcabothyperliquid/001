@@ -1102,9 +1102,9 @@ function evToCategory(ev) {
   if (t === 'warn')  return 'warn';
   // Detect critical keywords in monitor/info events
   if (m.includes('insufficient') || m.includes('failed') ||
-      m.includes('balance') || m.includes('sdk') ||
-      m.includes('disconnect') || m.includes('ioc not filled') ||
-      m.includes('not found') || m.includes('error')) return 'critical';
+      m.includes('sdk') || m.includes('disconnect') ||
+      m.includes('ioc not filled') || m.includes('not found') ||
+      m.includes('error')) return 'critical';
   if (t === 'monitor') return 'monitor';
   return 'info';
 }
@@ -1515,12 +1515,9 @@ async function fetchBalance() {
       document.getElementById('s-bal').textContent  = parseFloat(usdc.available).toFixed(2);
       document.getElementById('walletMode').textContent = 'LIVE';
       document.getElementById('walletMode').className   = 'badge badge-buy';
-      // Warn if low balance
+      // Warn if low balance — small toast only, no screen-filling popup
       if (parseFloat(usdc.available) < 5) {
-        ingestEvents([{
-          type:'warn', message:`Low USDC balance: ${avail} USDC available`,
-          data:{balance: avail}, time: new Date(Date.now()+19800000).toISOString()
-        }]);
+        toastRich('⚠ Low Balance', `${avail} USDC available`, 'warn');
       }
     }
   } else {
