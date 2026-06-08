@@ -824,7 +824,28 @@ def _vt_get_summary():
             op = _vt_fund.get(sym) or {}
             initial = s.get('initial_fund', _VT_INITIAL)
             cur_fund = s['fund']
-            growth_pct = round((cur_fund - initial) / initial * 100, 2) if initial else 0
+            in_pos   = bool(op.get('buy_price'))
+
+            # Live unrealized P&L for open positions
+            live_price       = None
+            unrealized_pnl   = None
+            unrealized_pct   = None
+            live_fund        = cur_fund
+
+            if in_pos:
+                try:
+                    live_price = bot_engine.client.get_spot_price(sym)
+                except Exception:
+                    live_price = None
+                if live_price and op.get('amount') and op.get('buy_price'):
+                    live_fund      = round(op['amount'] * live_price, 4)
+                    unrealized_pnl = round(live_fund - op['fund'], 4)
+                    unrealized_pct = round((live_price - op['buy_price']) / op['buy_price'] * 100, 3)
+
+            # growth is always relative to initial capital
+            display_fund = live_fund if in_pos else cur_fund
+            growth_pct   = round((display_fund - initial) / initial * 100, 2) if initial else 0
+
             by_coin[sym] = {
                 'total_trades':  s['total_trades'],
                 'wins':          s['wins'],
@@ -832,12 +853,15 @@ def _vt_get_summary():
                 'win_rate':      round(s['wins'] / s['total_trades'] * 100, 1) if s['total_trades'] else 0,
                 'total_pnl':     s['total_pnl'],
                 'initial_fund':  initial,
-                'current_fund':  cur_fund,
+                'current_fund':  display_fund,
                 'growth_pct':    growth_pct,
-                'in_position':   bool(op.get('buy_price')),
+                'in_position':   in_pos,
                 'entry_price':   op.get('buy_price'),
                 'entry_time':    op.get('buy_time'),
                 'entry_tf':      op.get('timeframe'),
+                'live_price':    live_price,
+                'unrealized_pnl': unrealized_pnl,
+                'unrealized_pct': unrealized_pct,
             }
         return {
             'total_pnl': total_pnl, 'total_trades': total_trades,

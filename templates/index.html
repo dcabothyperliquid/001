@@ -130,6 +130,10 @@ body::after{
 .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
 .dot.blink{animation:blink 1.1s infinite;}
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:0.2;}}
+@keyframes vtFlashGreen{0%{background:rgba(13,255,140,0.18);}100%{background:transparent;}}
+@keyframes vtFlashRed{0%{background:rgba(255,48,96,0.18);}100%{background:transparent;}}
+.vt-flash-green{animation:vtFlashGreen 0.5s ease-out;}
+.vt-flash-red{animation:vtFlashRed 0.5s ease-out;}
 
 /* ── NOTIFICATION BELL ── */
 .notif-btn{
@@ -2089,11 +2093,38 @@ async function refreshVirtualTracker() {
       const growthSign = (info.growth_pct || 0) >= 0 ? '+' : '';
       const wrColor = (info.win_rate || 0) >= 50 ? 'var(--green)' : (info.win_rate || 0) >= 35 ? 'var(--amber)' : 'var(--red)';
 
+      const upnl     = info.unrealized_pnl ?? null;
+      const upnlPct  = info.unrealized_pct ?? null;
+      const livePrice= info.live_price ?? null;
+      const upnlColor = upnl === null ? 'var(--fg)' : upnl >= 0 ? 'var(--green)' : 'var(--red)';
+      const upnlSign  = upnl !== null && upnl >= 0 ? '+' : '';
+      const fmtPrice  = p => p > 1 ? p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4}) : p?.toFixed(6) ?? '—';
+
       const inPosHtml = info.in_position && info.entry_price
-        ? `<div style="margin-top:8px;padding:7px 10px;background:rgba(255,184,0,0.07);border:1px solid rgba(255,184,0,0.2);border-radius:6px;">
-            <div style="font-size:8px;color:var(--amber);letter-spacing:1px;margin-bottom:3px;">● IN POSITION</div>
-            <div style="font-family:var(--mono);font-size:11px;color:var(--fg);">Entry: $${info.entry_price > 1 ? info.entry_price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4}) : info.entry_price.toFixed(6)}</div>
-            ${info.entry_tf ? `<div style="font-size:9px;color:var(--muted);margin-top:2px;">TF: ${info.entry_tf} · ${info.entry_time || ''}</div>` : ''}
+        ? `<div style="margin-top:8px;padding:9px 11px;background:rgba(255,184,0,0.07);border:1px solid rgba(255,184,0,0.25);border-radius:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <span style="font-size:8px;color:var(--amber);letter-spacing:1.5px;font-weight:700;">● IN POSITION</span>
+              ${info.entry_tf ? `<span style="font-size:8px;color:var(--muted);letter-spacing:1px;">${info.entry_tf} · ${info.entry_time||''}</span>` : ''}
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+              <div style="background:rgba(0,0,0,0.15);border-radius:5px;padding:6px 8px;">
+                <div style="font-size:7px;color:var(--muted);letter-spacing:1px;margin-bottom:2px;">ENTRY</div>
+                <div style="font-family:var(--mono);font-size:12px;color:var(--fg);font-weight:600;">$${fmtPrice(info.entry_price)}</div>
+              </div>
+              <div style="background:rgba(0,0,0,0.15);border-radius:5px;padding:6px 8px;">
+                <div style="font-size:7px;color:var(--muted);letter-spacing:1px;margin-bottom:2px;">CURRENT</div>
+                <div id="vtLivePrice_${sym}" style="font-family:var(--mono);font-size:12px;color:var(--fg);font-weight:600;">${livePrice !== null ? '$'+fmtPrice(livePrice) : '...'}</div>
+              </div>
+            </div>
+            <div style="background:rgba(0,0,0,0.2);border-radius:5px;padding:7px 10px;text-align:center;">
+              <div style="font-size:7px;color:var(--muted);letter-spacing:1px;margin-bottom:3px;">UNREALIZED P&L</div>
+              <div id="vtLivePnl_${sym}" style="font-family:var(--mono);font-size:16px;font-weight:800;color:${upnlColor};letter-spacing:0.5px;transition:color 0.3s;">
+                ${upnl !== null ? upnlSign+upnl.toFixed(4)+' USDC' : '...'}
+              </div>
+              <div id="vtLivePct_${sym}" style="font-family:var(--mono);font-size:10px;color:${upnlColor};margin-top:2px;">
+                ${upnlPct !== null ? (upnlPct>=0?'+':'')+upnlPct.toFixed(3)+'%' : ''}
+              </div>
+            </div>
           </div>`
         : `<div style="margin-top:8px;padding:5px 10px;background:rgba(255,255,255,0.02);border-radius:6px;font-size:9px;color:var(--muted);letter-spacing:1px;">● WAITING FOR SIGNAL</div>`;
 
@@ -2132,6 +2163,21 @@ async function refreshVirtualTracker() {
         ${inPosHtml}
       </div>`;
     }).join('');
+
+    // Flash animate P&L elements that changed
+    coins.forEach(([sym, info]) => {
+      const pnlEl = document.getElementById(`vtLivePnl_${sym}`);
+      if (pnlEl && info.unrealized_pnl !== null && info.unrealized_pnl !== undefined) {
+        const prev = parseFloat(pnlEl.dataset.prev ?? 'NaN');
+        const cur  = info.unrealized_pnl;
+        if (!isNaN(prev) && prev !== cur) {
+          pnlEl.classList.remove('vt-flash-green','vt-flash-red');
+          void pnlEl.offsetWidth; // reflow
+          pnlEl.classList.add(cur > prev ? 'vt-flash-green' : 'vt-flash-red');
+        }
+        pnlEl.dataset.prev = cur;
+      }
+    });
   } catch(e) {}
 }
 
@@ -2143,7 +2189,7 @@ async function resetVirtualTracker() {
   } catch(e) {}
 }
 
-setInterval(refreshVirtualTracker, 15000);
+setInterval(refreshVirtualTracker, 3000);
 refreshVirtualTracker();
 
 // MEMORY WIDGET
