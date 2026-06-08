@@ -2153,6 +2153,11 @@ async function refreshVirtualTracker() {
       const upnlSign  = upnl !== null && upnl >= 0 ? '+' : '';
       const fmtPrice  = p => p > 1 ? p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4}) : p?.toFixed(6) ?? '—';
 
+      const slPrice    = info.vt_sl_price    ?? null;
+      const tpPrice    = info.vt_tp_price    ?? null;
+      const trailPrice = info.vt_trail_price ?? null;
+      const peakPrice  = info.vt_peak_price  ?? null;
+
       const inPosHtml = info.in_position && info.entry_price
         ? `<div style="margin-top:4px;padding:10px 12px;background:linear-gradient(135deg,rgba(255,184,0,0.08) 0%,rgba(255,120,0,0.04) 100%);border:1px solid rgba(255,184,0,0.2);border-radius:10px;position:relative;overflow:hidden;">
             <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,rgba(255,184,0,0.5),transparent);"></div>
@@ -2160,7 +2165,7 @@ async function refreshVirtualTracker() {
               <span style="font-size:8px;color:var(--amber);letter-spacing:2px;font-weight:800;">⬤ IN POSITION</span>
               ${info.entry_tf ? `<span style="font-size:8px;color:rgba(255,184,0,0.45);font-family:var(--mono);">${info.entry_tf} · ${info.entry_time||''}</span>` : ''}
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
               <div style="border-radius:7px;padding:7px 9px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.05);">
                 <div style="font-size:7px;color:rgba(255,255,255,0.3);letter-spacing:1.5px;margin-bottom:3px;">ENTRY</div>
                 <div style="font-family:var(--mono);font-size:12px;color:#e8d5a0;font-weight:700;">$${fmtPrice(info.entry_price)}</div>
@@ -2168,6 +2173,20 @@ async function refreshVirtualTracker() {
               <div style="border-radius:7px;padding:7px 9px;background:rgba(0,0,0,0.25);border:1px solid rgba(13,240,224,0.1);">
                 <div style="font-size:7px;color:rgba(13,240,224,0.45);letter-spacing:1.5px;margin-bottom:3px;">CURRENT</div>
                 <div id="vtLivePrice_${sym}" style="font-family:var(--mono);font-size:12px;color:var(--cyan);font-weight:700;">${livePrice !== null ? '$'+fmtPrice(livePrice) : '...'}</div>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:6px;">
+              <div style="border-radius:7px;padding:6px 8px;background:rgba(255,48,96,0.08);border:1px solid rgba(255,48,96,0.2);">
+                <div style="font-size:6.5px;color:rgba(255,48,96,0.6);letter-spacing:1.2px;margin-bottom:2px;">SL</div>
+                <div style="font-family:var(--mono);font-size:10px;color:#ff6080;font-weight:700;">${slPrice !== null ? '$'+fmtPrice(slPrice) : '—'}</div>
+              </div>
+              <div style="border-radius:7px;padding:6px 8px;background:rgba(13,255,140,0.07);border:1px solid rgba(13,255,140,0.2);">
+                <div style="font-size:6.5px;color:rgba(13,255,140,0.55);letter-spacing:1.2px;margin-bottom:2px;">TP</div>
+                <div style="font-family:var(--mono);font-size:10px;color:#0dff8c;font-weight:700;">${tpPrice !== null ? '$'+fmtPrice(tpPrice) : '—'}</div>
+              </div>
+              <div style="border-radius:7px;padding:6px 8px;background:rgba(255,184,0,0.07);border:1px solid rgba(255,184,0,0.2);">
+                <div style="font-size:6.5px;color:rgba(255,184,0,0.55);letter-spacing:1.2px;margin-bottom:2px;">TRAIL</div>
+                <div style="font-family:var(--mono);font-size:10px;color:#ffb800;font-weight:700;">${trailPrice !== null ? '$'+fmtPrice(trailPrice) : '—'}</div>
               </div>
             </div>
             <div style="border-radius:8px;padding:9px 12px;text-align:center;background:${upnl===null?'rgba(0,0,0,0.2)':upnl>=0?'rgba(13,255,140,0.07)':'rgba(255,48,96,0.07)'};border:1px solid ${upnl===null?'rgba(255,255,255,0.05)':upnl>=0?'rgba(13,255,140,0.2)':'rgba(255,48,96,0.2)'};">
