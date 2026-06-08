@@ -752,29 +752,34 @@ def _vt_load():
     except Exception as e:
         print(f"[VT LOAD ERROR] {e}")
 
+# Hyperliquid spot base tier fees (taker = market order, which bot uses)
+_VT_TAKER_FEE = 0.00070   # 0.07% per side
+
 def _vt_on_buy(symbol, price, timeframe, initial_fund=None):
     """Record virtual BUY at signal price."""
     with _vt_lock:
         existing = _vt_fund.get(symbol, {})
         if existing.get('buy_price'):
             return  # already in virtual position — wait for sell
-        # Use compounded fund if available, else use the coin's actual capital
         existing = _vt_stats.get(symbol) or {}
         fund = existing.get('fund', initial_fund or _VT_INITIAL)
-        # First time: store initial_fund so floor calc works correctly
         if symbol not in _vt_stats:
             _vt_stats[symbol] = {
                 'total_trades': 0, 'wins': 0, 'total_pnl': 0.0,
-                'fund': fund, 'initial_fund': fund
+                'total_fees': 0.0, 'fund': fund, 'initial_fund': fund
             }
         import time as _vt_t
-        amount = round(fund / price, 8)
+        buy_fee  = round(fund * _VT_TAKER_FEE, 6)   # fee on buy notional
+        fund_after_fee = round(fund - buy_fee, 6)     # effective capital after buy fee
+        amount   = round(fund_after_fee / price, 8)
         _vt_fund[symbol] = {
             'fund': fund, 'buy_price': price, 'amount': amount,
+            'buy_fee': buy_fee,
             'buy_time': (__import__('datetime').datetime.utcnow() + __import__('datetime').timedelta(hours=5, minutes=30)).strftime('%H:%M:%S'),
             'timeframe': timeframe, 'entry_ts': _vt_t.time(),
         }
-    # Persist after buy
+        # Track buy fee immediately in stats
+        _vt_stats[symbol]['total_fees'] = round(_vt_stats[symbol].get('total_fees', 0.0) + buy_fee, 6)
     __import__('threading').Thread(target=_vt_persist, daemon=True).start()
 
 def _vt_on_sell(symbol, price):
@@ -783,39 +788,49 @@ def _vt_on_sell(symbol, price):
         entry = _vt_fund.get(symbol)
         if not entry or not entry.get('buy_price'):
             return
-        buy_price = entry['buy_price']
-        amount    = entry['amount']
-        fund_in   = entry['fund']
-        fund_out  = round(amount * price, 4)
-        pnl_usdt  = round(fund_out - fund_in, 4)
-        pnl_pct   = round((price - buy_price) / buy_price * 100, 2)
+        buy_price  = entry['buy_price']
+        amount     = entry['amount']
+        fund_in    = entry['fund']
+        buy_fee    = entry.get('buy_fee', 0.0)
+
+        gross_out  = round(amount * price, 6)
+        sell_fee   = round(gross_out * _VT_TAKER_FEE, 6)   # fee on sell notional
+        fund_out   = round(gross_out - sell_fee, 4)
+        total_fee  = round(buy_fee + sell_fee, 6)
+
+        pnl_gross  = round(gross_out - fund_in, 4)          # before fees
+        pnl_usdt   = round(fund_out  - fund_in, 4)          # after fees (real P&L)
+        pnl_pct    = round((price - buy_price) / buy_price * 100, 2)
+
         trade = {
             'symbol': symbol, 'buy_price': buy_price, 'sell_price': price,
             'buy_time': entry.get('buy_time', ''),
             'sell_time': (__import__('datetime').datetime.utcnow() + __import__('datetime').timedelta(hours=5, minutes=30)).strftime('%H:%M:%S'),
             'timeframe': entry.get('timeframe', ''),
             'fund_in': fund_in, 'fund_out': fund_out,
+            'buy_fee': buy_fee, 'sell_fee': sell_fee, 'total_fee': total_fee,
+            'pnl_gross': pnl_gross,
             'pnl_usdt': pnl_usdt, 'pnl_pct': pnl_pct, 'win': pnl_usdt > 0,
         }
         _vt_trades.append(trade)
         if symbol not in _vt_stats:
-            _vt_stats[symbol] = {'total_trades': 0, 'wins': 0, 'total_pnl': 0.0, 'fund': fund_in, 'initial_fund': fund_in}
+            _vt_stats[symbol] = {'total_trades': 0, 'wins': 0, 'total_pnl': 0.0, 'total_fees': 0.0, 'fund': fund_in, 'initial_fund': fund_in}
         _vt_stats[symbol]['total_trades'] += 1
-        _vt_stats[symbol]['total_pnl']     = round(_vt_stats[symbol]['total_pnl'] + pnl_usdt, 4)
+        _vt_stats[symbol]['total_pnl']    = round(_vt_stats[symbol]['total_pnl'] + pnl_usdt, 4)
+        _vt_stats[symbol]['total_fees']   = round(_vt_stats[symbol].get('total_fees', 0.0) + sell_fee, 6)
         if pnl_usdt > 0:
             _vt_stats[symbol]['wins'] += 1
-        # Floor: 10% of this coin's actual starting capital
         _initial = _vt_stats[symbol].get('initial_fund', fund_in)
         new_fund = max(round(fund_out, 4), round(_initial * 0.1, 4))
         _vt_stats[symbol]['fund'] = new_fund
         _vt_fund[symbol] = {'fund': new_fund, 'buy_price': None, 'amount': 0, 'timeframe': ''}
-    # Persist after sell
     __import__('threading').Thread(target=_vt_persist, daemon=True).start()
 
 def _vt_get_summary():
     """Returns virtual P&L summary for /api/virtual/summary endpoint."""
     with _vt_lock:
         total_pnl    = round(sum(s['total_pnl'] for s in _vt_stats.values()), 4)
+        total_fees   = round(sum(s.get('total_fees', 0.0) for s in _vt_stats.values()), 6)
         total_trades = sum(s['total_trades'] for s in _vt_stats.values())
         total_wins   = sum(s['wins']         for s in _vt_stats.values())
         win_rate     = round(total_wins / total_trades * 100, 1) if total_trades else 0
@@ -838,33 +853,40 @@ def _vt_get_summary():
                 except Exception:
                     live_price = None
                 if live_price and op.get('amount') and op.get('buy_price'):
-                    live_fund      = round(op['amount'] * live_price, 4)
+                    gross_live     = round(op['amount'] * live_price, 6)
+                    sell_fee_est   = round(gross_live * _VT_TAKER_FEE, 6)
+                    live_fund      = round(gross_live - sell_fee_est, 4)
                     unrealized_pnl = round(live_fund - op['fund'], 4)
                     unrealized_pct = round((live_price - op['buy_price']) / op['buy_price'] * 100, 3)
 
-            # growth is always relative to initial capital
             display_fund = live_fund if in_pos else cur_fund
             growth_pct   = round((display_fund - initial) / initial * 100, 2) if initial else 0
 
+            # Pending buy fee already deducted in open position
+            coin_fees = s.get('total_fees', 0.0)
+
             by_coin[sym] = {
-                'total_trades':  s['total_trades'],
-                'wins':          s['wins'],
-                'losses':        s['total_trades'] - s['wins'],
-                'win_rate':      round(s['wins'] / s['total_trades'] * 100, 1) if s['total_trades'] else 0,
-                'total_pnl':     s['total_pnl'],
-                'initial_fund':  initial,
-                'current_fund':  display_fund,
-                'growth_pct':    growth_pct,
-                'in_position':   in_pos,
-                'entry_price':   op.get('buy_price'),
-                'entry_time':    op.get('buy_time'),
-                'entry_tf':      op.get('timeframe'),
-                'live_price':    live_price,
+                'total_trades':   s['total_trades'],
+                'wins':           s['wins'],
+                'losses':         s['total_trades'] - s['wins'],
+                'win_rate':       round(s['wins'] / s['total_trades'] * 100, 1) if s['total_trades'] else 0,
+                'total_pnl':      s['total_pnl'],
+                'total_fees':     round(coin_fees, 4),
+                'initial_fund':   initial,
+                'current_fund':   display_fund,
+                'growth_pct':     growth_pct,
+                'in_position':    in_pos,
+                'entry_price':    op.get('buy_price'),
+                'entry_time':     op.get('buy_time'),
+                'entry_tf':       op.get('timeframe'),
+                'pending_buy_fee': round(op.get('buy_fee', 0.0), 4) if in_pos else None,
+                'live_price':     live_price,
                 'unrealized_pnl': unrealized_pnl,
                 'unrealized_pct': unrealized_pct,
             }
         return {
-            'total_pnl': total_pnl, 'total_trades': total_trades,
+            'total_pnl': total_pnl, 'total_fees': total_fees,
+            'total_trades': total_trades,
             'win_rate':  win_rate,  'by_coin': by_coin,
             'recent_trades': list(reversed(_vt_trades[-50:])),
         }

@@ -1012,9 +1012,14 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
         <div style="font-size:8px;color:rgba(48,144,255,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Trades</div>
         <div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--blue);" id="vtTotalTrades">—</div>
       </div>
-      <div style="flex:1;min-width:80px;padding:0 0 0 16px;">
+      <div style="flex:1;min-width:80px;padding:0 16px;border-right:1px solid rgba(255,255,255,0.06);">
         <div style="font-size:8px;color:rgba(160,96,255,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Win Rate</div>
         <div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--purple);" id="vtWinRate">—</div>
+      </div>
+      <div style="flex:1;min-width:90px;padding:0 0 0 16px;">
+        <div style="font-size:8px;color:rgba(255,48,96,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Fees Paid</div>
+        <div style="font-family:var(--mono);font-size:18px;font-weight:800;color:var(--red);" id="vtTotalFees">—</div>
+        <div style="font-size:8px;color:rgba(255,255,255,0.2);margin-top:2px;font-family:var(--mono);">0.07% taker/side</div>
       </div>
       <div style="margin-left:auto;font-size:8px;color:var(--muted);font-family:var(--mono);letter-spacing:1px;text-align:right;padding-left:12px;">
         BUY→SELL cycle assumed<br><span style="color:rgba(13,255,140,0.4);">compounding on</span>
@@ -2113,6 +2118,11 @@ async function refreshVirtualTracker() {
     }
     pnlEl.dataset.prev = totalPnl;
 
+    // Total fees
+    const totalFees = d.total_fees || 0;
+    const feesEl = document.getElementById('vtTotalFees');
+    if (feesEl) feesEl.textContent = '-' + totalFees.toFixed(4) + ' USDC';
+
     document.getElementById('vtTotalTrades').textContent = d.total_trades || 0;
     const wr = d.win_rate || 0;
     const wrEl = document.getElementById('vtWinRate');
@@ -2204,10 +2214,16 @@ async function refreshVirtualTracker() {
         </div>
 
         <!-- Trades W/L row -->
-        <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--mono);padding:5px 8px;background:rgba(255,255,255,0.02);border-radius:6px;margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--mono);padding:5px 8px;background:rgba(255,255,255,0.02);border-radius:6px;margin-bottom:6px;">
           <span style="color:var(--muted);">${info.total_trades||0} TRADES</span>
           <span style="color:var(--green);">✓ ${info.wins||0} W</span>
           <span style="color:var(--red);">✗ ${info.losses||0} L</span>
+        </div>
+
+        <!-- Fees row -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:rgba(255,48,96,0.05);border:1px solid rgba(255,48,96,0.1);border-radius:6px;margin-bottom:8px;">
+          <span style="font-size:8px;color:rgba(255,48,96,0.55);letter-spacing:1.5px;font-family:var(--mono);">FEES PAID</span>
+          <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:rgba(255,96,96,0.8);">-${(info.total_fees||0).toFixed(4)} USDC</span>
         </div>
 
         ${inPosHtml}
