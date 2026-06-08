@@ -1103,6 +1103,20 @@ class AsyncEngine:
                     capital=_coin_capital
                 )
 
+            # Virtual tracker sell — signal based, independent of real holdings
+            # Fires when: sell signal on same TF as entry, or ATR SL hit
+            vt_pos = _vt_fund.get(symbol, {})
+            if vt_pos.get('buy_price'):
+                vt_entry    = vt_pos['buy_price']
+                vt_tf       = vt_pos.get('timeframe', best_tf)
+                vt_tf_sig   = (mtf.get('tf_results') or {}).get(vt_tf, {}).get('signal', 'neutral')
+                vt_atr      = (mtf.get('tf_results') or {}).get(vt_tf, {}).get('atr', 0.0)
+                vt_sl_price = vt_entry * 0.97 if not vt_atr else vt_entry - (2 * vt_atr)
+                if vt_tf_sig == 'sell' or price <= vt_sl_price:
+                    reason = 'signal_sell' if vt_tf_sig == 'sell' else 'atr_sl'
+                    _record_sell_signal(symbol, price)
+                    logger.info(f"[VT] SELL {symbol} @ {price:.4f} | reason={reason}")
+
             if has_holding:
                 holding   = self.bot.holdings[symbol]
                 entries   = holding['entries']
