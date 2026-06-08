@@ -1183,7 +1183,7 @@ class AsyncEngine:
                     vt_exit_reason = f'SL {VT_SL_PCT}%'
                 elif price >= tp_price:
                     vt_exit_reason = f'TP {VT_TP_PCT}%'
-                elif price <= trail_price and peak_price > entry_price * 1.002:
+                elif price <= trail_price:
                     vt_exit_reason = f'Trail {VT_TRAIL_PCT}%'
                 else:
                     # No price-based exit — check signal on locked TF
@@ -1231,7 +1231,7 @@ class AsyncEngine:
                     return
 
                 # 3. Trailing Stop — only fires if price moved up at least 0.2% from entry
-                if price <= trail_price and peak > avg_entry * 1.002:
+                if price <= trail_price:
                     await self._run_order(self.bot._execute_sell, symbol, price, f'trail_{VT_TRAIL_PCT}pct')
                     return
 
