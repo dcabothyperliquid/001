@@ -896,6 +896,8 @@ def _vt_get_summary():
                 'vt_tp_price':    round(op.get('entry_price', op.get('buy_price', 0)) * (1 + VT_TP_PCT / 100), 6) if in_pos else None,
                 'vt_trail_price': round(op.get('peak_price', op.get('buy_price', 0)) * (1 - VT_TRAIL_PCT / 100), 6) if in_pos else None,
                 'vt_peak_price':  op.get('peak_price') if in_pos else None,
+                'buy_usd':        round(op.get('fund', 0.0), 4) if in_pos else None,
+                'buy_qty':        round(op.get('amount', 0.0), 6) if in_pos else None,
             }
         return {
             'total_pnl': total_pnl, 'total_fees': total_fees,
