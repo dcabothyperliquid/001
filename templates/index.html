@@ -970,21 +970,21 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
       </div>
     </div>
     <!-- Overall summary bar -->
-    <div class="panel" style="padding:12px 16px;margin-bottom:10px;display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
-      <div style="display:flex;flex-direction:column;gap:2px;">
-        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">TOTAL P&amp;L</div>
-        <div style="font-family:var(--mono);font-size:20px;font-weight:700;" id="vtTotalPnl">—</div>
+    <div style="margin-bottom:10px;padding:14px 18px;border-radius:12px;background:linear-gradient(135deg,rgba(13,240,224,0.06) 0%,rgba(48,144,255,0.06) 50%,rgba(160,96,255,0.06) 100%);border:1px solid rgba(13,240,224,0.12);display:flex;align-items:center;gap:0;flex-wrap:wrap;">
+      <div style="flex:1;min-width:90px;padding:0 16px 0 0;border-right:1px solid rgba(255,255,255,0.06);">
+        <div style="font-size:8px;color:rgba(13,240,224,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Total P&amp;L</div>
+        <div style="font-family:var(--mono);font-size:22px;font-weight:800;letter-spacing:-0.5px;" id="vtTotalPnl">—</div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:2px;">
-        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">TRADES</div>
-        <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--fg);" id="vtTotalTrades">—</div>
+      <div style="flex:1;min-width:70px;padding:0 16px;border-right:1px solid rgba(255,255,255,0.06);">
+        <div style="font-size:8px;color:rgba(48,144,255,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Trades</div>
+        <div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--blue);" id="vtTotalTrades">—</div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:2px;">
-        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">WIN RATE</div>
-        <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--cyan);" id="vtWinRate">—</div>
+      <div style="flex:1;min-width:80px;padding:0 0 0 16px;">
+        <div style="font-size:8px;color:rgba(160,96,255,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Win Rate</div>
+        <div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--purple);" id="vtWinRate">—</div>
       </div>
-      <div style="margin-left:auto;font-size:9px;color:var(--muted);font-family:var(--mono);letter-spacing:1px;text-align:right;">
-        BUY→SELL cycle assumed<br>at signal price · compounding on
+      <div style="margin-left:auto;font-size:8px;color:var(--muted);font-family:var(--mono);letter-spacing:1px;text-align:right;padding-left:12px;">
+        BUY→SELL cycle assumed<br><span style="color:rgba(13,255,140,0.4);">compounding on</span>
       </div>
     </div>
     <!-- Per-coin cards -->
@@ -2111,61 +2111,68 @@ async function refreshVirtualTracker() {
       const fmtPrice  = p => p > 1 ? p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4}) : p?.toFixed(6) ?? '—';
 
       const inPosHtml = info.in_position && info.entry_price
-        ? `<div style="margin-top:8px;padding:9px 11px;background:rgba(255,184,0,0.07);border:1px solid rgba(255,184,0,0.25);border-radius:8px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-              <span style="font-size:8px;color:var(--amber);letter-spacing:1.5px;font-weight:700;">● IN POSITION</span>
-              ${info.entry_tf ? `<span style="font-size:8px;color:var(--muted);letter-spacing:1px;">${info.entry_tf} · ${info.entry_time||''}</span>` : ''}
+        ? `<div style="margin-top:4px;padding:10px 12px;background:linear-gradient(135deg,rgba(255,184,0,0.08) 0%,rgba(255,120,0,0.04) 100%);border:1px solid rgba(255,184,0,0.2);border-radius:10px;position:relative;overflow:hidden;">
+            <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,rgba(255,184,0,0.5),transparent);"></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <span style="font-size:8px;color:var(--amber);letter-spacing:2px;font-weight:800;">⬤ IN POSITION</span>
+              ${info.entry_tf ? `<span style="font-size:8px;color:rgba(255,184,0,0.45);font-family:var(--mono);">${info.entry_tf} · ${info.entry_time||''}</span>` : ''}
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
-              <div style="background:rgba(0,0,0,0.15);border-radius:5px;padding:6px 8px;">
-                <div style="font-size:7px;color:var(--muted);letter-spacing:1px;margin-bottom:2px;">ENTRY</div>
-                <div style="font-family:var(--mono);font-size:12px;color:var(--fg);font-weight:600;">$${fmtPrice(info.entry_price)}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+              <div style="border-radius:7px;padding:7px 9px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.05);">
+                <div style="font-size:7px;color:rgba(255,255,255,0.3);letter-spacing:1.5px;margin-bottom:3px;">ENTRY</div>
+                <div style="font-family:var(--mono);font-size:12px;color:#e8d5a0;font-weight:700;">$${fmtPrice(info.entry_price)}</div>
               </div>
-              <div style="background:rgba(0,0,0,0.15);border-radius:5px;padding:6px 8px;">
-                <div style="font-size:7px;color:var(--muted);letter-spacing:1px;margin-bottom:2px;">CURRENT</div>
-                <div id="vtLivePrice_${sym}" style="font-family:var(--mono);font-size:12px;color:var(--fg);font-weight:600;">${livePrice !== null ? '$'+fmtPrice(livePrice) : '...'}</div>
+              <div style="border-radius:7px;padding:7px 9px;background:rgba(0,0,0,0.25);border:1px solid rgba(13,240,224,0.1);">
+                <div style="font-size:7px;color:rgba(13,240,224,0.45);letter-spacing:1.5px;margin-bottom:3px;">CURRENT</div>
+                <div id="vtLivePrice_${sym}" style="font-family:var(--mono);font-size:12px;color:var(--cyan);font-weight:700;">${livePrice !== null ? '$'+fmtPrice(livePrice) : '...'}</div>
               </div>
             </div>
-            <div style="background:rgba(0,0,0,0.2);border-radius:5px;padding:7px 10px;text-align:center;">
-              <div style="font-size:7px;color:var(--muted);letter-spacing:1px;margin-bottom:3px;">UNREALIZED P&L</div>
-              <div id="vtLivePnl_${sym}" style="font-family:var(--mono);font-size:16px;font-weight:800;color:${upnlColor};letter-spacing:0.5px;transition:color 0.3s;">
+            <div style="border-radius:8px;padding:9px 12px;text-align:center;background:${upnl===null?'rgba(0,0,0,0.2)':upnl>=0?'rgba(13,255,140,0.07)':'rgba(255,48,96,0.07)'};border:1px solid ${upnl===null?'rgba(255,255,255,0.05)':upnl>=0?'rgba(13,255,140,0.2)':'rgba(255,48,96,0.2)'};">
+              <div style="font-size:7px;color:${upnlColor};opacity:0.55;letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Unrealized P&L</div>
+              <div id="vtLivePnl_${sym}" style="font-family:var(--mono);font-size:18px;font-weight:900;color:${upnlColor};letter-spacing:0px;transition:color 0.3s;">
                 ${upnl !== null ? upnlSign+upnl.toFixed(4)+' USDC' : '...'}
               </div>
-              <div id="vtLivePct_${sym}" style="font-family:var(--mono);font-size:10px;color:${upnlColor};margin-top:2px;">
+              <div id="vtLivePct_${sym}" style="font-family:var(--mono);font-size:11px;color:${upnlColor};opacity:0.75;margin-top:3px;font-weight:600;">
                 ${upnlPct !== null ? (upnlPct>=0?'+':'')+upnlPct.toFixed(3)+'%' : ''}
               </div>
             </div>
           </div>`
-        : `<div style="margin-top:8px;padding:5px 10px;background:rgba(255,255,255,0.02);border-radius:6px;font-size:9px;color:var(--muted);letter-spacing:1px;">● WAITING FOR SIGNAL</div>`;
+        : `<div style="margin-top:4px;padding:7px 12px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.05);border-radius:8px;font-size:9px;color:var(--muted);letter-spacing:1.5px;font-family:var(--mono);">⬤ WAITING FOR SIGNAL</div>`;
 
       return `
-      <div class="panel" style="padding:14px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--fg);">${sym}</span>
-          <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${pnlColor};">${pnlSign}${pnl.toFixed(4)}</span>
+      <div style="border-radius:12px;padding:14px;background:linear-gradient(145deg,rgba(255,255,255,0.04) 0%,rgba(255,255,255,0.01) 100%);border:1px solid rgba(255,255,255,0.07);position:relative;overflow:hidden;">
+        <!-- subtle top accent line -->
+        <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,${pnlColor},transparent);opacity:0.6;border-radius:12px 12px 0 0;"></div>
+
+        <!-- Header: coin name + total P&L -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-top:2px;">
+          <span style="font-family:var(--mono);font-size:15px;font-weight:800;color:var(--fg);letter-spacing:1px;">${sym}</span>
+          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${pnlColor};background:${pnl>=0?'rgba(13,255,140,0.08)':'rgba(255,48,96,0.08)'};padding:3px 8px;border-radius:20px;border:1px solid ${pnl>=0?'rgba(13,255,140,0.2)':'rgba(255,48,96,0.2)'};">${pnlSign}${pnl.toFixed(4)}</span>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px;">
-          <div style="background:rgba(48,144,255,0.08);border:1px solid rgba(48,144,255,0.15);border-radius:6px;padding:8px;">
-            <div style="font-size:8px;color:rgba(48,144,255,0.7);letter-spacing:1px;margin-bottom:3px;">START FUND</div>
-            <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--fg);">$${(info.initial_fund||0).toFixed(2)}</div>
+        <!-- 4 stat boxes -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+          <div style="border-radius:8px;padding:8px 10px;background:rgba(48,144,255,0.07);border:1px solid rgba(48,144,255,0.12);">
+            <div style="font-size:7px;color:rgba(48,144,255,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Start Fund</div>
+            <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:#a8c8ff;">$${(info.initial_fund||0).toFixed(2)}</div>
           </div>
-          <div style="background:rgba(13,240,224,0.07);border:1px solid rgba(13,240,224,0.15);border-radius:6px;padding:8px;">
-            <div style="font-size:8px;color:rgba(13,240,224,0.7);letter-spacing:1px;margin-bottom:3px;">NOW</div>
-            <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:${growthColor};">$${(info.current_fund||0).toFixed(4)}</div>
+          <div style="border-radius:8px;padding:8px 10px;background:rgba(13,240,224,0.06);border:1px solid rgba(13,240,224,0.12);">
+            <div style="font-size:7px;color:rgba(13,240,224,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Now</div>
+            <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${growthColor};">$${(info.current_fund||0).toFixed(4)}</div>
           </div>
-          <div style="background:${(info.growth_pct||0)>=0?'rgba(13,255,140,0.07)':'rgba(255,48,96,0.07)'};border:1px solid ${(info.growth_pct||0)>=0?'rgba(13,255,140,0.18)':'rgba(255,48,96,0.18)'};border-radius:6px;padding:8px;">
-            <div style="font-size:8px;color:${growthColor};opacity:0.75;letter-spacing:1px;margin-bottom:3px;">GROWTH</div>
-            <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:${growthColor};">${growthSign}${(info.growth_pct||0).toFixed(2)}%</div>
+          <div style="border-radius:8px;padding:8px 10px;background:${(info.growth_pct||0)>=0?'rgba(13,255,140,0.06)':'rgba(255,48,96,0.06)'};border:1px solid ${(info.growth_pct||0)>=0?'rgba(13,255,140,0.15)':'rgba(255,48,96,0.15)'};">
+            <div style="font-size:7px;letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;color:${growthColor};opacity:0.65;">Growth</div>
+            <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${growthColor};">${growthSign}${(info.growth_pct||0).toFixed(2)}%</div>
           </div>
-          <div style="background:rgba(160,96,255,0.08);border:1px solid rgba(160,96,255,0.18);border-radius:6px;padding:8px;">
-            <div style="font-size:8px;color:rgba(160,96,255,0.75);letter-spacing:1px;margin-bottom:3px;">WIN RATE</div>
-            <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:${wrColor};">${(info.win_rate||0).toFixed(0)}%</div>
+          <div style="border-radius:8px;padding:8px 10px;background:rgba(160,96,255,0.07);border:1px solid rgba(160,96,255,0.14);">
+            <div style="font-size:7px;color:rgba(160,96,255,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Win Rate</div>
+            <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${wrColor};">${(info.win_rate||0).toFixed(0)}%</div>
           </div>
         </div>
 
-        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);font-family:var(--mono);padding:0 2px;margin-bottom:2px;">
-          <span>${info.total_trades||0} trades</span>
+        <!-- Trades W/L row -->
+        <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--mono);padding:5px 8px;background:rgba(255,255,255,0.02);border-radius:6px;margin-bottom:8px;">
+          <span style="color:var(--muted);">${info.total_trades||0} TRADES</span>
           <span style="color:var(--green);">✓ ${info.wins||0} W</span>
           <span style="color:var(--red);">✗ ${info.losses||0} L</span>
         </div>
