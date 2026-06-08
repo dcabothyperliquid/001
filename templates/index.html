@@ -2166,41 +2166,41 @@ async function refreshVirtualTracker() {
               ${info.entry_tf ? `<span style="font-size:8px;color:rgba(255,184,0,0.45);font-family:var(--mono);">${info.entry_tf} · ${info.entry_time||''}</span>` : ''}
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
-              <div style="border-radius:7px;padding:7px 9px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.05);">
-                <div style="font-size:7px;color:rgba(255,255,255,0.3);letter-spacing:1.5px;margin-bottom:3px;">ENTRY</div>
-                <div style="font-family:var(--mono);font-size:12px;color:#e8d5a0;font-weight:700;">$${fmtPrice(info.entry_price)}</div>
+              <div style="border-radius:7px;padding:7px 9px;background:rgba(255,220,100,0.1);border:1px solid rgba(255,200,80,0.35);">
+                <div style="font-size:7px;color:#c8a040;letter-spacing:1.5px;margin-bottom:3px;font-weight:700;">ENTRY</div>
+                <div style="font-family:var(--mono);font-size:12px;color:#ffe080;font-weight:800;">$${fmtPrice(info.entry_price)}</div>
               </div>
-              <div style="border-radius:7px;padding:7px 9px;background:rgba(0,0,0,0.25);border:1px solid rgba(13,240,224,0.1);">
-                <div style="font-size:7px;color:rgba(13,240,224,0.45);letter-spacing:1.5px;margin-bottom:3px;">CURRENT</div>
+              <div style="border-radius:7px;padding:7px 9px;background:rgba(13,240,224,0.1);border:1px solid rgba(13,240,224,0.4);">
+                <div style="font-size:7px;color:#0df0e0;letter-spacing:1.5px;margin-bottom:3px;font-weight:700;">CURRENT</div>
                 <div id="vtLivePrice_${sym}" style="font-family:var(--mono);font-size:12px;color:var(--cyan);font-weight:700;">${livePrice !== null ? '$'+fmtPrice(livePrice) : '...'}</div>
               </div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:6px;">
-              <div style="border-radius:7px;padding:6px 8px;background:rgba(255,48,96,0.08);border:1px solid rgba(255,48,96,0.2);">
-                <div style="font-size:6.5px;color:rgba(255,48,96,0.6);letter-spacing:1.2px;margin-bottom:2px;">SL</div>
-                <div style="font-family:var(--mono);font-size:10px;color:#ff6080;font-weight:700;">${slPrice !== null ? '$'+fmtPrice(slPrice) : '—'}</div>
+              <div style="border-radius:7px;padding:6px 8px;background:rgba(255,48,96,0.15);border:1px solid rgba(255,48,96,0.5);">
+                <div style="font-size:6.5px;color:#ff3060;letter-spacing:1.2px;margin-bottom:2px;font-weight:700;">SL</div>
+                <div style="font-family:var(--mono);font-size:10px;color:#ff4070;font-weight:800;">${slPrice !== null ? '$'+fmtPrice(slPrice) : '—'}</div>
               </div>
-              <div style="border-radius:7px;padding:6px 8px;background:rgba(13,255,140,0.07);border:1px solid rgba(13,255,140,0.2);">
-                <div style="font-size:6.5px;color:rgba(13,255,140,0.55);letter-spacing:1.2px;margin-bottom:2px;">TP</div>
-                <div style="font-family:var(--mono);font-size:10px;color:#0dff8c;font-weight:700;">${tpPrice !== null ? '$'+fmtPrice(tpPrice) : '—'}</div>
+              <div style="border-radius:7px;padding:6px 8px;background:rgba(13,255,140,0.13);border:1px solid rgba(13,255,140,0.5);">
+                <div style="font-size:6.5px;color:#00cc70;letter-spacing:1.2px;margin-bottom:2px;font-weight:700;">TP</div>
+                <div style="font-family:var(--mono);font-size:10px;color:#0dff8c;font-weight:800;">${tpPrice !== null ? '$'+fmtPrice(tpPrice) : '—'}</div>
               </div>
-              <div style="border-radius:7px;padding:6px 8px;background:rgba(255,184,0,0.07);border:1px solid rgba(255,184,0,0.2);">
-                <div style="font-size:6.5px;color:rgba(255,184,0,0.55);letter-spacing:1.2px;margin-bottom:2px;">TRAIL</div>
-                <div style="font-family:var(--mono);font-size:10px;color:#ffb800;font-weight:700;">${trailPrice !== null ? '$'+fmtPrice(trailPrice) : '—'}</div>
+              <div style="border-radius:7px;padding:6px 8px;background:rgba(255,184,0,0.13);border:1px solid rgba(255,184,0,0.5);">
+                <div style="font-size:6.5px;color:#e09000;letter-spacing:1.2px;margin-bottom:2px;font-weight:700;">TRAIL</div>
+                <div style="font-family:var(--mono);font-size:10px;color:#ffb800;font-weight:800;">${trailPrice !== null ? '$'+fmtPrice(trailPrice) : '—'}</div>
               </div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
-              <div style="border-radius:7px;padding:7px 9px;background:rgba(48,144,255,0.07);border:1px solid rgba(48,144,255,0.15);">
-                <div style="font-size:6.5px;color:rgba(48,144,255,0.6);letter-spacing:1.2px;margin-bottom:2px;">BUY USD</div>
-                <div style="font-family:var(--mono);font-size:12px;color:#a8c8ff;font-weight:700;">${info.buy_usd !== null && info.buy_usd !== undefined ? '$'+info.buy_usd.toFixed(4) : '—'}</div>
+              <div style="border-radius:7px;padding:7px 9px;background:rgba(48,144,255,0.13);border:1px solid rgba(48,144,255,0.5);">
+                <div style="font-size:6.5px;color:#5090ff;letter-spacing:1.2px;margin-bottom:2px;font-weight:700;">BUY USD</div>
+                <div style="font-family:var(--mono);font-size:12px;color:#80b8ff;font-weight:800;">${info.buy_usd !== null && info.buy_usd !== undefined ? '$'+info.buy_usd.toFixed(4) : '—'}</div>
               </div>
-              <div style="border-radius:7px;padding:7px 9px;background:rgba(160,96,255,0.07);border:1px solid rgba(160,96,255,0.15);">
-                <div style="font-size:6.5px;color:rgba(160,96,255,0.6);letter-spacing:1.2px;margin-bottom:2px;">QTY (${sym})</div>
-                <div style="font-family:var(--mono);font-size:12px;color:#c8a8ff;font-weight:700;">${info.buy_qty !== null && info.buy_qty !== undefined ? info.buy_qty.toFixed(6) : '—'}</div>
+              <div style="border-radius:7px;padding:7px 9px;background:rgba(160,96,255,0.13);border:1px solid rgba(160,96,255,0.5);">
+                <div style="font-size:6.5px;color:#a060ff;letter-spacing:1.2px;margin-bottom:2px;font-weight:700;">QTY (${sym})</div>
+                <div style="font-family:var(--mono);font-size:12px;color:#c090ff;font-weight:800;">${info.buy_qty !== null && info.buy_qty !== undefined ? info.buy_qty.toFixed(6) : '—'}</div>
               </div>
             </div>
             <div style="border-radius:8px;padding:9px 12px;text-align:center;background:${upnl===null?'rgba(0,0,0,0.2)':upnl>=0?'rgba(13,255,140,0.07)':'rgba(255,48,96,0.07)'};border:1px solid ${upnl===null?'rgba(255,255,255,0.05)':upnl>=0?'rgba(13,255,140,0.2)':'rgba(255,48,96,0.2)'};">
-              <div style="font-size:7px;color:${upnlColor};opacity:0.55;letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Unrealized P&L</div>
+              <div style="font-size:7px;color:${upnlColor};opacity:0.85;letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;font-weight:700;">Unrealized P&L</div>
               <div id="vtLivePnl_${sym}" style="font-family:var(--mono);font-size:18px;font-weight:900;color:${upnlColor};letter-spacing:0px;transition:color 0.3s;">
                 ${upnl !== null ? upnlSign+upnl.toFixed(4)+' USDC' : '...'}
               </div>
