@@ -767,11 +767,12 @@ def _vt_on_buy(symbol, price, timeframe, initial_fund=None):
                 'total_trades': 0, 'wins': 0, 'total_pnl': 0.0,
                 'fund': fund, 'initial_fund': fund
             }
+        import time as _vt_t
         amount = round(fund / price, 8)
         _vt_fund[symbol] = {
             'fund': fund, 'buy_price': price, 'amount': amount,
             'buy_time': __import__('datetime').datetime.now().strftime('%H:%M:%S'),
-            'timeframe': timeframe,
+            'timeframe': timeframe, 'entry_ts': _vt_t.time(),
         }
     # Persist after buy
     __import__('threading').Thread(target=_vt_persist, daemon=True).start()
@@ -1104,18 +1105,27 @@ class AsyncEngine:
                 )
 
             # Virtual tracker sell — signal based, independent of real holdings
-            # Fires when: sell signal on same TF as entry, or ATR SL hit
             vt_pos = _vt_fund.get(symbol, {})
             if vt_pos.get('buy_price'):
+                import time as _vt_time
                 vt_entry    = vt_pos['buy_price']
                 vt_tf       = vt_pos.get('timeframe', best_tf)
-                vt_tf_sig   = (mtf.get('tf_results') or {}).get(vt_tf, {}).get('signal', 'neutral')
-                vt_atr      = (mtf.get('tf_results') or {}).get(vt_tf, {}).get('atr', 0.0)
-                vt_sl_price = vt_entry * 0.97 if not vt_atr else vt_entry - (2 * vt_atr)
-                if vt_tf_sig == 'sell' or price <= vt_sl_price:
-                    reason = 'signal_sell' if vt_tf_sig == 'sell' else 'atr_sl'
+                vt_tf_results = mtf.get('tf_results') or {}
+                vt_tf_sig   = vt_tf_results.get(vt_tf, {}).get('signal', 'neutral')
+                vt_atr      = vt_tf_results.get(vt_tf, {}).get('atr', 0.0)
+                vt_sl_price = vt_entry - (2 * vt_atr) if vt_atr > 0 else vt_entry * 0.97
+                vt_entry_ts = vt_pos.get('entry_ts', _vt_time.time())
+                candle_secs = _TF_SECONDS.get(vt_tf, 900)
+                # Exit conditions:
+                # 1. Sell signal on entry TF
+                # 2. ATR stop loss hit
+                # 3. Neutral signal + 3 candles passed (momentum gone)
+                candles_held = (_vt_time.time() - vt_entry_ts) / candle_secs
+                neutral_timeout = vt_tf_sig == 'neutral' and candles_held >= 3
+                if vt_tf_sig == 'sell' or price <= vt_sl_price or neutral_timeout:
+                    reason = 'signal_sell' if vt_tf_sig == 'sell' else ('atr_sl' if price <= vt_sl_price else 'neutral_timeout')
                     _record_sell_signal(symbol, price)
-                    logger.info(f"[VT] SELL {symbol} @ {price:.4f} | reason={reason}")
+                    logger.info(f"[VT] SELL {symbol} @ {price:.4f} | reason={reason} | pnl={((price/vt_entry)-1)*100:.2f}%")
 
             if has_holding:
                 holding   = self.bot.holdings[symbol]
@@ -2080,6 +2090,9 @@ def _load_signals_sb(day_key):
 _signal_store      = {}
 _signal_store_lock = __import__('threading').Lock()
 
+# Candle duration in seconds per timeframe
+_TF_SECONDS = {'15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400}
+
 def _record_buy_signal(symbol, price, timeframe, score, executed=False, capital=None):
     import time as _t
     from datetime import datetime, timezone, timedelta
@@ -2090,9 +2103,18 @@ def _record_buy_signal(symbol, price, timeframe, score, executed=False, capital=
     time_str = (datetime.fromtimestamp(ts, tz=timezone.utc) + IST_OFF).strftime('%H:%M:%S')
     sig = {'symbol': symbol, 'price': price, 'timeframe': timeframe,
            'score': score, 'time': time_str, 'ts': ts, 'executed': executed}
+
+    candle_secs = _TF_SECONDS.get(timeframe, 900)
+
     with _signal_store_lock:
         if key not in _signal_store:
             _signal_store[key] = _load_signals_sb(key)
+        # Dedup: same coin + same TF within same candle window = skip
+        for ex in reversed(_signal_store[key]):
+            if ex['symbol'] == symbol and ex['timeframe'] == timeframe:
+                if abs(ex['ts'] - ts) < candle_secs:
+                    return  # already recorded this candle
+                break  # older signals don't matter
         _signal_store[key].append(sig)
         sigs_copy = list(_signal_store[key])
     # Save in background thread — don't block the bot loop
