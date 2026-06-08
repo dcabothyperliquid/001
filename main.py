@@ -716,6 +716,42 @@ _vt_trades  = []   # completed virtual trade pairs
 _vt_stats   = {}   # symbol -> {total_trades, wins, total_pnl, fund}
 _VT_INITIAL = 10.0 # default starting fund per coin
 
+def _vt_persist():
+    """Save virtual tracker state to Supabase so restarts don't lose data."""
+    if not SUPABASE_OK: return
+    import json as _json
+    try:
+        state = {
+            'vt_stats': _vt_stats,
+            'vt_trades': _vt_trades[-200:],  # keep last 200 trades
+            'vt_fund': _vt_fund,
+            'coin_signal_state': _coin_signal_state,  # persist cycle state too!
+        }
+        _supabase.table('bot_data').upsert({
+            'key': 'virtual_tracker', 'value': _json.dumps(state)
+        }).execute()
+    except Exception as e:
+        print(f"[VT PERSIST ERROR] {e}")
+
+def _vt_load():
+    """Load virtual tracker state from Supabase on startup."""
+    global _vt_stats, _vt_trades, _vt_fund, _coin_signal_state
+    if not SUPABASE_OK: return
+    import json as _json
+    try:
+        res = _supabase.table('bot_data').select('value').eq('key', 'virtual_tracker').execute()
+        if not res.data: return
+        state = _json.loads(res.data[0]['value'])
+        with _vt_lock:
+            _vt_stats.update(state.get('vt_stats', {}))
+            _vt_trades.extend(state.get('vt_trades', []))
+            _vt_fund.update(state.get('vt_fund', {}))
+        with _coin_signal_state_lock:
+            _coin_signal_state.update(state.get('coin_signal_state', {}))
+        print(f"[VT] Loaded state: {list(_vt_stats.keys())} — cycle states: {dict(_coin_signal_state)}")
+    except Exception as e:
+        print(f"[VT LOAD ERROR] {e}")
+
 def _vt_on_buy(symbol, price, timeframe, initial_fund=None):
     """Record virtual BUY at signal price."""
     with _vt_lock:
@@ -736,6 +772,8 @@ def _vt_on_buy(symbol, price, timeframe, initial_fund=None):
             'buy_time': __import__('datetime').datetime.now().strftime('%H:%M:%S'),
             'timeframe': timeframe,
         }
+    # Persist after buy
+    __import__('threading').Thread(target=_vt_persist, daemon=True).start()
 
 def _vt_on_sell(symbol, price):
     """Record virtual SELL at signal price, compound fund."""
@@ -769,6 +807,8 @@ def _vt_on_sell(symbol, price):
         new_fund = max(round(fund_out, 4), round(_initial * 0.1, 4))
         _vt_stats[symbol]['fund'] = new_fund
         _vt_fund[symbol] = {'fund': new_fund, 'buy_price': None, 'amount': 0, 'timeframe': ''}
+    # Persist after sell
+    __import__('threading').Thread(target=_vt_persist, daemon=True).start()
 
 def _vt_get_summary():
     """Returns virtual P&L summary for /api/virtual/summary endpoint."""
@@ -1883,6 +1923,9 @@ if CORS_AVAILABLE: CORS(app)
 client     = HyperliquidClient()
 bot_engine = BotEngine(client)
 
+# Load virtual tracker + cycle state from Supabase on startup
+_vt_load()
+
 # ── Auto-restart bot if it was running before deploy/restart ─────────────────
 def _auto_start():
     """If bot was running before this deploy, restart it automatically."""
@@ -2114,6 +2157,14 @@ def virtual_reset():
         _vt_fund.clear()
         _vt_trades.clear()
         _vt_stats.clear()
+    # Also reset cycle state so next signal is counted fresh
+    with _coin_signal_state_lock:
+        _coin_signal_state.clear()
+    # Clear from Supabase too
+    if SUPABASE_OK:
+        try:
+            _supabase.table('bot_data').delete().eq('key', 'virtual_tracker').execute()
+        except: pass
     return jsonify({'success': True, 'message': 'Virtual tracker reset'})
 
 @app.route('/api/debug/btceth', methods=['GET'])
