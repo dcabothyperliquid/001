@@ -771,7 +771,7 @@ def _vt_on_buy(symbol, price, timeframe, initial_fund=None):
         amount = round(fund / price, 8)
         _vt_fund[symbol] = {
             'fund': fund, 'buy_price': price, 'amount': amount,
-            'buy_time': __import__('datetime').datetime.now().strftime('%H:%M:%S'),
+            'buy_time': (__import__('datetime').datetime.utcnow() + __import__('datetime').timedelta(hours=5, minutes=30)).strftime('%H:%M:%S'),
             'timeframe': timeframe, 'entry_ts': _vt_t.time(),
         }
     # Persist after buy
@@ -792,7 +792,7 @@ def _vt_on_sell(symbol, price):
         trade = {
             'symbol': symbol, 'buy_price': buy_price, 'sell_price': price,
             'buy_time': entry.get('buy_time', ''),
-            'sell_time': __import__('datetime').datetime.now().strftime('%H:%M:%S'),
+            'sell_time': (__import__('datetime').datetime.utcnow() + __import__('datetime').timedelta(hours=5, minutes=30)).strftime('%H:%M:%S'),
             'timeframe': entry.get('timeframe', ''),
             'fund_in': fund_in, 'fund_out': fund_out,
             'pnl_usdt': pnl_usdt, 'pnl_pct': pnl_pct, 'win': pnl_usdt > 0,
