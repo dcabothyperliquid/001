@@ -1208,22 +1208,34 @@ class AsyncEngine:
                 entries   = holding['entries']
                 avg_entry = sum(e['usdt'] for e in entries) / sum(e['amount'] for e in entries)
                 trade_tf  = holding.get('trade_tf', best_tf)  # usi TF pe monitor karo jis pe buy hua
-                atr       = (mtf.get('tf_results') or {}).get(trade_tf, {}).get('atr', 0.0)
 
-                # ATR-based trailing stop — 2x ATR below peak price
+                # Peak price update for trailing stop
                 peak = holding.get('peak_price', avg_entry)
                 if price > peak:
                     holding['peak_price'] = price
                     peak = price
 
-                atr_sl_price = peak - (2 * atr) if atr > 0 else avg_entry * 0.97
+                # Fixed % exits — same as VT logic
+                sl_price    = avg_entry * (1 - VT_SL_PCT   / 100)
+                tp_price    = avg_entry * (1 + VT_TP_PCT   / 100)
+                trail_price = peak     * (1 - VT_TRAIL_PCT / 100)
 
-                # 1. ATR trailing stop loss
-                if price <= atr_sl_price:
-                    await self._run_order(self.bot._execute_sell, symbol, price, f'atr_trailing_sl')
+                # 1. Stop Loss
+                if price <= sl_price:
+                    await self._run_order(self.bot._execute_sell, symbol, price, f'sl_{VT_SL_PCT}pct')
                     return
 
-                # 2. Signal-based sell — same TF pe bearish reversal
+                # 2. Take Profit
+                if price >= tp_price:
+                    await self._run_order(self.bot._execute_sell, symbol, price, f'tp_{VT_TP_PCT}pct')
+                    return
+
+                # 3. Trailing Stop — only fires if price moved up at least 0.2% from entry
+                if price <= trail_price and peak > avg_entry * 1.002:
+                    await self._run_order(self.bot._execute_sell, symbol, price, f'trail_{VT_TRAIL_PCT}pct')
+                    return
+
+                # 4. Signal-based sell — same TF pe bearish reversal
                 tf_sig = (mtf.get('tf_results') or {}).get(trade_tf, {}).get('signal', 'neutral')
                 if tf_sig == 'sell':
                     await self._run_order(self.bot._execute_sell, symbol, price, f'signal_sell_{trade_tf}')
