@@ -1044,12 +1044,12 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
         <table>
           <thead>
             <tr>
-              <th>COIN</th><th>AMOUNT</th><th>BUY USD</th><th>AVG ENTRY</th>
+              <th>COIN</th><th>QTY</th><th>BUY USD</th>
               <th>CURRENT</th><th>P&amp;L</th><th>DCA</th><th>ACTION</th>
             </tr>
           </thead>
           <tbody id="holdingsBody">
-            <tr><td colspan="8" class="empty-state">NO HOLDINGS</td></tr>
+            <tr><td colspan="7" class="empty-state">NO HOLDINGS</td></tr>
           </tbody>
         </table>
       </div>
@@ -1707,13 +1707,12 @@ function renderHoldings(holdings) {
   document.getElementById('s-hold').textContent   = holdings.length;
   document.getElementById('holdCount').textContent = holdings.length + ' POSITIONS';
   const tb = document.getElementById('holdingsBody');
-  if (!holdings.length) { tb.innerHTML = '<tr><td colspan="8" class="empty-state">NO HOLDINGS</td></tr>'; return; }
+  if (!holdings.length) { tb.innerHTML = '<tr><td colspan="7" class="empty-state">NO HOLDINGS</td></tr>'; return; }
   tb.innerHTML = holdings.map(h => `
     <tr>
       <td><strong style="font-size:13px;">${h.symbol}</strong></td>
-      <td>${fn(h.amount)}</td>
+      <td style="color:#c8a8ff;">${fn(h.amount)}</td>
       <td style="color:#a8c8ff;">${h.invested_usdt ? '$'+h.invested_usdt.toFixed(4) : '—'}</td>
-      <td>$${fp(h.avg_entry)}</td>
       <td>$${fp(h.current_price)}</td>
       <td class="${h.pnl_pct >= 0 ? 'td-pnl-up' : 'td-pnl-dn'}">
         ${h.pnl_pct > 0 ? '+' : ''}${h.pnl_pct}%<br>
