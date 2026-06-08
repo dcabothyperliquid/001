@@ -755,8 +755,9 @@ def _vt_load():
 def _vt_on_buy(symbol, price, timeframe, initial_fund=None):
     """Record virtual BUY at signal price."""
     with _vt_lock:
-        if symbol in _vt_fund and _vt_fund[symbol].get('buy_price'):
-            return  # already in position
+        existing = _vt_fund.get(symbol, {})
+        if existing.get('buy_price'):
+            return  # already in virtual position — wait for sell
         # Use compounded fund if available, else use the coin's actual capital
         existing = _vt_stats.get(symbol) or {}
         fund = existing.get('fund', initial_fund or _VT_INITIAL)
@@ -2069,13 +2070,6 @@ def _record_buy_signal(symbol, price, timeframe, score, executed=False, capital=
     import time as _t
     from datetime import datetime, timezone, timedelta
 
-    # ── Cycle guard: only count BUY if last signal was NOT already a BUY ──────
-    last_state = _signal_state_get(symbol)
-    if last_state == 'buy':
-        return  # duplicate — waiting for SELL before next BUY counts
-    _signal_state_set(symbol, 'buy')
-    _vt_on_buy(symbol, price, timeframe, initial_fund=capital)
-
     ts  = _t.time()
     key = _ist_day_key(ts)
     IST_OFF = timedelta(hours=5, minutes=30)
@@ -2091,6 +2085,8 @@ def _record_buy_signal(symbol, price, timeframe, score, executed=False, capital=
     __import__('threading').Thread(
         target=_save_signals_sb, args=(key, sigs_copy), daemon=True
     ).start()
+    # Virtual tracker — has its own cycle guard inside _vt_on_buy
+    _vt_on_buy(symbol, price, timeframe, initial_fund=capital)
 
 def _record_sell_signal(symbol, price=None):
     """Call this when a SELL fires — resets the cycle so next BUY will be counted."""
