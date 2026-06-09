@@ -540,9 +540,9 @@ select option{background:var(--bg2);color:var(--text);}
 
 /* ══ COINS GRID ══════════════════════════════════ */
 .coins-grid{
-  display:flex;
-  flex-direction:column;
-  gap:4px;
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:8px;
 }
 .coin-card{
   background:linear-gradient(145deg,rgba(255,255,255,0.045) 0%,rgba(255,255,255,0.01) 100%);
@@ -1740,55 +1740,63 @@ function renderCoins(coins) {
     const price   = c.price && c.price > 0 ? `$${fp(c.price)}` : '—';
     const label   = c.display_name || c.symbol;
     const sigColor = c.signal === 'buy' ? '#0dff8c' : c.signal === 'sell' ? '#ff3060' : 'rgba(255,255,255,0.25)';
-    const sigDot   = `<span style="width:7px;height:7px;border-radius:50%;background:${sigColor};display:inline-block;flex-shrink:0;box-shadow:0 0 5px ${sigColor};"></span>`;
-
-    // ── STRIP (always visible, 1 line) ──────────────────────────
-    const strip = `
-    <div class="cc-strip" onclick="toggleCoinCard(this)">
-      ${sigDot}
-      <span class="cc-sym" style="font-size:13px;font-weight:700;min-width:44px;">${label}</span>
-      <span class="cc-price" id="px-${c.symbol}" style="flex:1;font-size:11px;color:var(--muted2);">${price}</span>
-      <span class="cc-pnl ${pnlCls}" style="font-size:11px;min-width:46px;text-align:right;">${pnlTxt}</span>
-      ${isHold ? '<span class="badge badge-hold" style="font-size:7px;padding:1px 4px;margin-left:4px;">HOLD</span>' : ''}
-      <span style="font-size:10px;color:var(--muted);margin-left:6px;transition:transform 0.2s;" class="cc-chevron">▾</span>
-    </div>`;
-
-    // ── DETAIL (hidden until expanded) ──────────────────────────
     const isCustom  = c.timeframes && c.timeframes.length > 0;
     const signingTf = c.best_timeframe && c.best_timeframe !== 'N/A' ? c.best_timeframe : null;
-    const detail = `
-    <div class="cc-detail">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:8px 0 6px;">
-        <div class="cc-met"><span class="met-label">RSI</span><span class="met-val" style="color:${rc}">${c.rsi || '—'}</span></div>
-        <div class="cc-met"><span class="met-label">MACD</span><span class="met-val ${c.macd_signal === 'bullish' ? 'c-up' : c.macd_signal === 'bearish' ? 'c-dn' : ''}">${macdIcon(c.macd_signal)}</span></div>
-        <div class="cc-met"><span class="met-label">CAP</span><span class="met-val c-cy">$${c.capital||0}</span></div>
-      </div>
-      <div class="rsi-track" style="height:2px;margin-bottom:8px;"><div class="rsi-fill" style="width:${Math.min(100,c.rsi||0)}%;background:${rc}"></div></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-        ${signalBadge(c.signal)}
-        <div style="display:flex;align-items:center;gap:4px;">
-          ${signingTf ? `<span style="font-size:8px;font-family:var(--mono);font-weight:700;color:${c.signal==='buy'?'#0dff8c':c.signal==='sell'?'#ff3060':'rgba(255,255,255,0.35)'};">▸ ${signingTf}</span>` : ''}
-          ${isCustom ? '<span class="coin-tf-custom-badge">CUSTOM</span>' : '<span class="coin-tf-global-badge">GLOBAL</span>'}
+
+    return `
+    <div class="coin-card ${cardCls}" data-sym="${c.symbol}" style="padding:10px 12px;cursor:default;">
+      <div class="cc-top">
+        <span class="cc-sym">${label}</span>
+        <div class="cc-actions" style="gap:3px;">
+          ${isHold ? `<button class="btn btn-sell" style="font-size:8px;padding:2px 5px;" onclick="manualSell('${c.symbol}')">SELL</button>` : ''}
+          <button class="btn btn-rm" style="font-size:9px;padding:1px 5px;line-height:1.4;" onclick="removeCoin('${c.symbol}')">✕</button>
         </div>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:8px;">
-        ${['5m','15m','30m','1h','2h','4h'].map(tf => {
-          const localCache = _coinTfs[c.symbol];
-          const coinTfs = localCache ? localCache : (c.timeframes && c.timeframes.length ? c.timeframes : _activeTfs);
-          const isOn    = Array.isArray(coinTfs) ? coinTfs.includes(tf) : coinTfs.has(tf);
-          const tfSig   = (c.tf_breakdown || {})[tf] || 'neutral';
-          const sigCls  = isOn && tfSig === 'buy' ? ' signal-buy' : isOn && tfSig === 'sell' ? ' signal-sell' : '';
-          const isBest  = tf === c.best_timeframe;
-          return `<button class="coin-tf-btn${isOn?' active':''}${sigCls}" title="${tf}: ${tfSig}" onclick="event.stopPropagation();toggleCoinTf('${c.symbol}','${tf}',this)" style="${isBest?'outline:1px solid rgba(255,255,255,0.3);outline-offset:1px;':''}">${tf}</button>`;
-        }).join('')}
+      <div class="cc-price-row">
+        <span class="cc-price" id="px-${c.symbol}">${price}</span>
+        <span class="cc-pnl ${pnlCls}">${pnlTxt}</span>
       </div>
-      <div style="display:flex;gap:5px;">
-        ${isHold ? `<button class="btn btn-sell" style="font-size:9px;padding:3px 8px;" onclick="event.stopPropagation();manualSell('${c.symbol}')">SELL</button>` : ''}
-        <button class="btn btn-rm" style="font-size:9px;padding:3px 8px;" onclick="event.stopPropagation();removeCoin('${c.symbol}')">✕ REMOVE</button>
+      <div class="cc-metrics">
+        <div class="cc-met">
+          <span class="met-label">RSI</span>
+          <span class="met-val" style="color:${rc}">${c.rsi || '—'}</span>
+        </div>
+        <div class="cc-met">
+          <span class="met-label">MACD</span>
+          <span class="met-val ${c.macd_signal === 'bullish' ? 'c-up' : c.macd_signal === 'bearish' ? 'c-dn' : ''}">${macdIcon(c.macd_signal)}</span>
+        </div>
+        <div class="cc-met">
+          <span class="met-label">CAP</span>
+          <span class="met-val c-cy">$${c.capital||0}</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
+        ${signalBadge(c.signal)}
+        ${isHold ? '<span class="badge badge-hold" style="font-size:7px;padding:1px 4px;">HOLD</span>' : ''}
+      </div>
+      <div class="rsi-track" style="height:2px;"><div class="rsi-fill" style="width:${Math.min(100,c.rsi||0)}%;background:${rc}"></div></div>
+      <div style="margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,0.06);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+          <span style="font-size:8px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,0.3);font-family:var(--mono);">TIMEFRAMES</span>
+          <div style="display:flex;align-items:center;gap:4px;">
+            ${signingTf ? `<span style="font-size:8px;font-family:var(--mono);font-weight:700;color:${c.signal==='buy'?'#0dff8c':c.signal==='sell'?'#ff3060':'rgba(255,255,255,0.35)'};">▸ ${signingTf}</span>` : ''}
+            ${isCustom ? '<span class="coin-tf-custom-badge">CUSTOM</span>' : '<span class="coin-tf-global-badge">GLOBAL</span>'}
+          </div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:3px;">
+          ${['5m','15m','30m','1h','2h','4h'].map(tf => {
+            const localCache = _coinTfs[c.symbol];
+            const coinTfs = localCache ? localCache
+                          : (c.timeframes && c.timeframes.length ? c.timeframes : _activeTfs);
+            const isOn    = Array.isArray(coinTfs) ? coinTfs.includes(tf) : coinTfs.has(tf);
+            const tfSig   = (c.tf_breakdown || {})[tf] || 'neutral';
+            const sigCls  = isOn && tfSig === 'buy' ? ' signal-buy' : isOn && tfSig === 'sell' ? ' signal-sell' : '';
+            const isBest  = tf === c.best_timeframe;
+            return `<button class="coin-tf-btn${isOn?' active':''}${sigCls}" title="${tf}: ${tfSig}" onclick="toggleCoinTf('${c.symbol}','${tf}',this)" style="${isBest?'outline:1px solid rgba(255,255,255,0.3);outline-offset:1px;':''}">${tf}</button>`;
+          }).join('')}
+        </div>
       </div>
     </div>`;
-
-    return `<div class="coin-card ${cardCls}" data-sym="${c.symbol}">${strip}${detail}</div>`;
   }).join('');
 }
 
