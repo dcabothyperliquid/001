@@ -77,8 +77,8 @@ except ImportError:
 MAINNET_URL     = "https://api.hyperliquid.xyz"
 WS_URL          = "wss://api.hyperliquid.xyz/ws"
 DATA_FILE       = "bot_data.json"
-SCAN_TIMEFRAMES = ['15m', '30m', '1h', '2h', '4h']
-ALL_TIMEFRAMES  = ['1m','3m','5m','15m','30m','1h','2h','4h','8h','12h','1d']
+SCAN_TIMEFRAMES = ['5m', '15m', '30m', '1h', '2h', '4h']
+ALL_TIMEFRAMES  = ['5m','15m','30m','1h','2h','4h']
 _enabled_tfs      = set(SCAN_TIMEFRAMES)   # mutable — UI se toggle hoga
 _enabled_tfs_lock = threading.Lock()
 
@@ -1820,7 +1820,7 @@ class BotEngine:
         active      = coin_tfs if (coin_tfs and len(coin_tfs) > 0) else get_active_tfs()
 
         # Higher TF = more reliable signal → scan in DESCENDING order (1d first, 1m last)
-        TF_PRIORITY = ['1d','12h','8h','4h','2h','1h','30m','15m','5m','3m','1m']
+        TF_PRIORITY = ['4h','2h','1h','30m','15m','5m']
         active_sorted = [tf for tf in TF_PRIORITY if tf in active]
         # Any TF not in priority list goes at end (shouldn't happen but safety)
         active_sorted += [tf for tf in active if tf not in TF_PRIORITY]
