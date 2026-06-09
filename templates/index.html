@@ -1072,7 +1072,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
       </div>
     </div>
     <!-- Per-coin cards -->
-    <div id="vtCoinCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;">
+    <div id="vtCoinCards" style="display:flex;flex-direction:column;gap:4px;">
       <div class="panel empty-state" style="padding:24px;text-align:center;color:var(--muted);font-size:10px;letter-spacing:1px;grid-column:1/-1;">
         WAITING FOR FIRST BUY SIGNAL...
       </div>
@@ -1643,6 +1643,21 @@ function toggleCoinCard(stripEl) {
   const isOpen = card.classList.contains('expanded');
   // Close all others
   document.querySelectorAll('.coin-card.expanded').forEach(c => {
+    c.classList.remove('expanded');
+    const ch = c.querySelector('.cc-chevron');
+    if (ch) ch.style.transform = '';
+  });
+  if (!isOpen) {
+    card.classList.add('expanded');
+    if (chevron) chevron.style.transform = 'rotate(180deg)';
+  }
+}
+function toggleVtCard(stripEl) {
+  const card = stripEl.closest('.coin-card');
+  const chevron = stripEl.querySelector('.cc-chevron');
+  const isOpen = card.classList.contains('expanded');
+  // Close all VT others
+  document.querySelectorAll('#vtCoinCards .coin-card.expanded').forEach(c => {
     c.classList.remove('expanded');
     const ch = c.querySelector('.cc-chevron');
     if (ch) ch.style.transform = '';
@@ -2288,17 +2303,24 @@ async function refreshVirtualTracker() {
           </div>`
         : `<div style="margin-top:4px;padding:7px 12px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.05);border-radius:8px;font-size:9px;color:var(--muted);letter-spacing:1.5px;font-family:var(--mono);">⬤ WAITING FOR SIGNAL</div>`;
 
-      return `
-      <div style="border-radius:12px;padding:14px;background:linear-gradient(145deg,rgba(255,255,255,0.04) 0%,rgba(255,255,255,0.01) 100%);border:1px solid rgba(255,255,255,0.07);position:relative;overflow:hidden;">
-        <!-- subtle top accent line -->
-        <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,${pnlColor},transparent);opacity:0.6;border-radius:12px 12px 0 0;"></div>
+      // ── VT STRIP (always visible) ──────────────────────────────
+      const inPosDot = info.in_position
+        ? `<span style="width:6px;height:6px;border-radius:50%;background:var(--amber);display:inline-block;flex-shrink:0;box-shadow:0 0 5px var(--amber);"></span>`
+        : `<span style="width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.15);display:inline-block;flex-shrink:0;"></span>`;
 
-        <!-- Header: coin name + total P&L -->
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-top:2px;">
-          <span style="font-family:var(--mono);font-size:15px;font-weight:800;color:var(--fg);letter-spacing:1px;">${sym}</span>
-          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${pnlColor};background:${pnl>=0?'rgba(13,255,140,0.08)':'rgba(255,48,96,0.08)'};padding:3px 8px;border-radius:20px;border:1px solid ${pnl>=0?'rgba(13,255,140,0.2)':'rgba(255,48,96,0.2)'};">${pnlSign}${pnl.toFixed(4)}</span>
-        </div>
+      const vtStrip = `
+      <div class="cc-strip" onclick="toggleVtCard(this)" style="position:relative;">
+        <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,${pnlColor},transparent);opacity:0.5;border-radius:10px 10px 0 0;"></div>
+        ${inPosDot}
+        <span style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--fg);letter-spacing:0.5px;min-width:52px;">${sym}</span>
+        <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pnlColor};flex:1;">${pnlSign}${pnl.toFixed(4)}</span>
+        <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${growthColor};margin-right:6px;">${growthSign}${(info.growth_pct||0).toFixed(2)}%</span>
+        <span class="cc-chevron" style="font-size:10px;color:var(--muted);transition:transform 0.2s;">▾</span>
+      </div>`;
 
+      // ── VT DETAIL (hidden until expanded) ──────────────────────
+      const vtDetail = `
+      <div class="cc-detail">
         <!-- 4 stat boxes -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
           <div style="border-radius:8px;padding:8px 10px;background:rgba(48,144,255,0.07);border:1px solid rgba(48,144,255,0.12);">
@@ -2318,22 +2340,21 @@ async function refreshVirtualTracker() {
             <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${wrColor};">${(info.win_rate||0).toFixed(0)}%</div>
           </div>
         </div>
-
         <!-- Trades W/L row -->
         <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--mono);padding:5px 8px;background:rgba(255,255,255,0.02);border-radius:6px;margin-bottom:6px;">
           <span style="color:var(--muted);">${info.total_trades||0} TRADES</span>
           <span style="color:var(--green);">✓ ${info.wins||0} W</span>
           <span style="color:var(--red);">✗ ${info.losses||0} L</span>
         </div>
-
         <!-- Fees row -->
         <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:rgba(255,48,96,0.05);border:1px solid rgba(255,48,96,0.1);border-radius:6px;margin-bottom:8px;">
           <span style="font-size:8px;color:rgba(255,48,96,0.55);letter-spacing:1.5px;font-family:var(--mono);">FEES PAID</span>
           <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:rgba(255,96,96,0.8);">-${(info.total_fees||0).toFixed(4)} USDC</span>
         </div>
-
         ${inPosHtml}
       </div>`;
+
+      return `<div class="coin-card" style="border-radius:10px;background:linear-gradient(145deg,rgba(255,255,255,0.04) 0%,rgba(255,255,255,0.01) 100%);border:1px solid rgba(255,255,255,0.07);overflow:hidden;">${vtStrip}${vtDetail}</div>`;
     }).join('');
 
     // Flash animate P&L elements that changed
