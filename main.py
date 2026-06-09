@@ -833,7 +833,7 @@ def _vt_on_sell(symbol, price, exit_reason='signal'):
             _vt_stats[symbol] = {'total_trades': 0, 'wins': 0, 'total_pnl': 0.0, 'total_fees': 0.0, 'fund': fund_in, 'initial_fund': fund_in}
         _vt_stats[symbol]['total_trades'] += 1
         _vt_stats[symbol]['total_pnl']    = round(_vt_stats[symbol]['total_pnl'] + pnl_usdt, 4)
-        _vt_stats[symbol]['total_fees']   = round(_vt_stats[symbol].get('total_fees', 0.0) + sell_fee, 6)
+        _vt_stats[symbol]['total_fees']   = round(_vt_stats[symbol].get('total_fees', 0.0) + total_fee, 6)
         if pnl_usdt > 0:
             _vt_stats[symbol]['wins'] += 1
         _initial = _vt_stats[symbol].get('initial_fund', fund_in)
@@ -871,7 +871,7 @@ def _vt_get_summary():
                 if live_price and op.get('amount') and op.get('buy_price'):
                     gross_live     = round(op['amount'] * live_price, 6)
                     sell_fee_est   = round(gross_live * _VT_TAKER_FEE, 6)
-                    live_fund      = round(gross_live - sell_fee_est, 4)
+                    live_fund      = round(gross_live - sell_fee_est - op.get('buy_fee', 0.0), 4)
                     unrealized_pnl = round(live_fund - op['fund'], 4)
                     unrealized_pct = round((live_price - op['buy_price']) / op['buy_price'] * 100, 3)
 
