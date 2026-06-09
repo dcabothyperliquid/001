@@ -370,9 +370,13 @@ body::after{
 .tf-btn{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;font-family:var(--mono);letter-spacing:.04em;cursor:pointer;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);transition:all .18s;}
 .tf-btn.active{background:rgba(0,224,255,0.15);border-color:rgba(0,224,255,0.6);color:#00e0ff;box-shadow:0 0 8px rgba(0,224,255,0.2);}
 .tf-btn:hover{border-color:rgba(0,224,255,0.4);color:rgba(0,224,255,0.7);}
-.coin-tf-btn{padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;font-family:var(--mono);cursor:pointer;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.03);color:rgba(255,255,255,0.3);transition:all .15s;letter-spacing:.03em;}
-.coin-tf-btn.active{background:rgba(0,224,255,0.12);border-color:rgba(0,224,255,0.5);color:#00e0ff;}
-.coin-tf-btn:hover{border-color:rgba(0,224,255,0.35);color:rgba(0,224,255,0.6);}
+.coin-tf-btn{padding:3px 8px;border-radius:4px;font-size:9px;font-weight:800;font-family:var(--mono);cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:transparent;color:rgba(255,255,255,0.22);transition:all .15s;letter-spacing:.05em;line-height:1.4;}
+.coin-tf-btn.active{background:rgba(0,224,255,0.1);border-color:rgba(0,224,255,0.45);color:#00e0ff;box-shadow:0 0 6px rgba(0,224,255,0.12);}
+.coin-tf-btn.active.signal-buy{background:rgba(13,255,140,0.1);border-color:rgba(13,255,140,0.45);color:#0dff8c;box-shadow:0 0 6px rgba(13,255,140,0.15);}
+.coin-tf-btn.active.signal-sell{background:rgba(255,48,96,0.1);border-color:rgba(255,48,96,0.45);color:#ff3060;box-shadow:0 0 6px rgba(255,48,96,0.12);}
+.coin-tf-btn:hover:not(.active){border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.5);}
+.coin-tf-custom-badge{font-size:8px;font-weight:800;font-family:var(--mono);letter-spacing:.08em;padding:1px 5px;border-radius:3px;background:rgba(255,200,50,0.12);border:1px solid rgba(255,200,50,0.3);color:#ffc832;}
+.coin-tf-global-badge{font-size:8px;font-weight:700;font-family:var(--mono);letter-spacing:.06em;padding:1px 5px;border-radius:3px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.3);}
 .btn-stop:hover{background:rgba(255,48,96,0.1);border-color:rgba(255,48,96,0.6);}
 .btn-primary{background:rgba(13,240,224,0.08);color:var(--cyan);border:1px solid rgba(13,240,224,0.25);}
 .btn-primary:hover{background:rgba(13,240,224,0.15);border-color:rgba(13,240,224,0.5);box-shadow:0 0 12px rgba(13,240,224,0.1);}
@@ -1000,12 +1004,16 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
 
 
   <!-- TIMEFRAME TOGGLE PANEL -->
-  <div style="margin-bottom:14px;">
-    <div class="sec-head">
-      <div class="sec-title"><div class="bar" style="background:var(--cyan);"></div>TIMEFRAMES</div>
-      <span class="sec-meta" id="tfActiveMeta">LOADING...</span>
+  <div style="margin-bottom:14px;background:rgba(0,224,255,0.03);border:1px solid rgba(0,224,255,0.1);border-radius:10px;padding:12px 14px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="bar" style="background:var(--cyan);height:14px;"></div>
+        <span style="font-size:11px;font-weight:800;letter-spacing:.12em;color:rgba(255,255,255,0.7);font-family:var(--mono);">GLOBAL TIMEFRAMES</span>
+        <span style="font-size:9px;color:rgba(255,255,255,0.3);font-family:var(--mono);">DEFAULT FOR ALL COINS</span>
+      </div>
+      <span style="font-size:9px;font-family:var(--mono);font-weight:700;color:#00e0ff;" id="tfActiveMeta">—</span>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;padding:12px 0 4px;">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">
       <button class="tf-btn" data-tf="1m"  onclick="toggleTf('1m')">1m</button>
       <button class="tf-btn" data-tf="3m"  onclick="toggleTf('3m')">3m</button>
       <button class="tf-btn" data-tf="5m"  onclick="toggleTf('5m')">5m</button>
@@ -1017,6 +1025,9 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
       <button class="tf-btn" data-tf="8h"  onclick="toggleTf('8h')">8h</button>
       <button class="tf-btn" data-tf="12h" onclick="toggleTf('12h')">12h</button>
       <button class="tf-btn" data-tf="1d"  onclick="toggleTf('1d')">1d</button>
+    </div>
+    <div style="margin-top:8px;font-size:8px;font-family:var(--mono);color:rgba(255,255,255,0.2);letter-spacing:.06em;">
+      ↑ HIGHER TF SIGNALS TAKE PRIORITY · CONFLICTS RESOLVED AUTOMATICALLY · COINS WITH CUSTOM TF IGNORE THIS
     </div>
   </div>
 
@@ -1723,12 +1734,28 @@ function renderCoins(coins) {
         ${isHold ? '<span class="badge badge-hold" style="font-size:7px;padding:1px 4px;">HOLD</span>' : ''}
       </div>
       <div class="rsi-track" style="height:2px;"><div class="rsi-fill" style="width:${Math.min(100,c.rsi||0)}%;background:${rc}"></div></div>
-      <div class="coin-tf-row" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:7px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06);">
-        ${['1m','3m','5m','15m','30m','1h','2h','4h','8h','12h','1d'].map(tf => {
-          const coinTfs = c.timeframes && c.timeframes.length ? c.timeframes : _activeTfs;
-          const isOn = Array.isArray(coinTfs) ? coinTfs.includes(tf) : coinTfs.has(tf);
-          return `<button class="coin-tf-btn${isOn?' active':''}" onclick="toggleCoinTf('${c.symbol}','${tf}',this)">${tf}</button>`;
-        }).join('')}
+      <div style="margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,0.06);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+          <span style="font-size:8px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,0.3);font-family:var(--mono);">TIMEFRAMES</span>
+          ${(() => {
+            const isCustom = c.timeframes && c.timeframes.length > 0;
+            const signingTf = c.best_timeframe && c.best_timeframe !== 'N/A' ? c.best_timeframe : null;
+            return `<div style="display:flex;align-items:center;gap:4px;">
+              ${signingTf ? `<span style="font-size:8px;font-family:var(--mono);font-weight:700;color:${c.signal==='buy'?'#0dff8c':c.signal==='sell'?'#ff3060':'rgba(255,255,255,0.35)'};">▸ ${signingTf}</span>` : ''}
+              ${isCustom ? '<span class="coin-tf-custom-badge">CUSTOM</span>' : '<span class="coin-tf-global-badge">GLOBAL</span>'}
+            </div>`;
+          })()}
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:3px;">
+          ${['1m','3m','5m','15m','30m','1h','2h','4h','8h','12h','1d'].map(tf => {
+            const coinTfs = c.timeframes && c.timeframes.length ? c.timeframes : _activeTfs;
+            const isOn    = Array.isArray(coinTfs) ? coinTfs.includes(tf) : coinTfs.has(tf);
+            const tfSig   = (c.tf_breakdown || {})[tf] || 'neutral';
+            const sigCls  = isOn && tfSig === 'buy' ? ' signal-buy' : isOn && tfSig === 'sell' ? ' signal-sell' : '';
+            const isBest  = tf === c.best_timeframe;
+            return `<button class="coin-tf-btn${isOn?' active':''}${sigCls}" title="${tf}: ${tfSig}" onclick="toggleCoinTf('${c.symbol}','${tf}',this)" style="${isBest?'outline:1px solid rgba(255,255,255,0.3);outline-offset:1px;':''}">${tf}</button>`;
+          }).join('')}
+        </div>
       </div>
     </div>`;
   }).join('');

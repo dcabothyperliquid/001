@@ -1813,48 +1813,75 @@ class BotEngine:
 
     def _mtf_scan(self, symbol: str) -> dict:
         tf_results  = {}
-        best_tf     = None
-        best_atr    = 0.0
 
         # Per-coin TFs override global if set
         coin_cfg    = self.coins.get(symbol, {})
         coin_tfs    = coin_cfg.get('timeframes')  # list or None
         active      = coin_tfs if (coin_tfs and len(coin_tfs) > 0) else get_active_tfs()
 
-        for tf in active:
+        # Higher TF = more reliable signal → scan in DESCENDING order (1d first, 1m last)
+        TF_PRIORITY = ['1d','12h','8h','4h','2h','1h','30m','15m','5m','3m','1m']
+        active_sorted = [tf for tf in TF_PRIORITY if tf in active]
+        # Any TF not in priority list goes at end (shouldn't happen but safety)
+        active_sorted += [tf for tf in active if tf not in TF_PRIORITY]
+
+        for tf in active_sorted:
             candles = candle_cache.get(symbol, tf)
             if not candles:
-                tf_results[tf] = {'signal': 'neutral', 'score': 0, 'rsi': 50.0, 'macd': 'neutral', 'vol': False, 'atr': 0.0}
+                tf_results[tf] = {'signal': 'neutral', 'score': 0, 'rsi': 50.0,
+                                  'macd': 'neutral', 'vol': False, 'atr': 0.0}
                 continue
             signal, rsi, macd, vol, atr = self._signal_for_candles(candles)
             score = SIGNAL_SCORES.get(signal, 0)
-            tf_results[tf] = {'signal': signal, 'score': score, 'rsi': rsi, 'macd': macd, 'vol': vol, 'atr': atr}
+            tf_results[tf] = {'signal': signal, 'score': score, 'rsi': rsi,
+                              'macd': macd, 'vol': vol, 'atr': atr}
 
-        # First TF with a non-neutral signal wins — no conflict blocking
+        # Highest-priority TF with a clear signal wins
+        # Conflict check: if HTF says sell but LTF says buy → skip (wait for alignment)
         direction  = 'neutral'
         confidence = 'low'
-        for tf in active:
-            sig = tf_results[tf]['signal']
-            if sig in ('buy', 'sell'):
-                direction  = sig
-                confidence = 'high'
-                best_tf    = tf
-                best_atr   = tf_results[tf]['atr']
-                break
+        best_tf    = None
+        best_atr   = 0.0
+
+        buy_tfs  = [tf for tf in active_sorted if tf_results[tf]['signal'] == 'buy']
+        sell_tfs = [tf for tf in active_sorted if tf_results[tf]['signal'] == 'sell']
+
+        if buy_tfs and not sell_tfs:
+            # Clean buy — no conflicting sell signal on any TF
+            best_tf    = buy_tfs[0]   # highest priority TF with buy
+            direction  = 'buy'
+            confidence = 'high' if len(buy_tfs) > 1 else 'medium'
+        elif sell_tfs and not buy_tfs:
+            best_tf    = sell_tfs[0]
+            direction  = 'sell'
+            confidence = 'high' if len(sell_tfs) > 1 else 'medium'
+        elif buy_tfs and sell_tfs:
+            # Conflict — HTF signal overrides LTF
+            htf_buy  = TF_PRIORITY.index(buy_tfs[0])  if buy_tfs  else 99
+            htf_sell = TF_PRIORITY.index(sell_tfs[0]) if sell_tfs else 99
+            if htf_buy < htf_sell:
+                best_tf = buy_tfs[0]; direction = 'buy'; confidence = 'low'
+            else:
+                best_tf = sell_tfs[0]; direction = 'sell'; confidence = 'low'
 
         if best_tf is None:
-            best_tf  = '1h'
-            best_atr = tf_results.get('1h', {}).get('atr', 0.0)
+            # Fallback: pick highest active TF as reference
+            best_tf  = active_sorted[0] if active_sorted else '1h'
+            best_atr = tf_results.get(best_tf, {}).get('atr', 0.0)
+        else:
+            best_atr = tf_results[best_tf]['atr']
 
-        best        = tf_results[best_tf]
+        best        = tf_results.get(best_tf, {'score':0,'rsi':50.0,'macd':'neutral','vol':False})
         total_score = best['score']
         capital_pct = 1.0 if direction == 'buy' else 0.0
 
         return {'total_score': total_score, 'confidence': confidence,
                 'direction': direction, 'best_timeframe': best_tf,
                 'capital_pct': capital_pct, 'atr': best_atr,
+                'active_tfs': active_sorted,
                 'tf_breakdown': {tf: v['signal'] for tf, v in tf_results.items()},
                 'tf_results': tf_results,
+                'buy_tfs': buy_tfs, 'sell_tfs': sell_tfs,
                 'rsi': best['rsi'], 'macd_signal': best['macd'], 'volume_signal': best['vol'],
                 'signal': direction if direction != 'neutral' else 'neutral'}
 
