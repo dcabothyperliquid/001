@@ -1607,7 +1607,7 @@ class BotEngine:
 
     def update_coin(self, symbol, data):
         if symbol not in self.coins: return {'success': False, 'error': 'Not found'}
-        for k in ['capital', 'timeframe', 'stop_loss', 'trailing_stop', 'take_profit', 'enabled']:
+        for k in ['capital', 'timeframe', 'timeframes', 'stop_loss', 'trailing_stop', 'take_profit', 'enabled']:
             if k in data: self.coins[symbol][k] = data[k]
         self._save_data()
         return {'success': True, 'coin': self.coins[symbol]}
@@ -1816,7 +1816,12 @@ class BotEngine:
         best_tf     = None
         best_atr    = 0.0
 
-        for tf in get_active_tfs():
+        # Per-coin TFs override global if set
+        coin_cfg    = self.coins.get(symbol, {})
+        coin_tfs    = coin_cfg.get('timeframes')  # list or None
+        active      = coin_tfs if (coin_tfs and len(coin_tfs) > 0) else get_active_tfs()
+
+        for tf in active:
             candles = candle_cache.get(symbol, tf)
             if not candles:
                 tf_results[tf] = {'signal': 'neutral', 'score': 0, 'rsi': 50.0, 'macd': 'neutral', 'vol': False, 'atr': 0.0}
@@ -1828,7 +1833,7 @@ class BotEngine:
         # First TF with a non-neutral signal wins — no conflict blocking
         direction  = 'neutral'
         confidence = 'low'
-        for tf in get_active_tfs():
+        for tf in active:
             sig = tf_results[tf]['signal']
             if sig in ('buy', 'sell'):
                 direction  = sig
