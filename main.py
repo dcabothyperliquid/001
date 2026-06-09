@@ -78,6 +78,14 @@ MAINNET_URL     = "https://api.hyperliquid.xyz"
 WS_URL          = "wss://api.hyperliquid.xyz/ws"
 DATA_FILE       = "bot_data.json"
 SCAN_TIMEFRAMES = ['15m', '30m', '1h', '2h', '4h']
+ALL_TIMEFRAMES  = ['1m','3m','5m','15m','30m','1h','2h','4h','8h','12h','1d']
+_enabled_tfs      = set(SCAN_TIMEFRAMES)   # mutable — UI se toggle hoga
+_enabled_tfs_lock = threading.Lock()
+
+def get_active_tfs():
+    with _enabled_tfs_lock:
+        return [tf for tf in ALL_TIMEFRAMES if tf in _enabled_tfs]
+
 CANDLE_LOOKBACK = 60
 CACHE_TTL       = 300        # 5 minutes candle cache
 PRICE_CACHE_TTL = 3          # 3 seconds price cache (WS updates this faster anyway)
@@ -1005,19 +1013,19 @@ class AsyncEngine:
                             async with aiohttp.ClientSession() as sess:
                                 for sym in new_coins:
                                     # Seed cache via REST — one TF at a time with delay
-                                    for tf in SCAN_TIMEFRAMES:
+                                    for tf in get_active_tfs():
                                         candles = await self.client.async_get_candles(sess, sym, tf, semaphore=self._sem)
                                         if candles:
                                             await candle_cache.set(sym, tf, candles)
                                         await asyncio.sleep(0.3)   # 300ms gap per TF to avoid burst
                                     # Subscribe via WS for live updates
-                                    for tf in SCAN_TIMEFRAMES:
+                                    for tf in get_active_tfs():
                                         coin_id = self.client._resolve_candle_coin(sym)
                                         sub = json.dumps({"method": "subscribe", "subscription": {
                                             "type": "candle", "coin": coin_id, "interval": tf}})
                                         await ws.send(sub)
                                     subscribed_coins.add(sym)
-                                    logger.info(f"✅ WS candle subscribed: {sym} × {SCAN_TIMEFRAMES}")
+                                    logger.info(f"✅ WS candle subscribed: {sym} × {get_active_tfs()}")
                         finally:
                             self._refreshing = False
 
@@ -1040,7 +1048,7 @@ class AsyncEngine:
                                 coin_id  = data.get('s', '')
                                 interval = data.get('i', '')
                                 sym = self.client._resolve_coin_from_id(coin_id)
-                                if not sym or interval not in SCAN_TIMEFRAMES: continue
+                                if not sym or interval not in get_active_tfs(): continue
 
                                 # Live candle update — replace last or append
                                 existing = candle_cache.get(sym, interval) or []
@@ -1081,11 +1089,11 @@ class AsyncEngine:
         self._refreshing = True
         try:
             t0 = time.time()
-            logger.info(f"🔄 Refreshing candles: {len(coins)} coins × {len(SCAN_TIMEFRAMES)} TFs = {len(coins)*len(SCAN_TIMEFRAMES)} requests")
+            logger.info(f"🔄 Refreshing candles: {len(coins)} coins × {len(get_active_tfs())} TFs")
             # Single shared session for all requests — avoids TCP burst
             async with aiohttp.ClientSession() as session:
                 for sym in coins:
-                    for tf in SCAN_TIMEFRAMES:
+                    for tf in get_active_tfs():
                         await self._fetch_and_cache(session, sym, tf)
                         await asyncio.sleep(0.4)   # 400ms gap per request — safe under HL rate limit
             logger.info(f"✅ Candle cache refreshed in {time.time()-t0:.2f}s for {len(coins)} coins")
@@ -1143,7 +1151,7 @@ class AsyncEngine:
 
             # Push per-TF breakdown events so all timeframes show in Live Events
             tf_breakdown = mtf.get('tf_breakdown', {})
-            for tf_key in SCAN_TIMEFRAMES:
+            for tf_key in get_active_tfs():
                 tf_sig = tf_breakdown.get(tf_key, 'neutral')
                 tf_data = (mtf.get('tf_results') or {}).get(tf_key, {})
                 rsi_val = tf_data.get('rsi', '—') if tf_data else '—'
@@ -1690,7 +1698,7 @@ class BotEngine:
                 'wallet_masked': (wallet[:6]+'...'+wallet[-4:]) if len(wallet)>10 else wallet,
                 'key_configured': bool(self.private_key or os.environ.get('PRIVATE_KEY','')),
                 'ws_price_age_s': round(price_cache.age(), 1),
-                'cache_keys': sum(1 for sym in self.coins for tf in SCAN_TIMEFRAMES
+                'cache_keys': sum(1 for sym in self.coins for tf in get_active_tfs()
                                    if candle_cache.get(sym, tf) is not None)}
 
     # ── Indicators ────────────────────────────────────────────────────────────
@@ -1808,7 +1816,7 @@ class BotEngine:
         best_tf     = None
         best_atr    = 0.0
 
-        for tf in SCAN_TIMEFRAMES:
+        for tf in get_active_tfs():
             candles = candle_cache.get(symbol, tf)
             if not candles:
                 tf_results[tf] = {'signal': 'neutral', 'score': 0, 'rsi': 50.0, 'macd': 'neutral', 'vol': False, 'atr': 0.0}
@@ -1820,7 +1828,7 @@ class BotEngine:
         # First TF with a non-neutral signal wins — no conflict blocking
         direction  = 'neutral'
         confidence = 'low'
-        for tf in SCAN_TIMEFRAMES:
+        for tf in get_active_tfs():
             sig = tf_results[tf]['signal']
             if sig in ('buy', 'sell'):
                 direction  = sig
@@ -2331,6 +2339,25 @@ def debug_btceth():
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)})
+
+
+@app.route('/api/timeframes', methods=['GET'])
+def get_timeframes():
+    active = get_active_tfs()
+    return jsonify({'all': ALL_TIMEFRAMES, 'enabled': active})
+
+@app.route('/api/timeframes', methods=['POST'])
+def set_timeframes():
+    data = request.get_json() or {}
+    tfs = data.get('enabled', [])
+    valid = [tf for tf in tfs if tf in ALL_TIMEFRAMES]
+    if not valid:
+        return jsonify({'error': 'No valid timeframes provided'}), 400
+    with _enabled_tfs_lock:
+        _enabled_tfs.clear()
+        _enabled_tfs.update(valid)
+    logger.info(f"⏱️ Timeframes updated: {get_active_tfs()}")
+    return jsonify({'success': True, 'enabled': get_active_tfs()})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
