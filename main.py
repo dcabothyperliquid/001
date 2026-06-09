@@ -802,11 +802,11 @@ def _vt_on_sell(symbol, price, exit_reason='signal'):
 
         gross_out  = round(amount * price, 6)
         sell_fee   = round(gross_out * _VT_TAKER_FEE, 6)   # fee on sell notional
-        fund_out   = round(gross_out - sell_fee, 4)
+        fund_out   = round(gross_out - sell_fee - buy_fee, 4)  # deduct BOTH fees from fund_in
         total_fee  = round(buy_fee + sell_fee, 6)
 
         pnl_gross  = round(gross_out - fund_in, 4)          # before fees
-        pnl_usdt   = round(fund_out  - fund_in, 4)          # after fees (real P&L)
+        pnl_usdt   = round(fund_out  - fund_in, 4)          # after both fees (real P&L)
         pnl_pct    = round((price - buy_price) / buy_price * 100, 2)
 
         trade = {
