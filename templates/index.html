@@ -2238,6 +2238,12 @@ async function refreshVirtualTracker() {
       return;
     }
 
+    // Save which coins are expanded before re-render
+    const expandedSet = new Set();
+    cardsEl.querySelectorAll('.coin-card.expanded').forEach(el => {
+      expandedSet.add(el.dataset.vtSym);
+    });
+
     cardsEl.innerHTML = coins.map(([sym, info]) => {
       const pnl = info.total_pnl || 0;
       const pnlColor = pnl >= 0 ? 'var(--green)' : 'var(--red)';
@@ -2362,8 +2368,19 @@ async function refreshVirtualTracker() {
         ${inPosHtml}
       </div>`;
 
-      return `<div class="coin-card" style="border-radius:10px;background:linear-gradient(145deg,rgba(255,255,255,0.04) 0%,rgba(255,255,255,0.01) 100%);border:1px solid rgba(255,255,255,0.07);overflow:hidden;">${vtStrip}${vtDetail}</div>`;
+      return `<div class="coin-card" data-vt-sym="${sym}" style="border-radius:10px;background:linear-gradient(145deg,rgba(255,255,255,0.04) 0%,rgba(255,255,255,0.01) 100%);border:1px solid rgba(255,255,255,0.07);overflow:hidden;">${vtStrip}${vtDetail}</div>`;
     }).join('');
+
+    // Restore expanded state after re-render
+    if (expandedSet.size) {
+      cardsEl.querySelectorAll('.coin-card').forEach(el => {
+        if (expandedSet.has(el.dataset.vtSym)) {
+          el.classList.add('expanded');
+          const ch = el.querySelector('.cc-chevron');
+          if (ch) ch.style.transform = 'rotate(180deg)';
+        }
+      });
+    }
 
     // Flash animate P&L elements that changed
     coins.forEach(([sym, info]) => {
