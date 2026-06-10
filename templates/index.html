@@ -2500,8 +2500,7 @@ async function refreshVirtualTracker() {
       const stripAccentColor = info.in_position ? (upnl !== null ? upnlColor : 'var(--amber)') : pnlColor;
       const stripRightHtml = info.in_position && upnl !== null
         ? `<span id="vtStripUpnl_${sym}" style="font-family:var(--mono);font-size:11px;font-weight:700;color:${upnlColor};flex:1;">${upnlSign}${upnl.toFixed(4)}</span>
-           <span style="font-family:var(--mono);font-size:9px;font-weight:600;color:var(--amber);opacity:0.75;margin-right:6px;letter-spacing:1px;">LIVE</span>
-           <button class="btn btn-sell" style="font-size:8px;padding:2px 6px;margin-right:4px;" onclick="event.stopPropagation();vtClosePosition('${sym}')">CLOSE</button>`
+           <span style="font-family:var(--mono);font-size:9px;font-weight:600;color:var(--amber);opacity:0.75;margin-right:6px;letter-spacing:1px;">LIVE</span>`
         : `<span id="vtPnl_${sym}" style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pnlColor};flex:1;">${pnlSign}${pnl.toFixed(4)}</span>
            <span id="vtGrowth_${sym}" style="font-family:var(--mono);font-size:11px;font-weight:700;color:${growthColor};margin-right:6px;">${growthSign}${(info.growth_pct||0).toFixed(2)}%</span>`;
 
@@ -2518,31 +2517,35 @@ async function refreshVirtualTracker() {
       const vtDetail = `
       <div class="cc-detail">
         <!-- 4 stat boxes -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px;">
           <div style="border-radius:8px;padding:8px 10px;background:rgba(48,144,255,0.07);border:1px solid rgba(48,144,255,0.12);">
-            <div style="font-size:7px;color:rgba(48,144,255,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Start Fund</div>
-            <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:#a8c8ff;">$${(info.initial_fund||0).toFixed(2)}</div>
+            <div style="font-size:7px;color:rgba(48,144,255,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Start</div>
+            <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:#a8c8ff;">$${(info.initial_fund||0).toFixed(2)}</div>
           </div>
           <div style="border-radius:8px;padding:8px 10px;background:rgba(13,240,224,0.06);border:1px solid rgba(13,240,224,0.12);">
             <div style="font-size:7px;color:rgba(13,240,224,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Now</div>
-            <div style="display:flex;align-items:center;gap:4px;">
-              <div id="vtNow_${sym}" style="font-family:var(--mono);font-size:13px;font-weight:700;color:${growthColor};flex:1;">$${(info.current_fund||0).toFixed(4)}</div>
-              <button onclick="vtAdjustFund('${sym}',1,event)" style="background:rgba(13,255,140,0.15);border:1px solid rgba(13,255,140,0.3);color:var(--green);border-radius:4px;width:18px;height:18px;font-size:11px;line-height:1;cursor:pointer;padding:0;">+</button>
-              <button onclick="vtAdjustFund('${sym}',-1,event)" style="background:rgba(255,48,96,0.15);border:1px solid rgba(255,48,96,0.3);color:var(--red);border-radius:4px;width:18px;height:18px;font-size:11px;line-height:1;cursor:pointer;padding:0;">−</button>
-            </div>
+            <div id="vtNow_${sym}" style="font-family:var(--mono);font-size:12px;font-weight:700;color:${growthColor};">$${(info.current_fund||0).toFixed(4)}</div>
+          </div>
+          <div style="border-radius:8px;padding:8px 10px;background:${pnl>=0?'rgba(13,255,140,0.06)':'rgba(255,48,96,0.06)'};border:1px solid ${pnl>=0?'rgba(13,255,140,0.15)':'rgba(255,48,96,0.15)'};">
+            <div style="font-size:7px;letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;color:${pnlColor};opacity:0.65;">Net P&L</div>
+            <div id="vtNetPnl_${sym}" style="font-family:var(--mono);font-size:12px;font-weight:700;color:${pnlColor};">${pnlSign}${pnl.toFixed(4)}</div>
           </div>
           <div style="border-radius:8px;padding:8px 10px;background:${(info.growth_pct||0)>=0?'rgba(13,255,140,0.06)':'rgba(255,48,96,0.06)'};border:1px solid ${(info.growth_pct||0)>=0?'rgba(13,255,140,0.15)':'rgba(255,48,96,0.15)'};">
             <div style="font-size:7px;letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;color:${growthColor};opacity:0.65;">Growth</div>
-            <div id="vtGrowthD_${sym}" style="font-family:var(--mono);font-size:13px;font-weight:700;color:${growthColor};">${growthSign}${(info.growth_pct||0).toFixed(2)}%</div>
+            <div id="vtGrowthD_${sym}" style="font-family:var(--mono);font-size:12px;font-weight:700;color:${growthColor};">${growthSign}${(info.growth_pct||0).toFixed(2)}%</div>
           </div>
           <div style="border-radius:8px;padding:8px 10px;background:rgba(160,96,255,0.07);border:1px solid rgba(160,96,255,0.14);">
             <div style="font-size:7px;color:rgba(160,96,255,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Win Rate</div>
-            <div id="vtWR_${sym}" style="font-family:var(--mono);font-size:13px;font-weight:700;color:${wrColor};">${(info.win_rate||0).toFixed(0)}%</div>
+            <div id="vtWR_${sym}" style="font-family:var(--mono);font-size:12px;font-weight:700;color:${wrColor};">${(info.win_rate||0).toFixed(0)}%</div>
+          </div>
+          <div style="border-radius:8px;padding:8px 10px;background:rgba(255,176,32,0.06);border:1px solid rgba(255,176,32,0.15);">
+            <div style="font-size:7px;color:rgba(255,176,32,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Trades</div>
+            <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--amber);">${info.total_trades||0}</div>
           </div>
         </div>
-        <!-- Trades W/L row -->
+        <!-- W/L row -->
         <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--mono);padding:5px 8px;background:rgba(255,255,255,0.02);border-radius:6px;margin-bottom:6px;">
-          <span style="color:var(--muted);">${info.total_trades||0} TRADES</span>
+          <span style="color:var(--muted);">W / L</span>
           <span style="color:var(--green);">✓ ${info.wins||0} W</span>
           <span style="color:var(--red);">✗ ${info.losses||0} L</span>
         </div>
