@@ -982,35 +982,33 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
   <div style="margin-bottom:14px;">
     <div class="sec-head">
       <div class="sec-title"><div class="bar"></div>BUY SIGNALS</div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <button onclick="sigNavDay(-1)" class="btn btn-sm btn-ghost" style="padding:2px 8px;font-size:10px;">‹ PREV</button>
-        <span class="sec-meta" id="sigDate" style="min-width:200px;text-align:center;">—</span>
-        <button onclick="sigNavDay(1)" id="sigNextBtn" class="btn btn-sm btn-ghost" style="padding:2px 8px;font-size:10px;">NEXT ›</button>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button onclick="sigNavDay(-1)" class="btn btn-sm btn-ghost" style="padding:2px 7px;font-size:10px;">‹</button>
+        <span class="sec-meta" id="sigDate" style="min-width:160px;text-align:center;font-size:9px;">—</span>
+        <button onclick="sigNavDay(1)" id="sigNextBtn" class="btn btn-sm btn-ghost" style="padding:2px 7px;font-size:10px;">›</button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:200px 1fr;gap:14px;" class="sig-layout">
-      <!-- Summary card -->
-      <div class="panel" style="padding:0;">
-        <div class="panel-body" style="padding:14px;">
-          <div style="text-align:center;padding:10px 0 14px;">
-            <div class="stat-label">TOTAL SIGNALS</div>
-            <div class="stat-val cyan" id="sigTotal" style="font-size:36px;line-height:1;">0</div>
-            <div class="stat-sub" style="margin-top:4px;">SINCE 05:30 IST</div>
-          </div>
-          <div style="border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:8px;" id="sigByCoin">
-            <div class="empty-state" style="padding:8px 0;font-size:9px;">NO SIGNALS YET</div>
-          </div>
-        </div>
+
+    <!-- Compact summary row -->
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(13,240,224,0.04);border:1px solid rgba(13,240,224,0.1);border-radius:8px;margin-bottom:8px;">
+      <div style="display:flex;align-items:baseline;gap:5px;">
+        <span style="font-family:var(--mono);font-size:26px;font-weight:900;color:var(--cyan);line-height:1;" id="sigTotal">0</span>
+        <span style="font-size:8px;color:var(--muted);letter-spacing:1.5px;font-family:var(--mono);">SIGNALS</span>
       </div>
-      <!-- Signal feed -->
-      <div class="panel" style="padding:0;">
-        <div class="panel-head" style="padding:10px 14px;">
-          <div class="panel-title" style="font-size:10px;"><span class="dot green blink"></span>SIGNAL FEED</div>
-          <span class="sec-meta">PRICE · TIMEFRAME · SCORE</span>
-        </div>
-        <div style="max-height:220px;overflow-y:auto;" id="sigFeed">
-          <div class="empty-state" style="padding:20px;">SIGNALS WILL APPEAR HERE</div>
-        </div>
+      <div style="width:1px;height:28px;background:rgba(255,255,255,0.07);margin:0 4px;"></div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;flex:1;" id="sigByCoin">
+        <span style="font-size:9px;color:var(--muted);font-family:var(--mono);">NO SIGNALS YET</span>
+      </div>
+    </div>
+
+    <!-- Signal feed compact -->
+    <div class="panel" style="padding:0;">
+      <div class="panel-head" style="padding:7px 12px;">
+        <div class="panel-title" style="font-size:9px;"><span class="dot green blink"></span>SIGNAL FEED</div>
+        <span class="sec-meta" style="font-size:8px;">PRICE · TF · SCORE</span>
+      </div>
+      <div style="max-height:180px;overflow-y:auto;" id="sigFeed">
+        <div class="empty-state" style="padding:14px;">SIGNALS WILL APPEAR HERE</div>
       </div>
     </div>
   </div>
@@ -2224,18 +2222,13 @@ async function refreshSignals() {
     const coinEl = document.getElementById('sigByCoin');
     const coins = Object.entries(byCoin).sort((a,b) => b[1].count - a[1].count);
     if (!coins.length) {
-      coinEl.innerHTML = '<div class="empty-state" style="padding:8px 0;font-size:9px;">NO SIGNALS YET</div>';
+      coinEl.innerHTML = '<span style="font-size:9px;color:var(--muted);font-family:var(--mono);">NO SIGNALS YET</span>';
     } else {
       coinEl.innerHTML = coins.map(([sym, info]) => `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--fg);">${sym}</span>
-            ${info.executed ? '<span style="font-size:8px;background:rgba(0,255,136,0.1);color:var(--green);padding:1px 5px;border-radius:3px;letter-spacing:1px;">EXEC</span>' : ''}
-          </div>
-          <div style="text-align:right;">
-            <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--cyan);">${info.count}</span>
-            <span style="font-size:9px;color:var(--muted);margin-left:3px;">signals</span>
-          </div>
+        <div style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:rgba(13,240,224,0.06);border:1px solid rgba(13,240,224,0.12);border-radius:20px;">
+          <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--fg);">${sym}</span>
+          <span style="font-family:var(--mono);font-size:11px;font-weight:800;color:var(--cyan);">${info.count}</span>
+          ${info.executed ? '<span style="font-size:7px;background:rgba(0,255,136,0.12);color:var(--green);padding:1px 4px;border-radius:3px;">✓</span>' : ''}
         </div>
       `).join('');
     }
@@ -2243,18 +2236,18 @@ async function refreshSignals() {
     const feedEl = document.getElementById('sigFeed');
     const sigs = d.signals || [];
     if (!sigs.length) {
-      feedEl.innerHTML = '<div class="empty-state" style="padding:20px;">SIGNALS WILL APPEAR HERE</div>';
+      feedEl.innerHTML = '<div class="empty-state" style="padding:14px;">SIGNALS WILL APPEAR HERE</div>';
     } else {
       feedEl.innerHTML = sigs.map(s => {
         const px = s.price > 1 ? s.price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4}) : s.price.toFixed(6);
-        const exec = s.executed ? '<span style="font-size:8px;background:rgba(0,255,136,0.12);color:var(--green);padding:2px 6px;border-radius:3px;">EXEC</span>' : '';
-        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--line);font-family:var(--mono);">
-          <span style="font-size:9px;color:var(--muted);min-width:56px;">${s.time}</span>
-          <span style="font-size:11px;font-weight:700;color:var(--fg);min-width:44px;">${s.symbol}</span>
-          <span style="font-size:10px;background:rgba(0,255,136,0.08);color:var(--green);padding:2px 7px;border-radius:3px;letter-spacing:1px;">BUY</span>
-          <span style="font-size:11px;color:var(--cyan);flex:1;">$${px}</span>
-          <span style="font-size:9px;color:var(--muted);">${s.timeframe}</span>
-          <span style="font-size:9px;color:var(--amber);">⚡${s.score}</span>
+        const exec = s.executed ? '<span style="font-size:7px;background:rgba(0,255,136,0.12);color:var(--green);padding:1px 5px;border-radius:3px;">✓</span>' : '';
+        return `<div style="display:flex;align-items:center;gap:7px;padding:5px 12px;border-bottom:1px solid rgba(255,255,255,0.04);font-family:var(--mono);">
+          <span style="font-size:8px;color:var(--muted);min-width:48px;">${s.time}</span>
+          <span style="font-size:11px;font-weight:700;color:var(--fg);min-width:40px;">${s.symbol}</span>
+          <span style="font-size:8px;background:rgba(0,255,136,0.08);color:var(--green);padding:1px 5px;border-radius:3px;letter-spacing:1px;">BUY</span>
+          <span style="font-size:10px;color:var(--cyan);flex:1;">$${px}</span>
+          <span style="font-size:8px;color:var(--muted);">${s.timeframe}</span>
+          <span style="font-size:8px;color:var(--amber);">⚡${s.score}</span>
           ${exec}
         </div>`;
       }).join('');
