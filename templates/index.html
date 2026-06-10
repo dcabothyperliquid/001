@@ -1693,8 +1693,9 @@ async function vtAdjustFund(sym, direction, evt) {
   const r = await fetch('/api/vt/fund', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
   const j = await r.json();
   if (!j.ok) return alert('Error: ' + j.error);
-  const el = document.getElementById(`vtFundVal_${sym}`);
-  if (el) el.textContent = '$' + j.new.toFixed(2);
+  const el = document.getElementById(`vtNow_${sym}`);
+  if (el) el.textContent = '$' + j.new.toFixed(4);
+  toastRich(`${sym} fund ${direction > 0 ? 'added' : 'withdrawn'}`, `$${j.new.toFixed(2)} now`, 'ok');
 }
 async function removeCoin(sym) {
   const r = await api(`/coins/${sym}`, 'DELETE');
@@ -2525,7 +2526,11 @@ async function refreshVirtualTracker() {
           </div>
           <div style="border-radius:8px;padding:8px 10px;background:rgba(13,240,224,0.06);border:1px solid rgba(13,240,224,0.12);">
             <div style="font-size:7px;color:rgba(13,240,224,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Now</div>
-            <div id="vtNow_${sym}" style="font-family:var(--mono);font-size:13px;font-weight:700;color:${growthColor};">$${(info.current_fund||0).toFixed(4)}</div>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <div id="vtNow_${sym}" style="font-family:var(--mono);font-size:13px;font-weight:700;color:${growthColor};flex:1;">$${(info.current_fund||0).toFixed(4)}</div>
+              <button onclick="vtAdjustFund('${sym}',1,event)" style="background:rgba(13,255,140,0.15);border:1px solid rgba(13,255,140,0.3);color:var(--green);border-radius:4px;width:18px;height:18px;font-size:11px;line-height:1;cursor:pointer;padding:0;">+</button>
+              <button onclick="vtAdjustFund('${sym}',-1,event)" style="background:rgba(255,48,96,0.15);border:1px solid rgba(255,48,96,0.3);color:var(--red);border-radius:4px;width:18px;height:18px;font-size:11px;line-height:1;cursor:pointer;padding:0;">−</button>
+            </div>
           </div>
           <div style="border-radius:8px;padding:8px 10px;background:${(info.growth_pct||0)>=0?'rgba(13,255,140,0.06)':'rgba(255,48,96,0.06)'};border:1px solid ${(info.growth_pct||0)>=0?'rgba(13,255,140,0.15)':'rgba(255,48,96,0.15)'};">
             <div style="font-size:7px;letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;color:${growthColor};opacity:0.65;">Growth</div>
