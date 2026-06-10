@@ -1675,14 +1675,17 @@ async function lmAdjustCap(sym, direction, evt) {
   evt.stopPropagation();
   const capEl = document.getElementById(`lm-cap-${sym}`);
   const current = capEl ? parseFloat(capEl.textContent.replace('$','')) || 0 : 0;
-  const amtStr = prompt(`Set new capital for ${sym} (USDC)?\nCurrent: $${current}`, current.toString());
+  const amtStr = prompt(`${direction > 0 ? 'Add' : 'Withdraw'} how much USDC for ${sym}?\nCurrent: $${current}`, '1');
   if (!amtStr) return;
   const amt = parseFloat(amtStr);
   if (isNaN(amt) || amt <= 0) return alert('Invalid amount');
-  const r = await api(`/coins/${sym}`, 'PUT', { capital: amt });
+  const newCap = direction > 0 ? round2(current + amt) : round2(Math.max(0.01, current - amt));
+  const r = await api(`/coins/${sym}`, 'PUT', { capital: newCap });
   if (!r || r.error) return alert('Error: ' + (r?.error || 'failed'));
-  if (capEl) capEl.textContent = '$' + amt;
+  if (capEl) capEl.textContent = '$' + newCap;
+  toastRich(`${sym} capital ${direction > 0 ? 'added' : 'withdrawn'}`, `$${newCap} now`, 'ok');
 }
+function round2(n) { return Math.round(n * 100) / 100; }
 async function vtAdjustFund(sym, direction, evt) {
   evt.stopPropagation();
   const amtStr = prompt(`${direction > 0 ? 'Add' : 'Withdraw'} how much USDC for ${sym}?`, '1');
