@@ -2238,9 +2238,67 @@ async function refreshVirtualTracker() {
       return;
     }
 
+    // Smart update: only full re-render if coin set changed, else update values in-place
+    const existingSyms = new Set([...cardsEl.querySelectorAll('.coin-card[data-vt-sym]')].map(el => el.dataset.vtSym));
+    const newSyms = new Set(coins.map(([sym]) => sym));
+    const coinSetChanged = [...newSyms].some(s => !existingSyms.has(s)) || [...existingSyms].some(s => !newSyms.has(s));
+
+    if (!coinSetChanged && existingSyms.size > 0) {
+      // Just update the numbers in-place — no DOM rebuild, no flicker
+      coins.forEach(([sym, info]) => {
+        const pnl = info.total_pnl || 0;
+        const pnlColor = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+        const pnlSign  = pnl >= 0 ? '+' : '';
+        const growthColor = (info.growth_pct||0) >= 0 ? 'var(--green)' : 'var(--red)';
+        const growthSign  = (info.growth_pct||0) >= 0 ? '+' : '';
+        const wrColor = (info.win_rate||0) >= 50 ? 'var(--green)' : (info.win_rate||0) >= 35 ? 'var(--amber)' : 'var(--red)';
+        const fmtPrice = p => p > 1 ? p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4}) : p?.toFixed(6) ?? '—';
+
+        const upnl      = info.unrealized_pnl ?? null;
+        const upnlColor = upnl === null ? 'var(--fg)' : upnl >= 0 ? 'var(--green)' : 'var(--red)';
+        const upnlSign  = upnl !== null && upnl >= 0 ? '+' : '';
+
+        const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        const setStyle = (id, prop, val) => { const el = document.getElementById(id); if (el) el.style[prop] = val; };
+
+        // Strip values
+        set(`vtPnl_${sym}`,    `${pnlSign}${pnl.toFixed(4)}`);
+        set(`vtGrowth_${sym}`, `${growthSign}${(info.growth_pct||0).toFixed(2)}%`);
+        setStyle(`vtPnl_${sym}`,    'color', pnlColor);
+        setStyle(`vtGrowth_${sym}`, 'color', growthColor);
+
+        // Detail stat boxes
+        set(`vtNow_${sym}`,    `$${(info.current_fund||0).toFixed(4)}`);
+        set(`vtGrowthD_${sym}`,`${growthSign}${(info.growth_pct||0).toFixed(2)}%`);
+        set(`vtWR_${sym}`,     `${(info.win_rate||0).toFixed(0)}%`);
+        setStyle(`vtNow_${sym}`,    'color', growthColor);
+        setStyle(`vtGrowthD_${sym}`,'color', growthColor);
+        setStyle(`vtWR_${sym}`,     'color', wrColor);
+
+        // In-position live panel
+        const pnlEl = document.getElementById(`vtLivePnl_${sym}`);
+        if (pnlEl && upnl !== null) {
+          const prev = parseFloat(pnlEl.dataset.prev ?? 'NaN');
+          const cur  = upnl;
+          pnlEl.textContent = `${upnlSign}${upnl.toFixed(4)} USDC`;
+          pnlEl.style.color = upnlColor;
+          if (!isNaN(prev) && prev !== cur) {
+            pnlEl.classList.remove('vt-flash-green','vt-flash-red');
+            void pnlEl.offsetWidth;
+            pnlEl.classList.add(cur > prev ? 'vt-flash-green' : 'vt-flash-red');
+          }
+          pnlEl.dataset.prev = cur;
+        }
+        const lpEl = document.getElementById(`vtLivePrice_${sym}`);
+        if (lpEl && info.live_price) { lpEl.textContent = `$${fmtPrice(info.live_price)}`; }
+      });
+      return;
+    }
+
+    // Full re-render (coin set changed or first load)
     // Save which coins are expanded before re-render
     const expandedSet = new Set();
-    cardsEl.querySelectorAll('.coin-card.expanded').forEach(el => {
+    cardsEl.querySelectorAll('.coin-card').forEach(el => {
       expandedSet.add(el.dataset.vtSym);
     });
 
@@ -2327,8 +2385,8 @@ async function refreshVirtualTracker() {
         <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,${pnlColor},transparent);opacity:0.5;border-radius:10px 10px 0 0;"></div>
         ${inPosDot}
         <span style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--fg);letter-spacing:0.5px;min-width:52px;">${sym}</span>
-        <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pnlColor};flex:1;">${pnlSign}${pnl.toFixed(4)}</span>
-        <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${growthColor};margin-right:6px;">${growthSign}${(info.growth_pct||0).toFixed(2)}%</span>
+        <span id="vtPnl_${sym}" style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pnlColor};flex:1;">${pnlSign}${pnl.toFixed(4)}</span>
+        <span id="vtGrowth_${sym}" style="font-family:var(--mono);font-size:11px;font-weight:700;color:${growthColor};margin-right:6px;">${growthSign}${(info.growth_pct||0).toFixed(2)}%</span>
         <span class="cc-chevron" style="font-size:10px;color:var(--muted);transition:transform 0.2s;">▾</span>
       </div>`;
 
@@ -2343,15 +2401,15 @@ async function refreshVirtualTracker() {
           </div>
           <div style="border-radius:8px;padding:8px 10px;background:rgba(13,240,224,0.06);border:1px solid rgba(13,240,224,0.12);">
             <div style="font-size:7px;color:rgba(13,240,224,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Now</div>
-            <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${growthColor};">$${(info.current_fund||0).toFixed(4)}</div>
+            <div id="vtNow_${sym}" style="font-family:var(--mono);font-size:13px;font-weight:700;color:${growthColor};">$${(info.current_fund||0).toFixed(4)}</div>
           </div>
           <div style="border-radius:8px;padding:8px 10px;background:${(info.growth_pct||0)>=0?'rgba(13,255,140,0.06)':'rgba(255,48,96,0.06)'};border:1px solid ${(info.growth_pct||0)>=0?'rgba(13,255,140,0.15)':'rgba(255,48,96,0.15)'};">
             <div style="font-size:7px;letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;color:${growthColor};opacity:0.65;">Growth</div>
-            <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${growthColor};">${growthSign}${(info.growth_pct||0).toFixed(2)}%</div>
+            <div id="vtGrowthD_${sym}" style="font-family:var(--mono);font-size:13px;font-weight:700;color:${growthColor};">${growthSign}${(info.growth_pct||0).toFixed(2)}%</div>
           </div>
           <div style="border-radius:8px;padding:8px 10px;background:rgba(160,96,255,0.07);border:1px solid rgba(160,96,255,0.14);">
             <div style="font-size:7px;color:rgba(160,96,255,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Win Rate</div>
-            <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${wrColor};">${(info.win_rate||0).toFixed(0)}%</div>
+            <div id="vtWR_${sym}" style="font-family:var(--mono);font-size:13px;font-weight:700;color:${wrColor};">${(info.win_rate||0).toFixed(0)}%</div>
           </div>
         </div>
         <!-- Trades W/L row -->
@@ -2382,20 +2440,6 @@ async function refreshVirtualTracker() {
       });
     }
 
-    // Flash animate P&L elements that changed
-    coins.forEach(([sym, info]) => {
-      const pnlEl = document.getElementById(`vtLivePnl_${sym}`);
-      if (pnlEl && info.unrealized_pnl !== null && info.unrealized_pnl !== undefined) {
-        const prev = parseFloat(pnlEl.dataset.prev ?? 'NaN');
-        const cur  = info.unrealized_pnl;
-        if (!isNaN(prev) && prev !== cur) {
-          pnlEl.classList.remove('vt-flash-green','vt-flash-red');
-          void pnlEl.offsetWidth; // reflow
-          pnlEl.classList.add(cur > prev ? 'vt-flash-green' : 'vt-flash-red');
-        }
-        pnlEl.dataset.prev = cur;
-      }
-    });
   } catch(e) {}
 }
 
