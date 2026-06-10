@@ -2328,11 +2328,16 @@ async function refreshVirtualTracker() {
         const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
         const setStyle = (id, prop, val) => { const el = document.getElementById(id); if (el) el.style[prop] = val; };
 
-        // Strip values
-        set(`vtPnl_${sym}`,    `${pnlSign}${pnl.toFixed(4)}`);
-        set(`vtGrowth_${sym}`, `${growthSign}${(info.growth_pct||0).toFixed(2)}%`);
-        setStyle(`vtPnl_${sym}`,    'color', pnlColor);
-        setStyle(`vtGrowth_${sym}`, 'color', growthColor);
+        // Strip values — show live UPNL when in_position, else closed PnL + growth
+        if (info.in_position && upnl !== null) {
+          set(`vtStripUpnl_${sym}`, `${upnlSign}${upnl.toFixed(4)}`);
+          setStyle(`vtStripUpnl_${sym}`, 'color', upnlColor);
+        } else {
+          set(`vtPnl_${sym}`,    `${pnlSign}${pnl.toFixed(4)}`);
+          set(`vtGrowth_${sym}`, `${growthSign}${(info.growth_pct||0).toFixed(2)}%`);
+          setStyle(`vtPnl_${sym}`,    'color', pnlColor);
+          setStyle(`vtGrowth_${sym}`, 'color', growthColor);
+        }
 
         // Detail stat boxes
         set(`vtNow_${sym}`,    `$${(info.current_fund||0).toFixed(4)}`);
@@ -2447,13 +2452,19 @@ async function refreshVirtualTracker() {
         ? `<span style="width:6px;height:6px;border-radius:50%;background:var(--amber);display:inline-block;flex-shrink:0;box-shadow:0 0 5px var(--amber);"></span>`
         : `<span style="width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.15);display:inline-block;flex-shrink:0;"></span>`;
 
+      const stripAccentColor = info.in_position ? (upnl !== null ? upnlColor : 'var(--amber)') : pnlColor;
+      const stripRightHtml = info.in_position && upnl !== null
+        ? `<span id="vtStripUpnl_${sym}" style="font-family:var(--mono);font-size:11px;font-weight:700;color:${upnlColor};flex:1;">${upnlSign}${upnl.toFixed(4)}</span>
+           <span style="font-family:var(--mono);font-size:9px;font-weight:600;color:var(--amber);opacity:0.75;margin-right:6px;letter-spacing:1px;">LIVE</span>`
+        : `<span id="vtPnl_${sym}" style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pnlColor};flex:1;">${pnlSign}${pnl.toFixed(4)}</span>
+           <span id="vtGrowth_${sym}" style="font-family:var(--mono);font-size:11px;font-weight:700;color:${growthColor};margin-right:6px;">${growthSign}${(info.growth_pct||0).toFixed(2)}%</span>`;
+
       const vtStrip = `
       <div class="cc-strip" onclick="toggleVtCard(this)" style="position:relative;">
-        <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,${pnlColor},transparent);opacity:0.5;border-radius:10px 10px 0 0;"></div>
+        <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,${stripAccentColor},transparent);opacity:0.5;border-radius:10px 10px 0 0;"></div>
         ${inPosDot}
         <span style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--fg);letter-spacing:0.5px;min-width:52px;">${sym}</span>
-        <span id="vtPnl_${sym}" style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pnlColor};flex:1;">${pnlSign}${pnl.toFixed(4)}</span>
-        <span id="vtGrowth_${sym}" style="font-family:var(--mono);font-size:11px;font-weight:700;color:${growthColor};margin-right:6px;">${growthSign}${(info.growth_pct||0).toFixed(2)}%</span>
+        ${stripRightHtml}
         <span class="cc-chevron" style="font-size:10px;color:var(--muted);transition:transform 0.2s;">▾</span>
       </div>`;
 
