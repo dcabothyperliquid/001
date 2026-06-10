@@ -370,10 +370,15 @@ body::after{
 .tf-btn{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;font-family:var(--mono);letter-spacing:.04em;cursor:pointer;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);transition:all .18s;}
 .tf-btn.active{background:rgba(0,224,255,0.15);border-color:rgba(0,224,255,0.6);color:#00e0ff;box-shadow:0 0 8px rgba(0,224,255,0.2);}
 .tf-btn:hover{border-color:rgba(0,224,255,0.4);color:rgba(0,224,255,0.7);}
-.coin-tf-btn{padding:3px 8px;border-radius:4px;font-size:9px;font-weight:800;font-family:var(--mono);cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:transparent;color:rgba(255,255,255,0.22);transition:all .15s;letter-spacing:.05em;line-height:1.4;}
+.coin-tf-btn{padding:3px 8px;border-radius:4px;font-size:9px;font-weight:800;font-family:var(--mono);cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:transparent;color:rgba(255,255,255,0.22);transition:all .15s;letter-spacing:.05em;line-height:1.4;position:relative;overflow:hidden;user-select:none;-webkit-user-select:none;}
+.coin-tf-btn::after{content:'';position:absolute;bottom:0;left:0;height:2px;width:0%;background:var(--cyan);transition:none;border-radius:0 0 4px 4px;}
+.coin-tf-btn.holding::after{width:100%;transition:width 0.5s linear;}
 .coin-tf-btn.active{background:rgba(0,224,255,0.1);border-color:rgba(0,224,255,0.45);color:#00e0ff;box-shadow:0 0 6px rgba(0,224,255,0.12);}
+.coin-tf-btn.active::after{background:rgba(0,224,255,0.5);}
 .coin-tf-btn.active.signal-buy{background:rgba(13,255,140,0.1);border-color:rgba(13,255,140,0.45);color:#0dff8c;box-shadow:0 0 6px rgba(13,255,140,0.15);}
+.coin-tf-btn.active.signal-buy::after{background:#0dff8c;}
 .coin-tf-btn.active.signal-sell{background:rgba(255,48,96,0.1);border-color:rgba(255,48,96,0.45);color:#ff3060;box-shadow:0 0 6px rgba(255,48,96,0.12);}
+.coin-tf-btn.active.signal-sell::after{background:#ff3060;}
 .coin-tf-btn:hover:not(.active){border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.5);}
 .coin-tf-custom-badge{font-size:8px;font-weight:800;font-family:var(--mono);letter-spacing:.08em;padding:1px 5px;border-radius:3px;background:rgba(255,200,50,0.12);border:1px solid rgba(255,200,50,0.3);color:#ffc832;}
 .coin-tf-global-badge{font-size:8px;font-weight:700;font-family:var(--mono);letter-spacing:.06em;padding:1px 5px;border-radius:3px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.3);}
@@ -1775,7 +1780,7 @@ function _buildCoinCard(c) {
           const tfSig   = (c.tf_breakdown || {})[tf] || 'neutral';
           const sigCls  = isOn && tfSig === 'buy' ? ' signal-buy' : isOn && tfSig === 'sell' ? ' signal-sell' : '';
           const isBest  = tf === c.best_timeframe;
-          return `<button class="coin-tf-btn${isOn?' active':''}${sigCls}" title="${tf}: ${tfSig}" onclick="toggleCoinTf('${sym}','${tf}',this)" style="${isBest?'outline:1px solid rgba(255,255,255,0.3);outline-offset:1px;':''}">${tf}</button>`;
+          return `<button class="coin-tf-btn${isOn?' active':''}${sigCls}" title="${tf}: ${tfSig}" onpointerdown="coinTfHoldStart('${sym}','${tf}',this)" onpointerup="coinTfHoldCancel('${sym}','${tf}',this)" onpointerleave="coinTfHoldCancel('${sym}','${tf}',this)" style="${isBest?'outline:1px solid rgba(255,255,255,0.3);outline-offset:1px;':''}">${tf}</button>`;
         }).join('')}
       </div>
     </div>
@@ -1861,7 +1866,7 @@ function renderCoins(coins) {
       const tfSig   = (c.tf_breakdown || {})[tf] || 'neutral';
       const sigCls  = isOn && tfSig === 'buy' ? ' signal-buy' : isOn && tfSig === 'sell' ? ' signal-sell' : '';
       const isBest  = tf === c.best_timeframe;
-      return `<button class="coin-tf-btn${isOn?' active':''}${sigCls}" title="${tf}: ${tfSig}" onclick="toggleCoinTf('${sym}','${tf}',this)" style="${isBest?'outline:1px solid rgba(255,255,255,0.3);outline-offset:1px;':''}">${tf}</button>`;
+      return `<button class="coin-tf-btn${isOn?' active':''}${sigCls}" title="${tf}: ${tfSig}" onpointerdown="coinTfHoldStart('${sym}','${tf}',this)" onpointerup="coinTfHoldCancel('${sym}','${tf}',this)" onpointerleave="coinTfHoldCancel('${sym}','${tf}',this)" style="${isBest?'outline:1px solid rgba(255,255,255,0.3);outline-offset:1px;':''}">${tf}</button>`;
     }).join(''));
   });
   _lastCoins = coins;
@@ -2640,6 +2645,25 @@ loadTfs();
 // ── PER-COIN TIMEFRAME TOGGLE ─────────────────────────────────────────────────
 // _coinTfs: symbol -> Set of active TFs (local cache)
 const _coinTfs = {};
+const _tfHoldTimers = {};   // symbol+tf -> timer id
+
+function coinTfHoldStart(symbol, tf, btn) {
+  // Cancel any existing
+  const key = symbol + tf;
+  clearTimeout(_tfHoldTimers[key]);
+  // Start progress fill animation
+  btn.classList.add('holding');
+  _tfHoldTimers[key] = setTimeout(() => {
+    btn.classList.remove('holding');
+    toggleCoinTf(symbol, tf, btn);
+  }, 500);
+}
+
+function coinTfHoldCancel(symbol, tf, btn) {
+  const key = symbol + tf;
+  clearTimeout(_tfHoldTimers[key]);
+  btn.classList.remove('holding');
+}
 
 async function toggleCoinTf(symbol, tf, btn) {
   // Init from current coin data if not cached
@@ -2682,7 +2706,7 @@ async function toggleCoinTf(symbol, tf, btn) {
             const tfSig = (coin.tf_breakdown || {})[t] || 'neutral';
             const sigCls = isOn && tfSig === 'buy' ? ' signal-buy' : isOn && tfSig === 'sell' ? ' signal-sell' : '';
             const isBest = t === coin.best_timeframe;
-            return `<button class="coin-tf-btn${isOn?' active':''}${sigCls}" title="${t}: ${tfSig}" onclick="toggleCoinTf('${symbol}','${t}',this)" style="${isBest?'outline:1px solid rgba(255,255,255,0.3);outline-offset:1px;':''}">${t}</button>`;
+            return `<button class="coin-tf-btn${isOn?' active':''}${sigCls}" title="${t}: ${tfSig}" onpointerdown="coinTfHoldStart('${symbol}','${t}',this)" onpointerup="coinTfHoldCancel('${symbol}','${t}',this)" onpointerleave="coinTfHoldCancel('${symbol}','${t}',this)" style="${isBest?'outline:1px solid rgba(255,255,255,0.3);outline-offset:1px;':''}">${t}</button>`;
           }).join('');
         }
       }
