@@ -1671,6 +1671,18 @@ function toggleVtCard(stripEl) {
     if (chevron) chevron.style.transform = 'rotate(180deg)';
   }
 }
+async function lmAdjustCap(sym, direction, evt) {
+  evt.stopPropagation();
+  const capEl = document.getElementById(`lm-cap-${sym}`);
+  const current = capEl ? parseFloat(capEl.textContent.replace('$','')) || 0 : 0;
+  const amtStr = prompt(`Set new capital for ${sym} (USDC)?\nCurrent: $${current}`, current.toString());
+  if (!amtStr) return;
+  const amt = parseFloat(amtStr);
+  if (isNaN(amt) || amt <= 0) return alert('Invalid amount');
+  const r = await api(`/coins/${sym}`, 'PUT', { capital: amt });
+  if (!r || r.error) return alert('Error: ' + (r?.error || 'failed'));
+  if (capEl) capEl.textContent = '$' + amt;
+}
 async function vtAdjustFund(sym, direction, evt) {
   evt.stopPropagation();
   const amtStr = prompt(`${direction > 0 ? 'Add' : 'Withdraw'} how much USDC for ${sym}?`, '1');
@@ -1768,9 +1780,13 @@ function _buildCoinCard(c) {
         <span class="met-label">MACD</span>
         <span class="met-val" id="lm-macd-${sym}">${macdIcon(c.macd_signal)}</span>
       </div>
-      <div class="cc-met">
+      <div class="cc-met" style="flex-direction:column;align-items:flex-start;gap:2px;">
         <span class="met-label">CAP</span>
-        <span class="met-val c-cy" id="lm-cap-${sym}">$${c.capital||0}</span>
+        <div style="display:flex;align-items:center;gap:3px;">
+          <span class="met-val c-cy" id="lm-cap-${sym}">$${c.capital||0}</span>
+          <button onclick="lmAdjustCap('${sym}',-1,event)" style="background:rgba(255,48,96,0.18);border:1px solid rgba(255,48,96,0.35);color:#ff3060;border-radius:3px;width:16px;height:16px;font-size:11px;line-height:1;cursor:pointer;padding:0;">−</button>
+          <button onclick="lmAdjustCap('${sym}',1,event)" style="background:rgba(13,255,140,0.12);border:1px solid rgba(13,255,140,0.3);color:#0dff8c;border-radius:3px;width:16px;height:16px;font-size:11px;line-height:1;cursor:pointer;padding:0;">+</button>
+        </div>
       </div>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;" id="lm-sig-${sym}">
