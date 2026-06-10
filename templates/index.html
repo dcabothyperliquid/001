@@ -1700,6 +1700,9 @@ async function removeCoin(sym) {
   const r = await api(`/coins/${sym}`, 'DELETE');
   if (r?.success) { toastRich(`${sym} removed`, '', 'ok'); refreshAll(); }
 }
+// Tracks which coins have an open VT position — updated in refreshAll
+let _vtPositions = new Set();
+
 async function manualSell(sym) {
   if (!confirm(`Sell all ${sym} at market price?`)) return;
   const r = await api(`/sell/${sym}`, 'POST');
@@ -1708,6 +1711,32 @@ async function manualSell(sym) {
     toastRich(`${sym} sold!`, `PnL: ${pnl > 0 ? '+' : ''}${pnl}%`, pnl >= 0 ? 'ok' : 'sell');
     refreshAll();
   } else { toastRich(r?.error || 'Sell failed', '', 'err'); }
+}
+
+async function closePosition(sym) {
+  if (!confirm(`Close ${sym} position? Real trade will be sold at market. VT position will be closed at current price.`)) return;
+  const hasReal = _lastCoins.find(c => c.symbol === sym)?.holding > 0;
+  const hasVT   = _vtPositions.has(sym);
+  let msgs = [];
+  if (hasReal) {
+    const r = await api(`/sell/${sym}`, 'POST');
+    if (r?.success) {
+      const pnl = r.trade?.pnl_pct || 0;
+      msgs.push(`Real: ${pnl > 0 ? '+' : ''}${pnl}%`);
+    } else {
+      toastRich(`Real sell failed: ${r?.error || 'unknown'}`, '', 'err');
+    }
+  }
+  if (hasVT) {
+    const v = await api(`/vt/close/${sym}`, 'POST');
+    if (v?.success) {
+      msgs.push(`VT closed @ $${fp(v.close_price)}`);
+    } else {
+      toastRich(`VT close failed: ${v?.error || 'unknown'}`, '', 'err');
+    }
+  }
+  if (msgs.length) toastRich(`${sym} closed`, msgs.join(' · '), 'ok');
+  refreshAll();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1762,8 +1791,8 @@ function _buildCoinCard(c) {
   <div class="coin-card ${cardCls}" data-sym="${sym}" style="padding:10px 12px;cursor:default;">
     <div class="cc-top">
       <span class="cc-sym">${label}</span>
-      <div class="cc-actions" style="gap:3px;">
-        ${isHold ? `<button class="btn btn-sell" style="font-size:8px;padding:2px 5px;" onclick="manualSell('${sym}')">SELL</button>` : ''}
+      <div class="cc-actions" style="gap:3px;" id="lm-actions-${sym}">
+        ${(isHold || _vtPositions.has(sym)) ? `<button class="btn btn-sell" style="font-size:8px;padding:2px 5px;" onclick="closePosition('${sym}')">CLOSE</button>` : ''}
         <button class="btn btn-rm" style="font-size:9px;padding:1px 5px;line-height:1.4;" onclick="removeCoin('${sym}')">✕</button>
       </div>
     </div>
@@ -1886,6 +1915,23 @@ function renderCoins(coins) {
 
     // Signal badge + hold
     setHTML(`lm-sig-${sym}`, `${signalBadge(c.signal)}${isHold ? '<span class="badge badge-hold" style="font-size:7px;padding:1px 4px;">HOLD</span>' : ''}`);
+
+    // CLOSE button — show if real holding OR VT position open
+    const actionsEl = document.getElementById(`lm-actions-${sym}`);
+    if (actionsEl) {
+      const hasPos = isHold || _vtPositions.has(sym);
+      const btnEl = actionsEl.querySelector('.btn-sell');
+      if (hasPos && !btnEl) {
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-sell';
+        btn.style.cssText = 'font-size:8px;padding:2px 5px;';
+        btn.textContent = 'CLOSE';
+        btn.onclick = () => closePosition(sym);
+        actionsEl.insertBefore(btn, actionsEl.firstChild);
+      } else if (!hasPos && btnEl) {
+        btnEl.remove();
+      }
+    }
 
     // TF badge + buttons
     setHTML(`lm-tfbadge-${sym}`, `${signingTf ? `<span style="font-size:8px;font-family:var(--mono);font-weight:700;color:${c.signal==='buy'?'#0dff8c':c.signal==='sell'?'#ff3060':'rgba(255,255,255,0.35)'};">▸ ${signingTf}</span>` : ''}${isCustom ? '<span class="coin-tf-custom-badge">CUSTOM</span>' : '<span class="coin-tf-global-badge">GLOBAL</span>'}`);
@@ -2186,9 +2232,13 @@ async function refreshAll() {
   if (_refreshing) return;   // prevent overlapping calls
   _refreshing = true;
   try {
-    const [coins, holdings, trades, stats, status] = await Promise.all([
-      api('/coins'), api('/holdings'), api('/trades'), api('/stats'), api('/bot/status')
+    const [coins, holdings, trades, stats, status, vtData] = await Promise.all([
+      api('/coins'), api('/holdings'), api('/trades'), api('/stats'), api('/bot/status'), api('/virtual/summary')
     ]);
+    // Update VT positions set so coin cards know which have open VT positions
+    if (vtData?.by_coin) {
+      _vtPositions = new Set(Object.entries(vtData.by_coin).filter(([,v]) => v.in_position).map(([k]) => k));
+    }
     // Only update if data is valid (never blank out existing cards on API error)
     if (coins && Array.isArray(coins))   { renderCoins(coins); updateTicker(coins); }
     if (holdings && Array.isArray(holdings)) renderHoldings(holdings);
