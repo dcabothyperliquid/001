@@ -624,10 +624,13 @@ class HyperliquidClient:
         now_ms  = int(time.time() * 1000)
         start   = now_ms - lookback * ms
 
-        idx     = self.sym_to_index(symbol)
-        coin_id = f"@{idx}" if idx is not None else symbol
-
-        payload = {"type": "candleSnapshot",
+        # BTC/ETH spot pairs are inactive on HL — use perp coin name for candles
+        PERP_CANDLE_COINS = {'BTC', 'ETH', 'UBTC', 'UETH'}
+        if symbol.upper() in PERP_CANDLE_COINS:
+            coin_id = 'BTC' if symbol.upper() in ('BTC', 'UBTC') else 'ETH'
+        else:
+            idx     = self.sym_to_index(symbol)
+            coin_id = f"@{idx}" if idx is not None else symbol
                    "req": {"coin": coin_id, "interval": tf,
                             "startTime": start, "endTime": now_ms}}
         try:
@@ -669,8 +672,13 @@ class HyperliquidClient:
         ms      = INTERVAL_MS.get(tf, 3600000)
         now_ms  = int(time.time() * 1000)
         start   = now_ms - lookback * ms
-        idx     = self.sym_to_index(symbol)
-        coin_id = f"@{idx}" if idx is not None else symbol
+        # BTC/ETH spot pairs are inactive on HL — use perp coin name for candles
+        PERP_CANDLE_COINS = {'BTC', 'ETH', 'UBTC', 'UETH'}
+        if symbol.upper() in PERP_CANDLE_COINS:
+            coin_id = 'BTC' if symbol.upper() in ('BTC', 'UBTC') else 'ETH'
+        else:
+            idx     = self.sym_to_index(symbol)
+            coin_id = f"@{idx}" if idx is not None else symbol
         raw = self._post({"type": "candleSnapshot",
                           "req": {"coin": coin_id, "interval": tf,
                                   "startTime": start, "endTime": now_ms}})
