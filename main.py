@@ -786,7 +786,7 @@ def _vt_on_buy(symbol, price, timeframe, initial_fund=None):
         fund_after_fee = round(fund - buy_fee, 6)     # effective capital after buy fee
         amount   = round(fund_after_fee / price, 8)
         _vt_fund[symbol] = {
-            'fund': fund, 'buy_price': price, 'amount': amount,
+            'fund': fund_after_fee, 'buy_price': price, 'amount': amount,
             'buy_fee': buy_fee,
             'buy_time': (__import__('datetime').datetime.utcnow() + __import__('datetime').timedelta(hours=5, minutes=30)).strftime('%H:%M:%S'),
             'timeframe': timeframe, 'entry_ts': _vt_t.time(),
@@ -810,7 +810,7 @@ def _vt_on_sell(symbol, price, exit_reason='signal'):
 
         gross_out  = round(amount * price, 6)
         sell_fee   = round(gross_out * _VT_TAKER_FEE, 6)   # fee on sell notional
-        fund_out   = round(gross_out - sell_fee - buy_fee, 4)  # deduct BOTH fees from fund_in
+        fund_out   = round(gross_out - sell_fee, 4)          # buy_fee already deducted at buy time
         total_fee  = round(buy_fee + sell_fee, 6)
 
         pnl_gross  = round(gross_out - fund_in, 4)          # before fees
@@ -871,7 +871,7 @@ def _vt_get_summary():
                 if live_price and op.get('amount') and op.get('buy_price'):
                     gross_live     = round(op['amount'] * live_price, 6)
                     sell_fee_est   = round(gross_live * _VT_TAKER_FEE, 6)
-                    live_fund      = round(gross_live - sell_fee_est - op.get('buy_fee', 0.0), 4)
+                    live_fund      = round(gross_live - sell_fee_est, 4)   # buy_fee already in fund_in
                     unrealized_pnl = round(live_fund - op['fund'], 4)
                     unrealized_pct = round((live_price - op['buy_price']) / op['buy_price'] * 100, 3)
 
