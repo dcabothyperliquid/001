@@ -2325,6 +2325,23 @@ def virtual_summary():
     """Virtual P&L tracker — shows hypothetical performance based on BUY/SELL signals."""
     return jsonify(_vt_get_summary())
 
+@app.route('/api/vt/state', methods=['GET'])
+def vt_state_debug():
+    """Debug: show current _vt_fund state — which coins are stuck in position."""
+    with _vt_lock:
+        out = {}
+        for sym, v in _vt_fund.items():
+            out[sym] = {
+                'buy_price': v.get('buy_price'),
+                'entry_price': v.get('entry_price'),
+                'peak_price': v.get('peak_price'),
+                'fund': v.get('fund'),
+                'timeframe': v.get('timeframe'),
+                'buy_time': v.get('buy_time'),
+                'in_position': bool(v.get('buy_price')),
+            }
+    return jsonify({'vt_fund': out, 'coins_in_position': [s for s,v in out.items() if v['in_position']]})
+
 @app.route('/api/virtual/reset', methods=['POST'])
 def virtual_reset():
     """Reset virtual P&L tracker (clears all virtual trades and stats)."""
