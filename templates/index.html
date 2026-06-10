@@ -1192,7 +1192,8 @@ function evToCategory(ev) {
   if (t === 'sell')  return 'trade';
   if (t === 'warn')  return 'warn';
   // Detect critical keywords in monitor/info events
-  if (m.includes('insufficient') || m.includes('failed') ||
+  if (m.includes('insufficient')) return 'warn';
+  if (m.includes('failed') ||
       m.includes('sdk') || m.includes('disconnect') ||
       m.includes('ioc not filled') || m.includes('not found') ||
       m.includes('error')) return 'critical';
