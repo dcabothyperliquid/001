@@ -2370,6 +2370,22 @@ def vt_fund_adjust():
     logger.info(f"[VT] Fund adjust {symbol}: {current:.4f} → {new_val:.4f} ({'+' if amount>=0 else ''}{amount})")
     return jsonify({'ok': True, 'symbol': symbol, 'old': current, 'new': new_val})
 
+@app.route('/api/vt/close/<symbol>', methods=['POST'])
+def vt_close_position(symbol):
+    """Manually close a VT position at current market price."""
+    symbol = symbol.upper().strip()
+    with _vt_lock:
+        entry = _vt_fund.get(symbol)
+        if not entry or not entry.get('buy_price'):
+            return jsonify({'ok': False, 'error': f'{symbol} not in VT position'}), 400
+    # Get current price
+    price = bot_engine.client.get_spot_price(symbol)
+    if not price:
+        return jsonify({'ok': False, 'error': f'Could not fetch price for {symbol}'}), 500
+    _vt_on_sell(symbol, price, exit_reason='manual')
+    logger.info(f"[VT] Manual close {symbol} @ {price}")
+    return jsonify({'ok': True, 'symbol': symbol, 'close_price': price})
+
 @app.route('/api/virtual/reset', methods=['POST'])
 def virtual_reset():
     """Reset virtual P&L tracker (clears all virtual trades and stats)."""

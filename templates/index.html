@@ -1710,6 +1710,15 @@ async function manualSell(sym) {
   } else { toastRich(r?.error || 'Sell failed', '', 'err'); }
 }
 
+async function vtClosePosition(sym) {
+  if (!confirm(`Close VT position for ${sym} at market price?`)) return;
+  const r = await api(`/vt/close/${sym}`, 'POST');
+  if (r?.ok) {
+    toastRich(`VT ${sym} closed`, `@ $${r.close_price}`, 'ok');
+    refreshAll();
+  } else { toastRich(r?.error || 'VT close failed', '', 'err'); }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // RENDER HELPERS
 // ═══════════════════════════════════════════════════════════════
@@ -1921,7 +1930,7 @@ function renderHoldings(holdings) {
         <span style="font-size:10px;opacity:0.7;">${h.pnl_usdt > 0 ? '+' : ''}${h.pnl_usdt} USDC</span>
       </td>
       <td style="color:var(--amber)">${h.dca_count}×</td>
-      <td><button class="btn btn-sell" onclick="manualSell('${h.symbol}')">SELL</button></td>
+      <td><button class="btn btn-sell" onclick="manualSell('${h.symbol}')">CLOSE</button></td>
     </tr>`).join('');
 }
 
@@ -2491,7 +2500,8 @@ async function refreshVirtualTracker() {
       const stripAccentColor = info.in_position ? (upnl !== null ? upnlColor : 'var(--amber)') : pnlColor;
       const stripRightHtml = info.in_position && upnl !== null
         ? `<span id="vtStripUpnl_${sym}" style="font-family:var(--mono);font-size:11px;font-weight:700;color:${upnlColor};flex:1;">${upnlSign}${upnl.toFixed(4)}</span>
-           <span style="font-family:var(--mono);font-size:9px;font-weight:600;color:var(--amber);opacity:0.75;margin-right:6px;letter-spacing:1px;">LIVE</span>`
+           <span style="font-family:var(--mono);font-size:9px;font-weight:600;color:var(--amber);opacity:0.75;margin-right:6px;letter-spacing:1px;">LIVE</span>
+           <button class="btn btn-sell" style="font-size:8px;padding:2px 6px;margin-right:4px;" onclick="event.stopPropagation();vtClosePosition('${sym}')">CLOSE</button>`
         : `<span id="vtPnl_${sym}" style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pnlColor};flex:1;">${pnlSign}${pnl.toFixed(4)}</span>
            <span id="vtGrowth_${sym}" style="font-family:var(--mono);font-size:11px;font-weight:700;color:${growthColor};margin-right:6px;">${growthSign}${(info.growth_pct||0).toFixed(2)}%</span>`;
 
