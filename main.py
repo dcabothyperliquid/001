@@ -1939,11 +1939,12 @@ class BotEngine:
                 self._push_event('error', f"Live buy failed {symbol}", {'symbol':symbol,'price':price})
                 return None
 
-        amount = capital / actual_price
+        amount = (capital * (1 - _VT_TAKER_FEE)) / actual_price   # deduct buy fee from capital
+        buy_fee = round(capital * _VT_TAKER_FEE, 6)
         # Extract TF from reason string e.g. 'signal_buy_4h' → '4h'
         trade_tf = reason.split('_')[-1] if '_' in reason else '1h'
         trade  = {'type':'BUY','symbol':symbol,'price':actual_price,'amount':amount,
-                  'usdt':capital,'reason':reason,'mode':mode_tag,'order_id':order_id,
+                  'usdt':capital,'buy_fee':buy_fee,'reason':reason,'mode':mode_tag,'order_id':order_id,
                   'signal_price': price,       # price when signal fired
                   'buy_price':    actual_price, # actual fill price
                   'time':now_ist(),'pnl':None}
@@ -1983,8 +1984,11 @@ class BotEngine:
                 self._push_event('error', f"Live sell failed {symbol}", {'symbol':symbol})
                 return None
 
-        pnl_usdt = (actual_price-avg_entry)*total_amt
-        pnl_pct  = (actual_price-avg_entry)/avg_entry*100
+        gross_out  = actual_price * total_amt
+        sell_fee   = round(gross_out * _VT_TAKER_FEE, 6)
+        buy_fee    = sum(t.get('buy_fee', 0.0) for t in self.trades if t.get('type') == 'BUY' and t.get('symbol') == symbol and t.get('buy_fee'))
+        pnl_usdt   = round(gross_out - sell_fee - total_usdt, 4)   # net after both fees
+        pnl_pct    = (actual_price - avg_entry) / avg_entry * 100
         # Find the matching buy trade to pull signal_price and buy_price
         buy_signal_price = None; buy_fill_price = None
         for tr in reversed(self.trades):
@@ -1993,7 +1997,8 @@ class BotEngine:
                 buy_fill_price   = tr.get('buy_price', tr.get('price'))
                 break
         trade    = {'type':'SELL','symbol':symbol,'price':actual_price,'amount':total_amt,
-                    'usdt':actual_price*total_amt,'avg_entry':avg_entry,
+                    'usdt':gross_out,'sell_fee':sell_fee,'total_fee':round(sell_fee+buy_fee,6),
+                    'avg_entry':avg_entry,
                     'pnl_usdt':round(pnl_usdt,4),'pnl_pct':round(pnl_pct,2),
                     'reason':reason,'mode':mode_tag,'order_id':order_id,
                     'buy_signal_price':  buy_signal_price,
