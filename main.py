@@ -873,19 +873,28 @@ def _vt_get_summary():
             unrealized_pct   = None
             live_fund        = cur_fund
 
+            price_stale = False
             if in_pos:
                 try:
                     live_price = bot_engine.client.get_spot_price(sym)
                 except Exception:
                     live_price = None
+                # Fallback: use last cached price from allMids if get_spot_price fails
+                if not live_price:
+                    _cached = op.get('last_known_price')
+                    if _cached:
+                        live_price  = _cached
+                        price_stale = True
                 if live_price and op.get('amount') and op.get('buy_price'):
+                    # Store last known price for stale fallback (no nested lock needed - already inside _vt_lock)
+                    _vt_fund[sym]['last_known_price'] = live_price
                     gross_live     = round(op['amount'] * live_price, 6)
                     sell_fee_est   = round(gross_live * _VT_TAKER_FEE, 6)
-                    live_fund      = round(gross_live - sell_fee_est, 4)   # buy_fee already in fund_in
+                    live_fund      = round(gross_live - sell_fee_est, 4)
                     unrealized_pnl = round(live_fund - op['fund'], 4)
                     unrealized_pct = round((live_price - op['buy_price']) / op['buy_price'] * 100, 3)
 
-            display_fund = live_fund if in_pos else cur_fund
+            display_fund = live_fund if (in_pos and live_price) else cur_fund
             growth_pct   = round((display_fund - initial) / initial * 100, 2) if initial else 0
 
             # Pending buy fee already deducted in open position
@@ -907,6 +916,7 @@ def _vt_get_summary():
                 'entry_tf':       op.get('timeframe'),
                 'pending_buy_fee': round(op.get('buy_fee', 0.0), 4) if in_pos else None,
                 'live_price':     live_price,
+                'price_stale':    price_stale,
                 'unrealized_pnl': unrealized_pnl,
                 'unrealized_pct': unrealized_pct,
                 # Risk levels for open positions
