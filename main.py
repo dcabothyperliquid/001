@@ -631,6 +631,8 @@ class HyperliquidClient:
         else:
             idx     = self.sym_to_index(symbol)
             coin_id = f"@{idx}" if idx is not None else symbol
+
+        payload = {"type": "candleSnapshot",
                    "req": {"coin": coin_id, "interval": tf,
                             "startTime": start, "endTime": now_ms}}
         try:
