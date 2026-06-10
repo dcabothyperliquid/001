@@ -2362,6 +2362,12 @@ async function refreshVirtualTracker() {
           }
           pnlEl.dataset.prev = cur;
         }
+        const pctEl = document.getElementById(`vtLivePct_${sym}`);
+        if (pctEl) {
+          const upnlPct = info.unrealized_pct ?? null;
+          pctEl.textContent = upnlPct !== null ? (upnlPct>=0?'+':'')+upnlPct.toFixed(3)+'%' : '';
+          pctEl.style.color = upnlColor;
+        }
         const lpEl = document.getElementById(`vtLivePrice_${sym}`);
         if (lpEl && info.live_price) { lpEl.textContent = `$${fmtPrice(info.live_price)}`; }
       });
