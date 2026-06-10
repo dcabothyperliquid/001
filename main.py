@@ -2342,6 +2342,34 @@ def vt_state_debug():
             }
     return jsonify({'vt_fund': out, 'coins_in_position': [s for s,v in out.items() if v['in_position']]})
 
+@app.route('/api/vt/fund', methods=['POST'])
+def vt_fund_adjust():
+    """Add or withdraw from a coin's VT fund. Body: {symbol, amount} — positive=add, negative=withdraw."""
+    data   = request.get_json() or {}
+    symbol = (data.get('symbol') or '').upper().strip()
+    try:
+        amount = float(data.get('amount', 0))
+    except (ValueError, TypeError):
+        return jsonify({'ok': False, 'error': 'Invalid amount'}), 400
+
+    if not symbol:
+        return jsonify({'ok': False, 'error': 'Symbol required'}), 400
+
+    with _vt_lock:
+        if symbol not in _vt_fund:
+            return jsonify({'ok': False, 'error': f'{symbol} not found in VT'}), 404
+        current = _vt_fund[symbol].get('fund', 0)
+        new_val  = round(current + amount, 6)
+        if new_val <= 0:
+            return jsonify({'ok': False, 'error': 'Fund cannot go to 0 or negative'}), 400
+        _vt_fund[symbol]['fund'] = new_val
+        # Also update initial_fund so growth% recalculates correctly
+        _vt_fund[symbol]['initial_fund'] = new_val if not _vt_fund[symbol].get('buy_price') else _vt_fund[symbol].get('initial_fund', new_val)
+
+    _save_vt_state()
+    logger.info(f"[VT] Fund adjust {symbol}: {current:.4f} → {new_val:.4f} ({'+' if amount>=0 else ''}{amount})")
+    return jsonify({'ok': True, 'symbol': symbol, 'old': current, 'new': new_val})
+
 @app.route('/api/virtual/reset', methods=['POST'])
 def virtual_reset():
     """Reset virtual P&L tracker (clears all virtual trades and stats)."""

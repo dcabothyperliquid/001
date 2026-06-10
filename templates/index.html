@@ -1671,6 +1671,19 @@ function toggleVtCard(stripEl) {
     if (chevron) chevron.style.transform = 'rotate(180deg)';
   }
 }
+async function vtAdjustFund(sym, direction, evt) {
+  evt.stopPropagation();
+  const amtStr = prompt(`${direction > 0 ? 'Add' : 'Withdraw'} how much USDC for ${sym}?`, '1');
+  if (!amtStr) return;
+  const amt = parseFloat(amtStr);
+  if (isNaN(amt) || amt <= 0) return alert('Invalid amount');
+  const payload = { symbol: sym, amount: direction > 0 ? amt : -amt };
+  const r = await fetch('/api/vt/fund', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const j = await r.json();
+  if (!j.ok) return alert('Error: ' + j.error);
+  const el = document.getElementById(`vtFundVal_${sym}`);
+  if (el) el.textContent = '$' + j.new.toFixed(2);
+}
 async function removeCoin(sym) {
   const r = await api(`/coins/${sym}`, 'DELETE');
   if (r?.success) { toastRich(`${sym} removed`, '', 'ok'); refreshAll(); }
@@ -2481,8 +2494,12 @@ async function refreshVirtualTracker() {
         <!-- 4 stat boxes -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
           <div style="border-radius:8px;padding:8px 10px;background:rgba(48,144,255,0.07);border:1px solid rgba(48,144,255,0.12);">
-            <div style="font-size:7px;color:rgba(48,144,255,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Start Fund</div>
-            <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:#a8c8ff;">$${(info.initial_fund||0).toFixed(2)}</div>
+            <div style="font-size:7px;color:rgba(48,144,255,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Fund</div>
+            <div style="display:flex;align-items:center;gap:5px;">
+              <div id="vtFundVal_${sym}" style="font-family:var(--mono);font-size:13px;font-weight:700;color:#a8c8ff;flex:1;">$${(info.current_fund||info.initial_fund||0).toFixed(2)}</div>
+              <button onclick="vtAdjustFund('${sym}',-1,event)" style="background:rgba(255,48,96,0.18);border:1px solid rgba(255,48,96,0.35);color:#ff3060;border-radius:4px;width:20px;height:20px;font-size:13px;line-height:1;cursor:pointer;padding:0;">−</button>
+              <button onclick="vtAdjustFund('${sym}',1,event)" style="background:rgba(13,255,140,0.12);border:1px solid rgba(13,255,140,0.3);color:#0dff8c;border-radius:4px;width:20px;height:20px;font-size:13px;line-height:1;cursor:pointer;padding:0;">+</button>
+            </div>
           </div>
           <div style="border-radius:8px;padding:8px 10px;background:rgba(13,240,224,0.06);border:1px solid rgba(13,240,224,0.12);">
             <div style="font-size:7px;color:rgba(13,240,224,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Now</div>
