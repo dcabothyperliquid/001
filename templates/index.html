@@ -2538,11 +2538,12 @@ async function refreshVirtualTracker() {
             <div style="font-size:7px;color:rgba(160,96,255,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Win Rate</div>
             <div id="vtWR_${sym}" style="font-family:var(--mono);font-size:12px;font-weight:700;color:${wrColor};">${(info.win_rate||0).toFixed(0)}%</div>
           </div>
-          <div style="border-radius:8px;padding:8px 10px;background:${info.in_position?'rgba(255,48,96,0.08)':'rgba(255,176,32,0.06)'};border:1px solid ${info.in_position?'rgba(255,48,96,0.25)':'rgba(255,176,32,0.15)'};display:flex;align-items:center;justify-content:center;">
-            ${info.in_position
-              ? `<button onclick="event.stopPropagation();vtClosePosition('${sym}')" style="background:transparent;border:none;color:var(--red);font-family:var(--mono);font-size:11px;font-weight:800;letter-spacing:1.5px;cursor:pointer;width:100%;padding:4px 0;">■ CLOSE</button>`
-              : `<div style="text-align:center;"><div style="font-size:7px;color:rgba(255,176,32,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Trades</div><div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--amber);">${info.total_trades||0}</div></div>`
-            }
+          <div style="border-radius:8px;padding:8px 10px;background:rgba(255,176,32,0.06);border:1px solid rgba(255,176,32,0.15);">
+            <div style="font-size:7px;color:rgba(255,176,32,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Trades</div>
+            <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--amber);">${info.total_trades||0}</div>
+          </div>
+          <div style="border-radius:8px;padding:8px 10px;background:rgba(255,48,96,0.08);border:1px solid rgba(255,48,96,0.25);display:flex;align-items:center;justify-content:center;grid-column:span 3;">
+            <button onclick="event.stopPropagation();vtClosePosition('${sym}')" style="background:transparent;border:none;color:var(--red);font-family:var(--mono);font-size:11px;font-weight:800;letter-spacing:2px;cursor:pointer;width:100%;padding:4px 0;opacity:${info.in_position?'1':'0.35'};pointer-events:${info.in_position?'auto':'none'};">■ CLOSE POSITION</button>
           </div>
         </div>
         <!-- W/L row -->
