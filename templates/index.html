@@ -1795,11 +1795,7 @@ function _buildCoinCard(c) {
       </div>
       <div class="cc-met" style="flex-direction:column;align-items:flex-start;gap:2px;">
         <span class="met-label">CAP</span>
-        <div style="display:flex;align-items:center;gap:3px;">
-          <span class="met-val c-cy" id="lm-cap-${sym}">$${c.capital||0}</span>
-          <button onclick="lmAdjustCap('${sym}',-1,event)" style="background:rgba(255,48,96,0.18);border:1px solid rgba(255,48,96,0.35);color:#ff3060;border-radius:3px;width:16px;height:16px;font-size:11px;line-height:1;cursor:pointer;padding:0;">−</button>
-          <button onclick="lmAdjustCap('${sym}',1,event)" style="background:rgba(13,255,140,0.12);border:1px solid rgba(13,255,140,0.3);color:#0dff8c;border-radius:3px;width:16px;height:16px;font-size:11px;line-height:1;cursor:pointer;padding:0;">+</button>
-        </div>
+        <span class="met-val c-cy" id="lm-cap-${sym}">$${c.capital||0}</span>
       </div>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;" id="lm-sig-${sym}">
