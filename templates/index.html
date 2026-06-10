@@ -2672,10 +2672,24 @@ async function toggleCoinTf(symbol, tf, btn) {
     if (d.success) {
       // Sync _lastCoins so re-render doesn't overwrite local state
       const coin = (_lastCoins || []).find(c => c.symbol === symbol);
-      if (coin) coin.timeframes = [...tfs];
+      if (coin) {
+        coin.timeframes = [...tfs];
+        // Re-render just this coin's TF buttons to reflect new state accurately
+        const tfBtnsEl = document.getElementById(`lm-tfbtns-${symbol}`);
+        if (tfBtnsEl) {
+          tfBtnsEl.innerHTML = ['5m','15m','30m','1h','2h','4h'].map(t => {
+            const isOn  = tfs.has(t);
+            const tfSig = (coin.tf_breakdown || {})[t] || 'neutral';
+            const sigCls = isOn && tfSig === 'buy' ? ' signal-buy' : isOn && tfSig === 'sell' ? ' signal-sell' : '';
+            const isBest = t === coin.best_timeframe;
+            return `<button class="coin-tf-btn${isOn?' active':''}${sigCls}" title="${t}: ${tfSig}" onclick="toggleCoinTf('${symbol}','${t}',this)" style="${isBest?'outline:1px solid rgba(255,255,255,0.3);outline-offset:1px;':''}">${t}</button>`;
+          }).join('');
+        }
+      }
+      toastRich(`${symbol} TF saved`, [...tfs].join(' · '), 'ok');
     } else {
       toastRich('TF save failed','','err');
-      delete _coinTfs[symbol]; // reset cache so it reloads from backend
+      delete _coinTfs[symbol];
     }
   } catch(e) { toastRich('TF save failed','','err'); delete _coinTfs[symbol]; }
 }
