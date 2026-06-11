@@ -2416,6 +2416,13 @@ async function refreshVirtualTracker() {
         set(`vtNow_${sym}`,    `$${(info.current_fund||0).toFixed(4)}`);
         set(`vtGrowthD_${sym}`,`${growthSign}${(info.growth_pct||0).toFixed(2)}%`);
         set(`vtWR_${sym}`,     `${(info.win_rate||0).toFixed(0)}%`);
+        set(`vtWins_${sym}`,   `✓ ${info.wins||0} W`);
+        set(`vtLosses_${sym}`, `✗ ${info.losses||0} L`);
+        set(`vtTradesCnt_${sym}`, info.total_trades||0);
+
+        // Update fees
+        const feesEl2 = document.getElementById(`vtFeesCoin_${sym}`);
+        if (feesEl2) feesEl2.textContent = `-${(info.total_fees||0).toFixed(4)} USDC`;
         // NET P&L box = closed pnl always (unrealized shown separately in UNREALIZED box)
         set(`vtNetPnl_${sym}`, `${pnlSign}${pnl.toFixed(4)}`);
         setStyle(`vtNetPnl_${sym}`, 'color', pnlColor);
@@ -2578,7 +2585,7 @@ async function refreshVirtualTracker() {
           </div>
           <div style="border-radius:8px;padding:8px 10px;background:rgba(255,176,32,0.06);border:1px solid rgba(255,176,32,0.15);">
             <div style="font-size:7px;color:rgba(255,176,32,0.65);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase;">Trades</div>
-            <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--amber);">${info.total_trades||0}</div>
+            <div id="vtTradesCnt_${sym}" style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--amber);">${info.total_trades||0}</div>
           </div>
           <div style="border-radius:8px;padding:8px 10px;background:rgba(255,48,96,0.08);border:1px solid rgba(255,48,96,0.25);display:flex;align-items:center;justify-content:center;grid-column:span 3;">
             <button onclick="event.stopPropagation();vtClosePosition('${sym}')" style="background:transparent;border:none;color:var(--red);font-family:var(--mono);font-size:11px;font-weight:800;letter-spacing:2px;cursor:pointer;width:100%;padding:4px 0;opacity:${info.in_position?'1':'0.35'};pointer-events:${info.in_position?'auto':'none'};">■ CLOSE POSITION</button>
@@ -2587,13 +2594,13 @@ async function refreshVirtualTracker() {
         <!-- W/L row -->
         <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--mono);padding:5px 8px;background:rgba(255,255,255,0.02);border-radius:6px;margin-bottom:6px;">
           <span style="color:var(--muted);">W / L</span>
-          <span style="color:var(--green);">✓ ${info.wins||0} W</span>
-          <span style="color:var(--red);">✗ ${info.losses||0} L</span>
+          <span id="vtWins_${sym}" style="color:var(--green);">✓ ${info.wins||0} W</span>
+          <span id="vtLosses_${sym}" style="color:var(--red);">✗ ${info.losses||0} L</span>
         </div>
         <!-- Fees row -->
         <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:rgba(255,48,96,0.05);border:1px solid rgba(255,48,96,0.1);border-radius:6px;margin-bottom:8px;">
           <span style="font-size:8px;color:rgba(255,48,96,0.55);letter-spacing:1.5px;font-family:var(--mono);">FEES PAID</span>
-          <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:rgba(255,96,96,0.8);">-${(info.total_fees||0).toFixed(4)} USDC</span>
+          <span id="vtFeesCoin_${sym}" style="font-family:var(--mono);font-size:11px;font-weight:700;color:rgba(255,96,96,0.8);">-${(info.total_fees||0).toFixed(4)} USDC</span>
         </div>
         ${inPosHtml}
       </div>`;

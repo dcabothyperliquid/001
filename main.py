@@ -832,7 +832,7 @@ def _vt_on_sell(symbol, price, exit_reason='signal'):
         peak_price = entry.get('peak_price', buy_price)   # ATH since buy
 
         gross_out  = round(amount * price, 6)
-        sell_fee   = round(gross_out * _VT_TAKER_FEE, 6)   # fee on sell notional
+        sell_fee   = round(gross_out * _VT_MAKER_FEE, 6)   # sell = GTC limit bracket (maker = 0%)
         fund_out   = round(gross_out - sell_fee, 4)          # buy_fee already deducted at buy time
         total_fee  = round(buy_fee + sell_fee, 6)
 
@@ -899,7 +899,7 @@ def _vt_get_summary():
                 # If price unavailable, leave unrealized_pnl as None (UI shows "...")
                 if live_price and op.get('amount') and op.get('buy_price'):
                     gross_live     = round(op['amount'] * live_price, 6)
-                    sell_fee_est   = round(gross_live * _VT_TAKER_FEE, 6)
+                    sell_fee_est   = round(gross_live * _VT_MAKER_FEE, 6)   # sell = maker
                     live_fund      = round(gross_live - sell_fee_est, 4)
                     unrealized_pnl = round(live_fund - op['fund'], 4)
                     unrealized_pct = round((live_price - op['buy_price']) / op['buy_price'] * 100, 3)
