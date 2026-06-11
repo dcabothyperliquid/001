@@ -2833,55 +2833,101 @@ async function toggleCoinTf(symbol, tf, btn) {
 // ── VT TRADE HISTORY DRAWER ──────────────────────────────────────────────────
 let _vtTradeData = [];
 
+function downloadVtTradesCsv() {
+  const trades = _vtTradeData;
+  if (!trades.length) return;
+  const fmtP = p => (!p && p !== 0) ? '' : (p > 1 ? p.toFixed(2) : p.toFixed(6));
+  const fmtHeld = (buy_time, sell_time) => {
+    if (!buy_time || !sell_time) return '';
+    const toSec = t => { const [h,m,s] = t.split(':').map(Number); return h*3600+m*60+s; };
+    let diff = toSec(sell_time) - toSec(buy_time);
+    if (diff < 0) diff += 86400;
+    if (diff < 60) return diff + 's';
+    if (diff < 3600) return Math.floor(diff/60) + 'm ' + (diff%60) + 's';
+    const h = Math.floor(diff/3600), m = Math.floor((diff%3600)/60);
+    return h + 'h ' + m + 'm';
+  };
+  const headers = ['COIN','ENTRY_PRICE','EXIT_PRICE','TIMEFRAME','HELD','FUND_IN','PEAK_PRICE','PEAK_PCT','PNL_USDT','PNL_PCT','EXIT_REASON','BUY_TIME','SELL_TIME'];
+  const rows = trades.map(t => [
+    t.symbol||'',
+    fmtP(t.buy_price),
+    fmtP(t.sell_price),
+    t.timeframe||'',
+    fmtHeld(t.buy_time, t.sell_time),
+    (t.fund_in||0).toFixed(4),
+    fmtP(t.peak_price),
+    t.peak_pct != null ? t.peak_pct.toFixed(2)+'%' : '',
+    (t.pnl_usdt||0).toFixed(4),
+    (t.pnl_pct||0).toFixed(2)+'%',
+    t.exit_reason||'',
+    t.buy_time||'',
+    t.sell_time||''
+  ].map(v => '"'+String(v).replace(/"/g,'""')+'"').join(','));
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'vt_trade_history.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
 function openVtTradeHistory() {
-  // Use already-cached trade data from refreshVirtualTracker, open drawer directly
   let drawer = document.getElementById('vtTradeDrawer');
-    if (drawer) {
-      drawer.style.display = 'flex';
-      renderVtTrades();
-      return;
-    }
-    // Build drawer DOM once
+  if (drawer) {
+    drawer.style.display = 'flex';
+    renderVtTrades();
+    return;
+  }
   const el = document.createElement('div');
   el.id = 'vtTradeDrawer';
   el.style.cssText = `
     display:flex;flex-direction:column;
     position:fixed;top:0;right:0;bottom:0;left:0;z-index:9999;
-    background:rgba(0,0,0,0.82);backdrop-filter:blur(6px);
+    background:#080a0f;
   `;
   el.innerHTML = `
-    <div id="vtDrawerInner" style="
-      margin:auto 0 0 0;
-      width:100%;max-height:92vh;
-      background:#0d0f14;
-      border-top:1px solid rgba(48,144,255,0.25);
-      border-radius:16px 16px 0 0;
-      display:flex;flex-direction:column;
-      overflow:hidden;
-    ">
-      <!-- header -->
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px 10px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;">
+    <!-- TOP HEADER BAR -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 12px;background:#0d0f16;border-bottom:1px solid rgba(48,144,255,0.15);flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button onclick="closeVtTradeHistory()" style="
+          width:34px;height:34px;border-radius:10px;
+          background:rgba(255,60,80,0.12);border:1px solid rgba(255,60,80,0.3);
+          color:#ff4050;font-size:16px;cursor:pointer;
+          display:flex;align-items:center;justify-content:center;
+          font-family:var(--mono);flex-shrink:0;
+        ">✕</button>
         <div>
-          <div style="font-size:10px;color:rgba(48,144,255,0.7);letter-spacing:2.5px;text-transform:uppercase;font-family:var(--mono);margin-bottom:3px;">VT · TRADE HISTORY</div>
-          <div id="vtThCount" style="font-size:11px;color:var(--muted);font-family:var(--mono);"></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div id="vtThFilter" style="display:flex;gap:6px;"></div>
-          <button onclick="closeVtTradeHistory()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--fg);font-size:14px;cursor:pointer;padding:6px 12px;font-family:var(--mono);">✕</button>
+          <div style="font-size:11px;color:rgba(48,144,255,0.85);letter-spacing:2.5px;text-transform:uppercase;font-family:var(--mono);font-weight:700;">VT · TRADE HISTORY</div>
+          <div id="vtThCount" style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:1px;"></div>
         </div>
       </div>
-      <!-- table header -->
-      <div style="display:grid;grid-template-columns:3fr 2.5fr 2.5fr 1.5fr 2fr 2fr 2.5fr 2fr;gap:0;padding:8px 16px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0;">
-        ${['COIN','ENTRY','EXIT','TF','HELD','FUND IN','ATH AFTER BUY','P&L'].map(h =>
-          `<div style="font-size:7.5px;color:var(--muted);letter-spacing:1.5px;font-family:var(--mono);text-transform:uppercase;">${h}</div>`
-        ).join('')}
-      </div>
-      <!-- rows -->
-      <div id="vtThRows" style="overflow-y:auto;flex:1;padding:4px 0;"></div>
+      <button onclick="downloadVtTradesCsv()" style="
+        display:flex;align-items:center;gap:6px;
+        padding:8px 14px;border-radius:10px;
+        background:rgba(13,255,140,0.1);border:1px solid rgba(13,255,140,0.3);
+        color:#0dff8c;font-size:10px;font-family:var(--mono);
+        cursor:pointer;letter-spacing:1px;font-weight:700;
+      ">⬇ CSV</button>
     </div>
+
+    <!-- SUMMARY STATS -->
+    <div id="vtThStats" style="display:flex;gap:0;background:#0a0c13;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;overflow-x:auto;"></div>
+
+    <!-- FILTER PILLS -->
+    <div style="padding:10px 14px;background:#080a0f;border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0;overflow-x:auto;">
+      <div id="vtThFilter" style="display:flex;gap:6px;width:max-content;"></div>
+    </div>
+
+    <!-- TABLE HEADER -->
+    <div style="display:grid;grid-template-columns:2.8fr 2.4fr 2.4fr 1.4fr 2fr 1.8fr 2.6fr 2fr;padding:8px 14px;background:rgba(48,144,255,0.05);border-bottom:1px solid rgba(48,144,255,0.12);flex-shrink:0;">
+      ${['COIN','ENTRY','EXIT','TF','HELD','FUND','ATH','P&L'].map(h =>
+        `<div style="font-size:7px;color:rgba(48,144,255,0.6);letter-spacing:1.5px;font-family:var(--mono);text-transform:uppercase;font-weight:700;">${h}</div>`
+      ).join('')}
+    </div>
+
+    <!-- ROWS -->
+    <div id="vtThRows" style="overflow-y:auto;flex:1;"></div>
   `;
-  // Close only when tapping the dark backdrop itself
-  el.addEventListener('click', e => { if (e.target === el) closeVtTradeHistory(); });
   document.body.appendChild(el);
   renderVtTrades();
 }
@@ -2895,22 +2941,55 @@ function renderVtTrades(filterCoin) {
   const rows = document.getElementById('vtThRows');
   const countEl = document.getElementById('vtThCount');
   const filterEl = document.getElementById('vtThFilter');
+  const statsEl = document.getElementById('vtThStats');
   if (!rows) return;
 
   const trades = _vtTradeData;
   if (!trades.length) {
-    rows.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-family:var(--mono);font-size:10px;letter-spacing:2px;">NO TRADES YET</div>';
+    rows.innerHTML = '<div style="padding:60px;text-align:center;color:var(--muted);font-family:var(--mono);font-size:10px;letter-spacing:2px;">NO TRADES YET</div>';
     if (countEl) countEl.textContent = '0 trades';
     return;
   }
 
-  // Build coin filter buttons
+  // ── Stats bar (always uses ALL trades)
+  if (statsEl) {
+    const totalPnl = trades.reduce((s,t) => s + (t.pnl_usdt||0), 0);
+    const wins = trades.filter(t => t.pnl_usdt >= 0).length;
+    const winRate = trades.length ? (wins/trades.length*100) : 0;
+    const bestTrade = trades.reduce((b,t) => (t.pnl_usdt||0) > (b.pnl_usdt||0) ? t : b, trades[0]);
+    const worstTrade = trades.reduce((w,t) => (t.pnl_usdt||0) < (w.pnl_usdt||0) ? t : w, trades[0]);
+    const pnlColor = totalPnl >= 0 ? '#0dff8c' : '#ff4050';
+    const pnlSign = totalPnl >= 0 ? '+' : '';
+    const statItem = (label, val, color='var(--fg)') =>
+      `<div style="flex:1;min-width:80px;padding:10px 14px;border-right:1px solid rgba(255,255,255,0.05);">
+        <div style="font-size:7px;color:var(--muted);letter-spacing:1.5px;font-family:var(--mono);text-transform:uppercase;margin-bottom:4px;">${label}</div>
+        <div style="font-size:12px;font-weight:700;color:${color};font-family:var(--mono);">${val}</div>
+      </div>`;
+    statsEl.innerHTML =
+      statItem('Total P&L', pnlSign+'$'+(Math.abs(totalPnl)).toFixed(3), pnlColor) +
+      statItem('Win Rate', winRate.toFixed(0)+'%', winRate>=50?'#0dff8c':'#ff4050') +
+      statItem('Trades', trades.length, 'var(--fg)') +
+      statItem('Wins', wins, '#0dff8c') +
+      statItem('Losses', trades.length-wins, '#ff4050') +
+      `<div style="flex:1;min-width:80px;padding:10px 14px;border-right:1px solid rgba(255,255,255,0.05);">
+        <div style="font-size:7px;color:var(--muted);letter-spacing:1.5px;font-family:var(--mono);text-transform:uppercase;margin-bottom:4px;">BEST</div>
+        <div style="font-size:11px;font-weight:700;color:#0dff8c;font-family:var(--mono);">+$${(bestTrade.pnl_usdt||0).toFixed(3)}</div>
+        <div style="font-size:8px;color:var(--muted);font-family:var(--mono);">${bestTrade.symbol||''}</div>
+      </div>` +
+      `<div style="flex:1;min-width:80px;padding:10px 14px;">
+        <div style="font-size:7px;color:var(--muted);letter-spacing:1.5px;font-family:var(--mono);text-transform:uppercase;margin-bottom:4px;">WORST</div>
+        <div style="font-size:11px;font-weight:700;color:#ff4050;font-family:var(--mono);">$${(worstTrade.pnl_usdt||0).toFixed(3)}</div>
+        <div style="font-size:8px;color:var(--muted);font-family:var(--mono);">${worstTrade.symbol||''}</div>
+      </div>`;
+  }
+
+  // ── Filter pills
   const coins = [...new Set(trades.map(t => t.symbol))].sort();
   if (filterEl) {
     filterEl.innerHTML = `
-      <button onclick="renderVtTrades()" style="padding:3px 8px;border-radius:6px;border:1px solid ${!filterCoin?'rgba(48,144,255,0.6)':'rgba(255,255,255,0.1)'};background:${!filterCoin?'rgba(48,144,255,0.12)':'transparent'};color:${!filterCoin?'var(--blue)':'var(--muted)'};font-size:8px;font-family:var(--mono);cursor:pointer;letter-spacing:1px;">ALL</button>
+      <button onclick="renderVtTrades()" style="padding:5px 12px;border-radius:20px;border:1px solid ${!filterCoin?'rgba(48,144,255,0.7)':'rgba(255,255,255,0.1)'};background:${!filterCoin?'rgba(48,144,255,0.15)':'transparent'};color:${!filterCoin?'#3090ff':'var(--muted)'};font-size:9px;font-family:var(--mono);cursor:pointer;letter-spacing:1px;font-weight:${!filterCoin?'700':'400'};">ALL</button>
       ${coins.map(c => `
-        <button onclick="renderVtTrades('${c}')" style="padding:3px 8px;border-radius:6px;border:1px solid ${filterCoin===c?'rgba(48,144,255,0.6)':'rgba(255,255,255,0.1)'};background:${filterCoin===c?'rgba(48,144,255,0.12)':'transparent'};color:${filterCoin===c?'var(--blue)':'var(--muted)'};font-size:8px;font-family:var(--mono);cursor:pointer;letter-spacing:1px;">${c}</button>
+        <button onclick="renderVtTrades('${c}')" style="padding:5px 12px;border-radius:20px;border:1px solid ${filterCoin===c?'rgba(48,144,255,0.7)':'rgba(255,255,255,0.1)'};background:${filterCoin===c?'rgba(48,144,255,0.15)':'transparent'};color:${filterCoin===c?'#3090ff':'var(--muted)'};font-size:9px;font-family:var(--mono);cursor:pointer;letter-spacing:1px;font-weight:${filterCoin===c?'700':'400'};">${c}</button>
       `).join('')}
     `;
   }
@@ -2927,10 +3006,9 @@ function renderVtTrades(filterCoin) {
 
   const fmtHeld = (buy_time, sell_time) => {
     if (!buy_time || !sell_time) return '—';
-    // parse HH:MM:SS
     const toSec = t => { const [h,m,s] = t.split(':').map(Number); return h*3600+m*60+s; };
     let diff = toSec(sell_time) - toSec(buy_time);
-    if (diff < 0) diff += 86400; // crossed midnight
+    if (diff < 0) diff += 86400;
     if (diff < 60) return diff + 's';
     if (diff < 3600) return Math.floor(diff/60) + 'm ' + (diff%60) + 's';
     const h = Math.floor(diff/3600), m = Math.floor((diff%3600)/60);
@@ -2939,51 +3017,51 @@ function renderVtTrades(filterCoin) {
 
   rows.innerHTML = filtered.map((t, i) => {
     const win = t.pnl_usdt >= 0;
-    const pnlColor = win ? 'var(--green)' : 'var(--red)';
+    const pnlColor = win ? '#0dff8c' : '#ff4050';
     const pnlSign  = win ? '+' : '';
-    const rowBg    = i % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent';
-    const exitReason = t.exit_reason || 'signal';
-    const exitTag = exitReason === 'sl'    ? '<span style="font-size:6px;background:rgba(255,48,96,0.2);color:#ff4070;border-radius:3px;padding:1px 4px;margin-left:3px;font-family:var(--mono);">SL</span>'
-                  : exitReason === 'tp'    ? '<span style="font-size:6px;background:rgba(13,255,140,0.15);color:#0dff8c;border-radius:3px;padding:1px 4px;margin-left:3px;font-family:var(--mono);">TP</span>'
-                  : exitReason === 'trail' ? '<span style="font-size:6px;background:rgba(255,184,0,0.15);color:#ffb800;border-radius:3px;padding:1px 4px;margin-left:3px;font-family:var(--mono);">TRAIL</span>'
-                  : exitReason === 'manual'? '<span style="font-size:6px;background:rgba(160,96,255,0.15);color:#c090ff;border-radius:3px;padding:1px 4px;margin-left:3px;font-family:var(--mono);">MAN</span>'
+    const rowBg = i % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'transparent';
+    const exitReason = t.exit_reason || '';
+    const exitTag = exitReason === 'sl'     ? '<span style="font-size:7px;background:rgba(255,48,96,0.2);color:#ff4070;border-radius:4px;padding:1px 5px;font-family:var(--mono);font-weight:700;">SL</span>'
+                  : exitReason === 'tp'     ? '<span style="font-size:7px;background:rgba(13,255,140,0.15);color:#0dff8c;border-radius:4px;padding:1px 5px;font-family:var(--mono);font-weight:700;">TP</span>'
+                  : exitReason === 'trail'  ? '<span style="font-size:7px;background:rgba(255,184,0,0.15);color:#ffb800;border-radius:4px;padding:1px 5px;font-family:var(--mono);font-weight:700;">TRAIL</span>'
+                  : exitReason === 'manual' ? '<span style="font-size:7px;background:rgba(160,96,255,0.15);color:#c090ff;border-radius:4px;padding:1px 5px;font-family:var(--mono);font-weight:700;">MAN</span>'
                   : '';
-    // ATH: peak price & % since buy
-    const hasPeak   = t.peak_price && t.peak_price > 0;
-    const peakPct   = hasPeak ? (t.peak_pct ?? ((t.peak_price - t.buy_price) / t.buy_price * 100)) : null;
-    const athColor  = peakPct !== null && peakPct >= 2 ? 'var(--green)' : peakPct !== null && peakPct >= 1 ? 'var(--amber)' : 'var(--muted)';
+    const hasPeak = t.peak_price && t.peak_price > 0;
+    const peakPct = hasPeak ? (t.peak_pct ?? ((t.peak_price - t.buy_price) / t.buy_price * 100)) : null;
+    const athColor = peakPct !== null && peakPct >= 2 ? '#0dff8c' : peakPct !== null && peakPct >= 1 ? '#ffb800' : 'var(--muted)';
+    const leftBorder = win ? 'border-left:2px solid rgba(13,255,140,0.4);' : 'border-left:2px solid rgba(255,64,80,0.4);';
     return `
-      <div style="display:grid;grid-template-columns:3fr 2.5fr 2.5fr 1.5fr 2fr 2fr 2.5fr 2fr;gap:0;padding:9px 16px;background:${rowBg};border-bottom:1px solid rgba(255,255,255,0.03);align-items:center;">
+      <div style="display:grid;grid-template-columns:2.8fr 2.4fr 2.4fr 1.4fr 2fr 1.8fr 2.6fr 2fr;padding:10px 14px;background:${rowBg};border-bottom:1px solid rgba(255,255,255,0.04);align-items:center;${leftBorder}">
         <div>
-          <div style="font-family:var(--mono);font-size:11px;font-weight:800;color:var(--fg);">${t.symbol}</div>
-          <div style="font-size:8px;color:var(--muted);margin-top:1px;">${t.buy_time||''}${exitTag}</div>
+          <div style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--fg);">${t.symbol}</div>
+          <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">${exitTag}<span style="font-size:7.5px;color:var(--muted);font-family:var(--mono);">${t.buy_time||''}</span></div>
         </div>
         <div>
-          <div style="font-family:var(--mono);font-size:10px;color:rgba(255,220,100,0.9);">${fmtP(t.buy_price)}</div>
-          <div style="font-size:7.5px;color:var(--muted);margin-top:1px;">entry</div>
+          <div style="font-family:var(--mono);font-size:10px;color:rgba(255,220,100,0.9);font-weight:600;">${fmtP(t.buy_price)}</div>
+          <div style="font-size:7px;color:var(--muted);margin-top:1px;font-family:var(--mono);">entry</div>
         </div>
         <div>
-          <div style="font-family:var(--mono);font-size:10px;color:rgba(13,240,224,0.9);">${fmtP(t.sell_price)}</div>
-          <div style="font-size:7.5px;color:var(--muted);margin-top:1px;">${t.sell_time||''}</div>
+          <div style="font-family:var(--mono);font-size:10px;color:rgba(13,240,224,0.85);font-weight:600;">${fmtP(t.sell_price)}</div>
+          <div style="font-size:7px;color:var(--muted);margin-top:1px;font-family:var(--mono);">${t.sell_time||''}</div>
         </div>
         <div>
-          <div style="font-family:var(--mono);font-size:10px;color:rgba(160,96,255,0.9);">${t.timeframe||'—'}</div>
+          <div style="font-family:var(--mono);font-size:10px;color:rgba(160,96,255,0.9);font-weight:600;">${t.timeframe||'—'}</div>
         </div>
         <div>
-          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);">${fmtHeld(t.buy_time, t.sell_time)}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:rgba(180,180,200,0.7);">${fmtHeld(t.buy_time, t.sell_time)}</div>
         </div>
         <div>
-          <div style="font-family:var(--mono);font-size:10px;color:rgba(48,144,255,0.9);">$${(t.fund_in||0).toFixed(4)}</div>
+          <div style="font-family:var(--mono);font-size:9.5px;color:rgba(48,144,255,0.85);font-weight:600;">$${(t.fund_in||0).toFixed(4)}</div>
         </div>
         <div>
           ${hasPeak ? `
             <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:${athColor};">+${peakPct.toFixed(2)}%</div>
-            <div style="font-size:7.5px;color:var(--muted);margin-top:1px;">${fmtP(t.peak_price)}</div>
+            <div style="font-size:7px;color:var(--muted);margin-top:1px;font-family:var(--mono);">${fmtP(t.peak_price)}</div>
           ` : `<div style="font-size:9px;color:var(--muted);">—</div>`}
         </div>
         <div>
-          <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pnlColor};">${pnlSign}${(t.pnl_usdt||0).toFixed(4)}</div>
-          <div style="font-size:7.5px;color:${pnlColor};opacity:0.75;margin-top:1px;">${pnlSign}${(t.pnl_pct||0).toFixed(2)}%</div>
+          <div style="font-family:var(--mono);font-size:12px;font-weight:800;color:${pnlColor};">${pnlSign}${(t.pnl_usdt||0).toFixed(4)}</div>
+          <div style="font-size:7.5px;color:${pnlColor};opacity:0.8;margin-top:2px;font-family:var(--mono);">${pnlSign}${(t.pnl_pct||0).toFixed(2)}%</div>
         </div>
       </div>
     `;
