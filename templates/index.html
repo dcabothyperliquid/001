@@ -1057,8 +1057,8 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
         <div style="font-size:8px;color:rgba(13,240,224,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Total P&amp;L</div>
         <div style="font-family:var(--mono);font-size:22px;font-weight:800;letter-spacing:-0.5px;" id="vtTotalPnl">—</div>
       </div>
-      <div style="flex:1;min-width:70px;padding:0 16px;border-right:1px solid rgba(255,255,255,0.06);">
-        <div style="font-size:8px;color:rgba(48,144,255,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Trades</div>
+      <div style="flex:1;min-width:70px;padding:0 16px;border-right:1px solid rgba(255,255,255,0.06);cursor:pointer;" onclick="openVtTradeHistory()" title="View trade history">
+        <div style="font-size:8px;color:rgba(48,144,255,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Trades ↗</div>
         <div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--blue);" id="vtTotalTrades">—</div>
       </div>
       <div style="flex:1;min-width:80px;padding:0 16px;border-right:1px solid rgba(255,255,255,0.06);">
@@ -2308,6 +2308,14 @@ async function refreshVirtualTracker() {
     const d = await api('/virtual/summary');
     if (!d) return;
 
+    // Update trade history data for drawer (most recent first)
+    if (d.recent_trades) {
+      _vtTradeData = d.recent_trades;
+      // If drawer is open, live-refresh it
+      const drawer = document.getElementById('vtTradeDrawer');
+      if (drawer && drawer.style.display !== 'none') renderVtTrades();
+    }
+
     // Overall summary bar — closed P&L + live unrealized P&L
     const closedPnl = d.total_pnl || 0;
     const byCoinRaw = d.by_coin || {};
@@ -2791,6 +2799,152 @@ async function toggleCoinTf(symbol, tf, btn) {
       delete _coinTfs[symbol];
     }
   } catch(e) { toastRich('TF save failed','','err'); delete _coinTfs[symbol]; }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── VT TRADE HISTORY DRAWER ──────────────────────────────────────────────────
+let _vtTradeData = [];
+
+function openVtTradeHistory() {
+  const drawer = document.getElementById('vtTradeDrawer');
+  if (drawer) { drawer.style.display = 'flex'; renderVtTrades(); return; }
+
+  // Build drawer DOM once
+  const el = document.createElement('div');
+  el.id = 'vtTradeDrawer';
+  el.style.cssText = `
+    display:flex;flex-direction:column;
+    position:fixed;top:0;right:0;bottom:0;left:0;z-index:9999;
+    background:rgba(0,0,0,0.82);backdrop-filter:blur(6px);
+  `;
+  el.innerHTML = `
+    <div style="
+      margin:auto 0 0 0;
+      width:100%;max-height:92vh;
+      background:#0d0f14;
+      border-top:1px solid rgba(48,144,255,0.25);
+      border-radius:16px 16px 0 0;
+      display:flex;flex-direction:column;
+      overflow:hidden;
+    ">
+      <!-- header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px 10px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;">
+        <div>
+          <div style="font-size:10px;color:rgba(48,144,255,0.7);letter-spacing:2.5px;text-transform:uppercase;font-family:var(--mono);margin-bottom:3px;">VT · TRADE HISTORY</div>
+          <div id="vtThCount" style="font-size:11px;color:var(--muted);font-family:var(--mono);"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div id="vtThFilter" style="display:flex;gap:6px;"></div>
+          <button onclick="closeVtTradeHistory()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--fg);font-size:14px;cursor:pointer;padding:6px 12px;font-family:var(--mono);">✕</button>
+        </div>
+      </div>
+      <!-- table header -->
+      <div style="display:grid;grid-template-columns:3fr 2.5fr 2.5fr 1.5fr 2fr 2fr 2fr;gap:0;padding:8px 16px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0;">
+        ${['COIN','ENTRY','EXIT','TF','HELD','FUND IN','P&L'].map(h =>
+          `<div style="font-size:7.5px;color:var(--muted);letter-spacing:1.5px;font-family:var(--mono);text-transform:uppercase;">${h}</div>`
+        ).join('')}
+      </div>
+      <!-- rows -->
+      <div id="vtThRows" style="overflow-y:auto;flex:1;padding:4px 0;"></div>
+    </div>
+  `;
+  el.addEventListener('click', e => { if (e.target === el) closeVtTradeHistory(); });
+  document.body.appendChild(el);
+  renderVtTrades();
+}
+
+function closeVtTradeHistory() {
+  const el = document.getElementById('vtTradeDrawer');
+  if (el) el.style.display = 'none';
+}
+
+function renderVtTrades(filterCoin) {
+  const rows = document.getElementById('vtThRows');
+  const countEl = document.getElementById('vtThCount');
+  const filterEl = document.getElementById('vtThFilter');
+  if (!rows) return;
+
+  const trades = _vtTradeData;
+  if (!trades.length) {
+    rows.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-family:var(--mono);font-size:10px;letter-spacing:2px;">NO TRADES YET</div>';
+    if (countEl) countEl.textContent = '0 trades';
+    return;
+  }
+
+  // Build coin filter buttons
+  const coins = [...new Set(trades.map(t => t.symbol))].sort();
+  if (filterEl) {
+    filterEl.innerHTML = `
+      <button onclick="renderVtTrades()" style="padding:3px 8px;border-radius:6px;border:1px solid ${!filterCoin?'rgba(48,144,255,0.6)':'rgba(255,255,255,0.1)'};background:${!filterCoin?'rgba(48,144,255,0.12)':'transparent'};color:${!filterCoin?'var(--blue)':'var(--muted)'};font-size:8px;font-family:var(--mono);cursor:pointer;letter-spacing:1px;">ALL</button>
+      ${coins.map(c => `
+        <button onclick="renderVtTrades('${c}')" style="padding:3px 8px;border-radius:6px;border:1px solid ${filterCoin===c?'rgba(48,144,255,0.6)':'rgba(255,255,255,0.1)'};background:${filterCoin===c?'rgba(48,144,255,0.12)':'transparent'};color:${filterCoin===c?'var(--blue)':'var(--muted)'};font-size:8px;font-family:var(--mono);cursor:pointer;letter-spacing:1px;">${c}</button>
+      `).join('')}
+    `;
+  }
+
+  const filtered = filterCoin ? trades.filter(t => t.symbol === filterCoin) : trades;
+  if (countEl) countEl.textContent = `${filtered.length} of ${trades.length} trade${trades.length !== 1 ? 's' : ''}`;
+
+  const fmtP = p => {
+    if (!p && p !== 0) return '—';
+    return p > 1
+      ? '$' + p.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
+      : '$' + p.toFixed(6);
+  };
+
+  const fmtHeld = (buy_time, sell_time) => {
+    if (!buy_time || !sell_time) return '—';
+    // parse HH:MM:SS
+    const toSec = t => { const [h,m,s] = t.split(':').map(Number); return h*3600+m*60+s; };
+    let diff = toSec(sell_time) - toSec(buy_time);
+    if (diff < 0) diff += 86400; // crossed midnight
+    if (diff < 60) return diff + 's';
+    if (diff < 3600) return Math.floor(diff/60) + 'm ' + (diff%60) + 's';
+    const h = Math.floor(diff/3600), m = Math.floor((diff%3600)/60);
+    return h + 'h ' + m + 'm';
+  };
+
+  rows.innerHTML = filtered.map((t, i) => {
+    const win = t.pnl_usdt >= 0;
+    const pnlColor = win ? 'var(--green)' : 'var(--red)';
+    const pnlSign  = win ? '+' : '';
+    const rowBg    = i % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent';
+    const exitReason = t.exit_reason || 'signal';
+    const exitTag = exitReason === 'sl'    ? '<span style="font-size:6px;background:rgba(255,48,96,0.2);color:#ff4070;border-radius:3px;padding:1px 4px;margin-left:3px;font-family:var(--mono);">SL</span>'
+                  : exitReason === 'tp'    ? '<span style="font-size:6px;background:rgba(13,255,140,0.15);color:#0dff8c;border-radius:3px;padding:1px 4px;margin-left:3px;font-family:var(--mono);">TP</span>'
+                  : exitReason === 'trail' ? '<span style="font-size:6px;background:rgba(255,184,0,0.15);color:#ffb800;border-radius:3px;padding:1px 4px;margin-left:3px;font-family:var(--mono);">TRAIL</span>'
+                  : exitReason === 'manual'? '<span style="font-size:6px;background:rgba(160,96,255,0.15);color:#c090ff;border-radius:3px;padding:1px 4px;margin-left:3px;font-family:var(--mono);">MAN</span>'
+                  : '';
+    return `
+      <div style="display:grid;grid-template-columns:3fr 2.5fr 2.5fr 1.5fr 2fr 2fr 2fr;gap:0;padding:9px 16px;background:${rowBg};border-bottom:1px solid rgba(255,255,255,0.03);align-items:center;">
+        <div>
+          <div style="font-family:var(--mono);font-size:11px;font-weight:800;color:var(--fg);">${t.symbol}</div>
+          <div style="font-size:8px;color:var(--muted);margin-top:1px;">${t.buy_time||''}${exitTag}</div>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:10px;color:rgba(255,220,100,0.9);">${fmtP(t.buy_price)}</div>
+          <div style="font-size:7.5px;color:var(--muted);margin-top:1px;">entry</div>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:10px;color:rgba(13,240,224,0.9);">${fmtP(t.sell_price)}</div>
+          <div style="font-size:7.5px;color:var(--muted);margin-top:1px;">${t.sell_time||''}</div>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:10px;color:rgba(160,96,255,0.9);">${t.timeframe||'—'}</div>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);">${fmtHeld(t.buy_time, t.sell_time)}</div>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:10px;color:rgba(48,144,255,0.9);">$${(t.fund_in||0).toFixed(4)}</div>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pnlColor};">${pnlSign}${(t.pnl_usdt||0).toFixed(4)}</div>
+          <div style="font-size:7.5px;color:${pnlColor};opacity:0.75;margin-top:1px;">${pnlSign}${(t.pnl_pct||0).toFixed(2)}%</div>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 // ─────────────────────────────────────────────────────────────────────────────
 </script>
