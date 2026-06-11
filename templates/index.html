@@ -2303,9 +2303,6 @@ refreshSignals();
 
 
 // ── VIRTUAL P&L TRACKER ───────────────────────────────────────────────────────
-// JS-side cache: last known unrealized per coin — prevents flicker when price fetch fails
-const _vtUpnlCache = {};
-
 async function refreshVirtualTracker() {
   try {
     const d = await api('/virtual/summary');
@@ -2314,20 +2311,9 @@ async function refreshVirtualTracker() {
     // Overall summary bar — closed P&L + live unrealized P&L
     const closedPnl = d.total_pnl || 0;
     const byCoinRaw = d.by_coin || {};
-    // Update JS cache for any coin that has a real unrealized value
-    Object.entries(byCoinRaw).forEach(([sym, c]) => {
-      if (c.unrealized_pnl !== null && c.unrealized_pnl !== undefined) {
-        _vtUpnlCache[sym] = c.unrealized_pnl;
-      }
-      // If coin is no longer in position, clear its cache
-      if (!c.in_position) delete _vtUpnlCache[sym];
-    });
-    // Use cached value if current fetch returned null (price temporarily unavailable)
-    const unrealizedTotal = Object.entries(byCoinRaw).reduce((sum, [s, c]) => {
-      const upnl = (c.unrealized_pnl !== null && c.unrealized_pnl !== undefined)
-        ? c.unrealized_pnl
-        : (c.in_position ? (_vtUpnlCache[s] ?? 0) : 0);
-      return sum + upnl;
+    // Sum unrealized only for coins where backend returned a real value
+    const unrealizedTotal = Object.values(byCoinRaw).reduce((sum, c) => {
+      return sum + (c.unrealized_pnl !== null && c.unrealized_pnl !== undefined ? c.unrealized_pnl : 0);
     }, 0);
     const totalPnl = closedPnl + unrealizedTotal;
     const pnlEl = document.getElementById('vtTotalPnl');
@@ -2378,8 +2364,7 @@ async function refreshVirtualTracker() {
         const fmtPrice = p => p > 1 ? p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4}) : p?.toFixed(6) ?? '—';
 
         const upnl      = (info.unrealized_pnl !== null && info.unrealized_pnl !== undefined)
-                            ? info.unrealized_pnl
-                            : (info.in_position ? (_vtUpnlCache[sym] ?? null) : null);
+                            ? info.unrealized_pnl : null;
         const upnlColor = upnl === null ? 'var(--fg)' : upnl >= 0 ? 'var(--green)' : 'var(--red)';
         const upnlSign  = upnl !== null && upnl >= 0 ? '+' : '';
 
@@ -2401,6 +2386,9 @@ async function refreshVirtualTracker() {
         set(`vtNow_${sym}`,    `$${(info.current_fund||0).toFixed(4)}`);
         set(`vtGrowthD_${sym}`,`${growthSign}${(info.growth_pct||0).toFixed(2)}%`);
         set(`vtWR_${sym}`,     `${(info.win_rate||0).toFixed(0)}%`);
+        // NET P&L box = closed pnl always (unrealized shown separately in UNREALIZED box)
+        set(`vtNetPnl_${sym}`, `${pnlSign}${pnl.toFixed(4)}`);
+        setStyle(`vtNetPnl_${sym}`, 'color', pnlColor);
         setStyle(`vtNow_${sym}`,    'color', growthColor);
         setStyle(`vtGrowthD_${sym}`,'color', growthColor);
         setStyle(`vtWR_${sym}`,     'color', wrColor);
@@ -2447,8 +2435,7 @@ async function refreshVirtualTracker() {
       const wrColor = (info.win_rate || 0) >= 50 ? 'var(--green)' : (info.win_rate || 0) >= 35 ? 'var(--amber)' : 'var(--red)';
 
       const upnl     = (info.unrealized_pnl !== null && info.unrealized_pnl !== undefined)
-                         ? info.unrealized_pnl
-                         : (info.in_position ? (_vtUpnlCache[sym] ?? null) : null);
+                         ? info.unrealized_pnl : null;
       const upnlPct  = info.unrealized_pct ?? null;
       const livePrice= info.live_price ?? null;
       const upnlColor = upnl === null ? 'var(--fg)' : upnl >= 0 ? 'var(--green)' : 'var(--red)';

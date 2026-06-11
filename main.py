@@ -879,15 +879,9 @@ def _vt_get_summary():
                     live_price = bot_engine.client.get_spot_price(sym)
                 except Exception:
                     live_price = None
-                # Fallback: use last cached price from allMids if get_spot_price fails
-                if not live_price:
-                    _cached = op.get('last_known_price')
-                    if _cached:
-                        live_price  = _cached
-                        price_stale = True
+                # NOTE: no stale-price fallback — wrong price → wrong unrealized
+                # If price unavailable, leave unrealized_pnl as None (UI shows "...")
                 if live_price and op.get('amount') and op.get('buy_price'):
-                    # Store last known price for stale fallback (no nested lock needed - already inside _vt_lock)
-                    _vt_fund[sym]['last_known_price'] = live_price
                     gross_live     = round(op['amount'] * live_price, 6)
                     sell_fee_est   = round(gross_live * _VT_TAKER_FEE, 6)
                     live_fund      = round(gross_live - sell_fee_est, 4)
@@ -916,7 +910,6 @@ def _vt_get_summary():
                 'entry_tf':       op.get('timeframe'),
                 'pending_buy_fee': round(op.get('buy_fee', 0.0), 4) if in_pos else None,
                 'live_price':     live_price,
-                'price_stale':    price_stale,
                 'unrealized_pnl': unrealized_pnl,
                 'unrealized_pct': unrealized_pct,
                 # Risk levels for open positions
