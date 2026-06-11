@@ -843,7 +843,8 @@ def _vt_on_sell(symbol, price, exit_reason='signal'):
             _vt_stats[symbol] = {'total_trades': 0, 'wins': 0, 'total_pnl': 0.0, 'total_fees': 0.0, 'fund': fund_in, 'initial_fund': fund_in}
         _vt_stats[symbol]['total_trades'] += 1
         _vt_stats[symbol]['total_pnl']    = round(_vt_stats[symbol]['total_pnl'] + pnl_usdt, 4)
-        _vt_stats[symbol]['total_fees']   = round(_vt_stats[symbol].get('total_fees', 0.0) + total_fee, 6)
+        # buy_fee already added to total_fees in _vt_on_buy — only add sell_fee here
+        _vt_stats[symbol]['total_fees']   = round(_vt_stats[symbol].get('total_fees', 0.0) + sell_fee, 6)
         if pnl_usdt > 0:
             _vt_stats[symbol]['wins'] += 1
         _initial = _vt_stats[symbol].get('initial_fund', fund_in)
