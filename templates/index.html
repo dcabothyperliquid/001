@@ -2849,8 +2849,8 @@ function openVtTradeHistory() {
         </div>
       </div>
       <!-- table header -->
-      <div style="display:grid;grid-template-columns:3fr 2.5fr 2.5fr 1.5fr 2fr 2fr 2fr;gap:0;padding:8px 16px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0;">
-        ${['COIN','ENTRY','EXIT','TF','HELD','FUND IN','P&L'].map(h =>
+      <div style="display:grid;grid-template-columns:3fr 2.5fr 2.5fr 1.5fr 2fr 2fr 2.5fr 2fr;gap:0;padding:8px 16px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0;">
+        ${['COIN','ENTRY','EXIT','TF','HELD','FUND IN','ATH AFTER BUY','P&L'].map(h =>
           `<div style="font-size:7.5px;color:var(--muted);letter-spacing:1.5px;font-family:var(--mono);text-transform:uppercase;">${h}</div>`
         ).join('')}
       </div>
@@ -2927,8 +2927,12 @@ function renderVtTrades(filterCoin) {
                   : exitReason === 'trail' ? '<span style="font-size:6px;background:rgba(255,184,0,0.15);color:#ffb800;border-radius:3px;padding:1px 4px;margin-left:3px;font-family:var(--mono);">TRAIL</span>'
                   : exitReason === 'manual'? '<span style="font-size:6px;background:rgba(160,96,255,0.15);color:#c090ff;border-radius:3px;padding:1px 4px;margin-left:3px;font-family:var(--mono);">MAN</span>'
                   : '';
+    // ATH: peak price & % since buy
+    const hasPeak   = t.peak_price && t.peak_price > 0;
+    const peakPct   = hasPeak ? (t.peak_pct ?? ((t.peak_price - t.buy_price) / t.buy_price * 100)) : null;
+    const athColor  = peakPct !== null && peakPct >= 2 ? 'var(--green)' : peakPct !== null && peakPct >= 1 ? 'var(--amber)' : 'var(--muted)';
     return `
-      <div style="display:grid;grid-template-columns:3fr 2.5fr 2.5fr 1.5fr 2fr 2fr 2fr;gap:0;padding:9px 16px;background:${rowBg};border-bottom:1px solid rgba(255,255,255,0.03);align-items:center;">
+      <div style="display:grid;grid-template-columns:3fr 2.5fr 2.5fr 1.5fr 2fr 2fr 2.5fr 2fr;gap:0;padding:9px 16px;background:${rowBg};border-bottom:1px solid rgba(255,255,255,0.03);align-items:center;">
         <div>
           <div style="font-family:var(--mono);font-size:11px;font-weight:800;color:var(--fg);">${t.symbol}</div>
           <div style="font-size:8px;color:var(--muted);margin-top:1px;">${t.buy_time||''}${exitTag}</div>
@@ -2949,6 +2953,12 @@ function renderVtTrades(filterCoin) {
         </div>
         <div>
           <div style="font-family:var(--mono);font-size:10px;color:rgba(48,144,255,0.9);">$${(t.fund_in||0).toFixed(4)}</div>
+        </div>
+        <div>
+          ${hasPeak ? `
+            <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:${athColor};">+${peakPct.toFixed(2)}%</div>
+            <div style="font-size:7.5px;color:var(--muted);margin-top:1px;">${fmtP(t.peak_price)}</div>
+          ` : `<div style="font-size:9px;color:var(--muted);">—</div>`}
         </div>
         <div>
           <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pnlColor};">${pnlSign}${(t.pnl_usdt||0).toFixed(4)}</div>

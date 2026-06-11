@@ -828,6 +828,7 @@ def _vt_on_sell(symbol, price, exit_reason='signal'):
         amount     = entry['amount']
         fund_in    = entry['fund']
         buy_fee    = entry.get('buy_fee', 0.0)
+        peak_price = entry.get('peak_price', buy_price)   # ATH since buy
 
         gross_out  = round(amount * price, 6)
         sell_fee   = round(gross_out * _VT_TAKER_FEE, 6)   # fee on sell notional
@@ -837,9 +838,11 @@ def _vt_on_sell(symbol, price, exit_reason='signal'):
         pnl_gross  = round(gross_out - fund_in, 4)          # before fees
         pnl_usdt   = round(fund_out  - fund_in, 4)          # after both fees (real P&L)
         pnl_pct    = round((price - buy_price) / buy_price * 100, 2)
+        peak_pct   = round((peak_price - buy_price) / buy_price * 100, 2)  # max pump %
 
         trade = {
             'symbol': symbol, 'buy_price': buy_price, 'sell_price': price,
+            'peak_price': round(peak_price, 6), 'peak_pct': peak_pct,
             'buy_time': entry.get('buy_time', ''),
             'sell_time': (__import__('datetime').datetime.utcnow() + __import__('datetime').timedelta(hours=5, minutes=30)).strftime('%H:%M:%S'),
             'timeframe': entry.get('timeframe', ''),
