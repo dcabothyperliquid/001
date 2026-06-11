@@ -782,7 +782,8 @@ def _vt_load():
         print(f"[VT LOAD ERROR] {e}")
 
 # Hyperliquid spot base tier fees (taker = market order, which bot uses)
-_VT_TAKER_FEE = 0.00070   # 0.07% per side
+_VT_TAKER_FEE = 0.00070   # 0.07% per side (buy = market IOC)
+_VT_MAKER_FEE = 0.00000   # 0.00% maker (sell = GTC limit bracket orders)
 
 # Virtual Tracker — configurable risk params (same defaults as real bot)
 VT_SL_PCT    = 1.5   # Stop Loss: % below entry price
@@ -1094,11 +1095,23 @@ class AsyncEngine:
             avg_entry = sum(e['usdt'] for e in entries) / sum(e['amount'] for e in entries) if entries else 0
             if not avg_entry:
                 continue
-            # Update peak
+            # Update peak + update trailing SL bracket order if peak moved
             peak = holding.get('peak_price', avg_entry)
             if price > peak:
                 self.bot.holdings[symbol]['peak_price'] = price
                 peak = price
+                # ── Update trailing SL bracket order on exchange ──
+                if self.bot.live_mode and symbol in self.bot.bracket_orders:
+                    trail_pct   = self.bot.coins.get(symbol, {}).get('trailing_stop', 1.0) / 100
+                    new_sl_px   = round(peak * (1 - trail_pct), 6)
+                    old_sl_px   = self.bot.bracket_orders[symbol].get('sl_oid')
+                    # Only update if SL would move up meaningfully (>0.01%)
+                    b = self.bot.bracket_orders.get(symbol, {})
+                    prev_fill   = b.get('fill_price', avg_entry)
+                    cur_sl_approx = round(prev_fill * (1 - trail_pct), 6)
+                    if new_sl_px > cur_sl_approx * 1.0001:
+                        self.bot._update_bracket_sl(symbol, new_sl_px)
+                        self.bot.bracket_orders[symbol]['fill_price'] = peak  # update reference
             sl_price    = avg_entry * (1 - VT_SL_PCT   / 100)
             tp_price    = avg_entry * (1 + VT_TP_PCT   / 100)
             trail_price = peak     * (1 - VT_TRAIL_PCT / 100)
@@ -1439,6 +1452,7 @@ class BotEngine:
         self._persisted_running = None   # loaded from storage
         self._balance_cache  = {}        # cached USDC balance
         self._balance_ts     = 0         # timestamp of last balance fetch
+        self.bracket_orders  = {}        # {symbol: {'tp_oid': int|None, 'sl_oid': int|None, 'coin_str': str, 'size': float}}
         self._async_eng  = AsyncEngine(client, self)
         self.client.set_bot_coins_ref(self.coins)
         self._load_data()
@@ -1678,9 +1692,103 @@ class BotEngine:
                     self._push_event('warn', f"BUY {symbol} IOC not filled — no execution", {'symbol': symbol})
                     return None
                 filled_px = float(fill['filled'].get('avgPx', price))
+                # ── Place bracket TP + SL orders immediately after fill ──
+                self._place_bracket_orders(symbol, coin_str, size, filled_px)
                 return {'success': True, 'price': filled_px, 'size': size, 'raw': result}
             return None
         except Exception as e: logger.error(f"Live buy error {symbol}: {e}"); return None
+
+    # ── Bracket orders: place TP + SL as GTC limits after buy ─────────────────
+    def _place_bracket_orders(self, symbol, coin_str, size, fill_price):
+        """Place TP (limit GTC) and SL (limit GTC) immediately after a live buy fill."""
+        tp_pct    = self.coins.get(symbol, {}).get('take_profit',   0.5) / 100
+        sl_pct    = self.coins.get(symbol, {}).get('stop_loss',     1.5) / 100
+        tp_price  = round(fill_price * (1 + tp_pct), 6)
+        sl_price  = round(fill_price * (1 - sl_pct), 6)
+        tp_oid = None; sl_oid = None
+        try:
+            r = self.exchange.order(coin_str, is_buy=False, sz=round(size, 6),
+                                    limit_px=tp_price,
+                                    order_type={"limit": {"tif": "Gtc"}}, reduce_only=False)
+            if r.get('status') == 'ok':
+                st = r.get('response',{}).get('data',{}).get('statuses',[{}])[0]
+                tp_oid = st.get('resting',{}).get('oid') or st.get('filled',{}).get('oid')
+                logger.info(f"[BRACKET] TP order {symbol} @ {tp_price:.6f} oid={tp_oid}")
+            else:
+                logger.warning(f"[BRACKET] TP order failed {symbol}: {r}")
+        except Exception as e:
+            logger.error(f"[BRACKET] TP order error {symbol}: {e}")
+        try:
+            r = self.exchange.order(coin_str, is_buy=False, sz=round(size, 6),
+                                    limit_px=sl_price,
+                                    order_type={"limit": {"tif": "Gtc"}}, reduce_only=False)
+            if r.get('status') == 'ok':
+                st = r.get('response',{}).get('data',{}).get('statuses',[{}])[0]
+                sl_oid = st.get('resting',{}).get('oid') or st.get('filled',{}).get('oid')
+                logger.info(f"[BRACKET] SL order {symbol} @ {sl_price:.6f} oid={sl_oid}")
+            else:
+                logger.warning(f"[BRACKET] SL order failed {symbol}: {r}")
+        except Exception as e:
+            logger.error(f"[BRACKET] SL order error {symbol}: {e}")
+        self.bracket_orders[symbol] = {
+            'tp_oid': tp_oid, 'sl_oid': sl_oid,
+            'coin_str': coin_str, 'size': round(size, 6),
+            'fill_price': fill_price
+        }
+        self._push_event('info',
+            f"[BRACKET] {symbol} TP@{tp_price:.4f} SL@{sl_price:.4f} placed (maker GTC)",
+            {'symbol': symbol, 'tp_price': tp_price, 'sl_price': sl_price})
+
+    def _cancel_bracket_orders(self, symbol):
+        """Cancel both TP and SL bracket orders for a symbol (call before any sell)."""
+        b = self.bracket_orders.pop(symbol, None)
+        if not b:
+            return
+        coin_str = b.get('coin_str', '')
+        for label, oid in [('TP', b.get('tp_oid')), ('SL', b.get('sl_oid'))]:
+            if not oid:
+                continue
+            try:
+                idx = None
+                # coin_str is like @10234 — extract numeric part
+                if coin_str.startswith('@'):
+                    idx_raw = coin_str[1:]
+                    r = self.exchange.cancel(coin_str, int(oid))
+                    logger.info(f"[BRACKET] Cancelled {label} order {symbol} oid={oid}: {r.get('status')}")
+                else:
+                    r = self.exchange.cancel(coin_str, int(oid))
+                    logger.info(f"[BRACKET] Cancelled {label} order {symbol} oid={oid}: {r.get('status')}")
+            except Exception as e:
+                logger.warning(f"[BRACKET] Cancel {label} error {symbol} oid={oid}: {e}")
+
+    def _update_bracket_sl(self, symbol, new_sl_price):
+        """Cancel existing SL and place a new one at new_sl_price (trailing stop update)."""
+        b = self.bracket_orders.get(symbol)
+        if not b or not b.get('coin_str'):
+            return
+        coin_str = b['coin_str']
+        size     = b['size']
+        # Cancel old SL
+        old_sl_oid = b.get('sl_oid')
+        if old_sl_oid:
+            try:
+                self.exchange.cancel(coin_str, int(old_sl_oid))
+                logger.info(f"[BRACKET] Trailing: cancelled old SL {symbol} oid={old_sl_oid}")
+            except Exception as e:
+                logger.warning(f"[BRACKET] Trailing: cancel SL error {symbol}: {e}")
+        # Place new SL at updated trailing price
+        new_sl_oid = None
+        try:
+            r = self.exchange.order(coin_str, is_buy=False, sz=size,
+                                    limit_px=round(new_sl_price, 6),
+                                    order_type={"limit": {"tif": "Gtc"}}, reduce_only=False)
+            if r.get('status') == 'ok':
+                st = r.get('response',{}).get('data',{}).get('statuses',[{}])[0]
+                new_sl_oid = st.get('resting',{}).get('oid') or st.get('filled',{}).get('oid')
+                logger.info(f"[BRACKET] Trailing: new SL {symbol} @ {new_sl_price:.6f} oid={new_sl_oid}")
+        except Exception as e:
+            logger.error(f"[BRACKET] Trailing: new SL error {symbol}: {e}")
+        self.bracket_orders[symbol]['sl_oid'] = new_sl_oid
 
     def _live_sell(self, symbol, amount, price):
         try:
@@ -2105,6 +2213,10 @@ class BotEngine:
         avg_entry  = total_usdt/total_amt if total_amt else price
         actual_price = price; order_id = None; mode_tag = 'SIM'
 
+        # ── Cancel any open bracket orders before executing sell ──
+        if self.live_mode:
+            self._cancel_bracket_orders(symbol)
+
         if self.live_mode:
             result = self._live_sell(symbol, total_amt, price)
             if result:
@@ -2116,7 +2228,8 @@ class BotEngine:
                 return None
 
         gross_out  = actual_price * total_amt
-        sell_fee   = round(gross_out * _VT_TAKER_FEE, 6)
+        # Live sell uses GTC limit (maker = 0%), sim uses taker estimate
+        sell_fee   = round(gross_out * (_VT_MAKER_FEE if self.live_mode else _VT_TAKER_FEE), 6)
         buy_fee    = sum(t.get('buy_fee', 0.0) for t in self.trades if t.get('type') == 'BUY' and t.get('symbol') == symbol and t.get('buy_fee'))
         pnl_usdt   = round(gross_out - sell_fee - total_usdt, 4)   # net after both fees
         pnl_pct    = (actual_price - avg_entry) / avg_entry * 100
