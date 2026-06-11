@@ -864,7 +864,7 @@ def _vt_on_sell(symbol, price, exit_reason='signal'):
         _initial = _vt_stats[symbol].get('initial_fund', fund_in)
         new_fund = max(round(fund_out, 4), round(_initial * 0.1, 4))
         _vt_stats[symbol]['fund'] = new_fund
-        _vt_fund[symbol] = {'fund': new_fund, 'buy_price': None, 'amount': 0, 'timeframe': ''}
+        _vt_fund[symbol] = {'fund': new_fund, 'buy_price': None, 'amount': 0, 'timeframe': '', 'last_sell_ts': __import__('time').time()}
     __import__('threading').Thread(target=_vt_persist, daemon=True).start()
 
 def _vt_get_summary():
@@ -1283,7 +1283,7 @@ class AsyncEngine:
                     vt_exit_reason = f'SL {VT_SL_PCT}%'
                 elif price >= tp_price:
                     vt_exit_reason = f'TP {VT_TP_PCT}%'
-                elif price <= trail_price:
+                elif price <= trail_price and peak_price > entry_price:
                     vt_exit_reason = f'Trail {VT_TRAIL_PCT}%'
                 else:
                     # No price-based exit — check signal on locked TF
@@ -1297,7 +1297,10 @@ class AsyncEngine:
                     logger.info(f"[VT] SELL {symbol} @ {price:.4f} reason={vt_exit_reason} | pnl={((price/entry_price)-1)*100:.2f}%")
             else:
                 # No position — BUY signal on any TF opens virtual position on that TF
-                if direction == 'buy':
+                # Cooldown: wait at least 60s after last sell before re-buying same coin
+                _vt_last_sell = _vt_fund.get(symbol, {}).get('last_sell_ts', 0)
+                _vt_cooldown_ok = (__import__('time').time() - _vt_last_sell) >= 60
+                if direction == 'buy' and _vt_cooldown_ok:
                     _coin_capital = self.bot.coins.get(symbol, {}).get('compound_capital',
                                     self.bot.coins.get(symbol, {}).get('capital', _VT_INITIAL))
                     _vt_on_buy(symbol, price, best_tf, initial_fund=_coin_capital)
