@@ -1076,7 +1076,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
     </div>
     <!-- Trade History Button — dedicated, always visible -->
     <div style="margin-bottom:10px;">
-      <a id="vtTradeHistoryBtn" href="#" style="display:flex;align-items:center;justify-content:space-between;padding:13px 18px;border-radius:12px;background:rgba(48,144,255,0.08);border:1px solid rgba(48,144,255,0.3);text-decoration:none;-webkit-tap-highlight-color:transparent;">
+      <a id="vtTradeHistoryBtn" href="#" onclick="event.preventDefault();openVtTradeHistory();" style="display:flex;align-items:center;justify-content:space-between;padding:13px 18px;border-radius:12px;background:rgba(48,144,255,0.08);border:1px solid rgba(48,144,255,0.3);text-decoration:none;-webkit-tap-highlight-color:transparent;">
         <div style="display:flex;align-items:center;gap:10px;">
           <span style="font-size:16px;">📋</span>
           <div>
@@ -2626,16 +2626,7 @@ async function resetVirtualTracker() {
 setInterval(refreshVirtualTracker, 3000);
 refreshVirtualTracker();
 
-// Trade History button — simple anchor, no touch complexity
-(function() {
-  const btn = document.getElementById('vtTradeHistoryBtn');
-  if (btn) {
-    btn.addEventListener('click', function(e) {
-      e.preventDefault();
-      openVtTradeHistory();
-    });
-  }
-})();
+
 
 // MEMORY WIDGET
 async function refreshMemory() {
