@@ -764,6 +764,17 @@ def _vt_load():
             _vt_stats.update(state.get('vt_stats', {}))
             _vt_trades.extend(state.get('vt_trades', []))
             _vt_fund.update(state.get('vt_fund', {}))
+            # Recalculate total_fees from actual trade records to fix any persisted double-count
+            fees_by_coin = {}
+            for t in _vt_trades:
+                sym = t.get('symbol')
+                if not sym: continue
+                fees_by_coin[sym] = round(
+                    fees_by_coin.get(sym, 0.0) + t.get('buy_fee', 0.0) + t.get('sell_fee', 0.0), 6
+                )
+            for sym, recalc_fees in fees_by_coin.items():
+                if sym in _vt_stats:
+                    _vt_stats[sym]['total_fees'] = recalc_fees
         with _coin_signal_state_lock:
             _coin_signal_state.update(state.get('coin_signal_state', {}))
         print(f"[VT] Loaded state: {list(_vt_stats.keys())} — cycle states: {dict(_coin_signal_state)}")

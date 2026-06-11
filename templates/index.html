@@ -1178,6 +1178,7 @@ let notifications   = [];     // all parsed notifications
 let notifFilter     = 'all';  // current filter
 let unreadCritical  = 0;
 let drawerOpen      = false;
+let _lowBalToastShown = false; // prevent repeated low-balance toasts
 
 // ═══════════════════════════════════════════════════════════════
 // NOTIFICATION SYSTEM
@@ -1607,9 +1608,14 @@ async function fetchBalance() {
       document.getElementById('s-bal').textContent  = parseFloat(usdc.available).toFixed(2);
       document.getElementById('walletMode').textContent = 'LIVE';
       document.getElementById('walletMode').className   = 'badge badge-buy';
-      // Warn if low balance — small toast only, no screen-filling popup
+      // Warn if low balance — small toast only, once per session
       if (parseFloat(usdc.available) < 5) {
-        toastRich('⚠ Low Balance', `${avail} USDC available`, 'warn');
+        if (!_lowBalToastShown) {
+          _lowBalToastShown = true;
+          toastRich('⚠ Low Balance', `${avail} USDC available`, 'warn');
+        }
+      } else {
+        _lowBalToastShown = false; // reset if balance recovers
       }
     }
   } else {
@@ -2640,6 +2646,7 @@ refreshMemory();
 // ═══════════════════════════════════════════════════════════════
 (async function init() {
   // Restore persisted critical/warn/trade notifications from localStorage
+  // Skip stale "insufficient balance" warnings — they're outdated on reload
   try {
     const saved = localStorage.getItem('hl_notifs');
     if (saved) {
@@ -2647,7 +2654,10 @@ refreshMemory();
       if (Array.isArray(parsed) && parsed.length) {
         const existingKeys = new Set(notifications.map(n => n._key));
         for (const n of parsed) {
-          if (n._key && !existingKeys.has(n._key)) {
+          if (!n._key) continue;
+          // Skip stale insufficient-balance warnings (they're no longer relevant after reload)
+          if (n._cat === 'warn' && (n.message || '').toLowerCase().includes('insufficient')) continue;
+          if (!existingKeys.has(n._key)) {
             notifications.push(n);
             existingKeys.add(n._key);
           }
