@@ -2387,60 +2387,50 @@ async function refreshVirtualTracker() {
         const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
         const setStyle = (id, prop, val) => { const el = document.getElementById(id); if (el) el.style[prop] = val; };
 
+        // Strip values — show live UPNL when in_position, else closed PnL + growth
+        if (info.in_position && upnl !== null) {
+          set(`vtStripUpnl_${sym}`, `${upnlSign}${upnl.toFixed(4)}`);
+          setStyle(`vtStripUpnl_${sym}`, 'color', upnlColor);
+        } else {
+          set(`vtPnl_${sym}`,    `${pnlSign}${pnl.toFixed(4)}`);
+          set(`vtGrowth_${sym}`, `${growthSign}${(info.growth_pct||0).toFixed(2)}%`);
+          setStyle(`vtPnl_${sym}`,    'color', pnlColor);
+          setStyle(`vtGrowth_${sym}`, 'color', growthColor);
+        }
+
         // Detail stat boxes
         set(`vtNow_${sym}`,    `$${(info.current_fund||0).toFixed(4)}`);
         set(`vtGrowthD_${sym}`,`${growthSign}${(info.growth_pct||0).toFixed(2)}%`);
         set(`vtWR_${sym}`,     `${(info.win_rate||0).toFixed(0)}%`);
+        // NET P&L box = closed pnl always (unrealized shown separately in UNREALIZED box)
         set(`vtNetPnl_${sym}`, `${pnlSign}${pnl.toFixed(4)}`);
         setStyle(`vtNetPnl_${sym}`, 'color', pnlColor);
         setStyle(`vtNow_${sym}`,    'color', growthColor);
         setStyle(`vtGrowthD_${sym}`,'color', growthColor);
         setStyle(`vtWR_${sym}`,     'color', wrColor);
 
-        // In-position live panel — recalculate unrealized using freshest frontend price
-        if (info.in_position && info.buy_usd != null && info.buy_qty != null && info.entry_price != null) {
-          const frontendPrice = _lastPrices[sym] || info.live_price;
-          let upnlCalc = upnl;
-          let upnlPctCalc = upnlPct;
-          if (frontendPrice) {
-            const grossLive  = info.buy_qty * frontendPrice;
-            const sellFeeEst = grossLive * 0.0007;
-            const liveFund   = grossLive - sellFeeEst;
-            upnlCalc    = parseFloat((liveFund - info.buy_usd).toFixed(4));
-            upnlPctCalc = parseFloat(((frontendPrice - info.entry_price) / info.entry_price * 100).toFixed(3));
-            // Also update CURRENT price box
-            const lpEl = document.getElementById(`vtLivePrice_${sym}`);
-            if (lpEl) lpEl.textContent = `$${fmtPrice(frontendPrice)}`;
+        // In-position live panel
+        const pnlEl = document.getElementById(`vtLivePnl_${sym}`);
+        if (pnlEl && upnl !== null) {
+          const prev = parseFloat(pnlEl.dataset.prev ?? 'NaN');
+          const cur  = upnl;
+          pnlEl.textContent = `${upnlSign}${upnl.toFixed(4)} USDC`;
+          pnlEl.style.color = upnlColor;
+          if (!isNaN(prev) && prev !== cur) {
+            pnlEl.classList.remove('vt-flash-green','vt-flash-red');
+            void pnlEl.offsetWidth;
+            pnlEl.classList.add(cur > prev ? 'vt-flash-green' : 'vt-flash-red');
           }
-          const upnlColorCalc = upnlCalc >= 0 ? 'var(--green)' : 'var(--red)';
-          const upnlSignCalc  = upnlCalc >= 0 ? '+' : '';
-          const pnlEl = document.getElementById(`vtLivePnl_${sym}`);
-          if (pnlEl && upnlCalc !== null) {
-            const prev = parseFloat(pnlEl.dataset.prev ?? 'NaN');
-            pnlEl.textContent = `${upnlSignCalc}${upnlCalc.toFixed(4)} USDC`;
-            pnlEl.style.color = upnlColorCalc;
-            if (!isNaN(prev) && prev !== upnlCalc) {
-              pnlEl.classList.remove('vt-flash-green','vt-flash-red');
-              void pnlEl.offsetWidth;
-              pnlEl.classList.add(upnlCalc > prev ? 'vt-flash-green' : 'vt-flash-red');
-            }
-            pnlEl.dataset.prev = upnlCalc;
-          }
-          const pctEl = document.getElementById(`vtLivePct_${sym}`);
-          if (pctEl) {
-            pctEl.textContent = upnlPctCalc !== null ? (upnlPctCalc>=0?'+':'')+upnlPctCalc.toFixed(3)+'%' : '';
-            pctEl.style.color = upnlColorCalc;
-          }
-          // Also update strip
-          set(`vtStripUpnl_${sym}`, `${upnlSignCalc}${upnlCalc.toFixed(4)}`);
-          setStyle(`vtStripUpnl_${sym}`, 'color', upnlColorCalc);
-        } else {
-          // Not in position — show closed PnL on strip
-          set(`vtPnl_${sym}`,    `${pnlSign}${pnl.toFixed(4)}`);
-          set(`vtGrowth_${sym}`, `${growthSign}${(info.growth_pct||0).toFixed(2)}%`);
-          setStyle(`vtPnl_${sym}`,    'color', pnlColor);
-          setStyle(`vtGrowth_${sym}`, 'color', growthColor);
+          pnlEl.dataset.prev = cur;
         }
+        const pctEl = document.getElementById(`vtLivePct_${sym}`);
+        if (pctEl) {
+          const upnlPct = info.unrealized_pct ?? null;
+          pctEl.textContent = upnlPct !== null ? (upnlPct>=0?'+':'')+upnlPct.toFixed(3)+'%' : '';
+          pctEl.style.color = upnlColor;
+        }
+        const lpEl = document.getElementById(`vtLivePrice_${sym}`);
+        if (lpEl && info.live_price) { lpEl.textContent = `$${fmtPrice(info.live_price)}`; }
       });
       return;
     }

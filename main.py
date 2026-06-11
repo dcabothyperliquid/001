@@ -888,17 +888,14 @@ def _vt_get_summary():
             unrealized_pct   = None
             live_fund        = cur_fund
 
+            price_stale = False
             if in_pos:
                 try:
                     live_price = bot_engine.client.get_spot_price(sym)
                 except Exception:
                     live_price = None
-                # Sanity check: reject price if it's more than 50% away from entry
-                # (stale/wrong cache value protection)
-                if live_price and op.get('buy_price'):
-                    ratio = live_price / op['buy_price']
-                    if ratio < 0.5 or ratio > 2.0:
-                        live_price = None
+                # NOTE: no stale-price fallback — wrong price → wrong unrealized
+                # If price unavailable, leave unrealized_pnl as None (UI shows "...")
                 if live_price and op.get('amount') and op.get('buy_price'):
                     gross_live     = round(op['amount'] * live_price, 6)
                     sell_fee_est   = round(gross_live * _VT_TAKER_FEE, 6)
