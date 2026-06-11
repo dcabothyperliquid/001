@@ -1003,17 +1003,54 @@ class AsyncEngine:
                                     if spot_mids:
                                         price_cache.update(spot_mids)
                                     # Also store plain names as perp fallback for inactive spot pairs
-                                    # BTC/ETH spot on HL have midPx=null, perp price is accurate enough
                                     PERP_FALLBACK = {'BTC','ETH','SOL','AVAX','LINK','AAVE','XRP','ZEC','WLD','MOG','HYPE'}
                                     perp_mids = {k: v for k, v in mids.items() if k in PERP_FALLBACK}
                                     if perp_mids:
                                         price_cache.update(perp_mids)
+                                    # ── VT SL/TP/Trail check on every tick (WSS-driven) ──
+                                    self._vt_check_exits(mids)
                         except Exception as e:
                             logger.warning(f"WS parse error: {e}")
             except Exception as e:
                 logger.warning(f"WS disconnected: {e} — reconnect in {backoff}s")
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
+
+    def _vt_check_exits(self, mids: dict):
+        """Called on every allMids WSS tick — checks SL/TP/Trail for all open VT positions.
+        Much faster than 15s decision loop — catches price spikes that would otherwise be missed."""
+        with _vt_lock:
+            open_positions = {sym: pos.copy() for sym, pos in _vt_fund.items()
+                              if pos.get('buy_price')}
+        if not open_positions:
+            return
+        for symbol, pos in open_positions.items():
+            # price_cache already updated from this tick's mids just before this call
+            price = self.client.get_spot_price(symbol)
+            if not price:
+                continue
+            # Update peak price
+            with _vt_lock:
+                if symbol in _vt_fund and _vt_fund[symbol].get('buy_price'):
+                    if price > _vt_fund[symbol].get('peak_price', price):
+                        _vt_fund[symbol]['peak_price'] = price
+                    peak_price = _vt_fund[symbol].get('peak_price', pos['buy_price'])
+                else:
+                    continue  # position already closed
+            entry_price = pos.get('entry_price', pos['buy_price'])
+            sl_price    = entry_price * (1 - VT_SL_PCT    / 100)
+            tp_price    = entry_price * (1 + VT_TP_PCT    / 100)
+            trail_price = peak_price  * (1 - VT_TRAIL_PCT / 100)
+            exit_reason = None
+            if price <= sl_price:
+                exit_reason = f'SL {VT_SL_PCT}%'
+            elif price >= tp_price:
+                exit_reason = f'TP {VT_TP_PCT}%'
+            elif price <= trail_price and peak_price > entry_price:
+                exit_reason = f'Trail {VT_TRAIL_PCT}%'
+            if exit_reason:
+                logger.info(f"[VT-WSS] EXIT {symbol} @ {price:.4f} reason={exit_reason}")
+                _record_sell_signal(symbol, price, exit_reason=exit_reason)
 
     # ── WebSocket candle feed — real-time push, replaces REST polling ─────────
     async def _ws_candle_feed(self):
