@@ -1057,11 +1057,9 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
         <div style="font-size:8px;color:rgba(13,240,224,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Total P&amp;L</div>
         <div style="font-family:var(--mono);font-size:22px;font-weight:800;letter-spacing:-0.5px;" id="vtTotalPnl">—</div>
       </div>
-      <div style="flex:1;min-width:70px;padding:0 16px;border-right:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;">
-        <button id="vtTradesBtn" style="background:rgba(48,144,255,0.1);border:1px solid rgba(48,144,255,0.35);border-radius:10px;padding:8px 12px;cursor:pointer;text-align:left;width:100%;display:block;transition:background 0.15s,border-color 0.15s;" title="View trade history">
-          <div style="font-size:8px;color:rgba(48,144,255,0.8);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;font-family:var(--mono);">Trades ↗</div>
-          <div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--blue);" id="vtTotalTrades">—</div>
-        </button>
+      <div style="flex:1;min-width:70px;padding:0 16px;border-right:1px solid rgba(255,255,255,0.06);">
+        <div style="font-size:8px;color:rgba(48,144,255,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Trades</div>
+        <div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--blue);" id="vtTotalTrades">—</div>
       </div>
       <div style="flex:1;min-width:80px;padding:0 16px;border-right:1px solid rgba(255,255,255,0.06);">
         <div style="font-size:8px;color:rgba(160,96,255,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Win Rate</div>
@@ -1075,6 +1073,19 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
       <div style="margin-left:auto;font-size:8px;color:var(--muted);font-family:var(--mono);letter-spacing:1px;text-align:right;padding-left:12px;">
         BUY→SELL cycle assumed<br><span style="color:rgba(13,255,140,0.4);">compounding on</span>
       </div>
+    </div>
+    <!-- Trade History Button — dedicated, always visible -->
+    <div style="margin-bottom:10px;">
+      <a id="vtTradeHistoryBtn" href="#" style="display:flex;align-items:center;justify-content:space-between;padding:13px 18px;border-radius:12px;background:rgba(48,144,255,0.08);border:1px solid rgba(48,144,255,0.3);text-decoration:none;-webkit-tap-highlight-color:transparent;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:16px;">📋</span>
+          <div>
+            <div style="font-size:10px;color:rgba(48,144,255,0.9);letter-spacing:2px;font-family:var(--mono);text-transform:uppercase;font-weight:700;">Trade History</div>
+            <div style="font-size:9px;color:var(--muted);font-family:var(--mono);margin-top:2px;" id="vtTradeHistoryCount">0 trades recorded</div>
+          </div>
+        </div>
+        <span style="font-size:18px;color:rgba(48,144,255,0.7);">›</span>
+      </a>
     </div>
     <!-- Per-coin cards -->
     <div id="vtCoinCards" style="display:flex;flex-direction:column;gap:4px;">
@@ -2348,7 +2359,10 @@ async function refreshVirtualTracker() {
     const feesEl = document.getElementById('vtTotalFees');
     if (feesEl) feesEl.textContent = '-' + totalFees.toFixed(4) + ' USDC';
 
-    document.getElementById('vtTotalTrades').textContent = d.total_trades || 0;
+    const totalTrades = d.total_trades || 0;
+    document.getElementById('vtTotalTrades').textContent = totalTrades;
+    const countLbl = document.getElementById('vtTradeHistoryCount');
+    if (countLbl) countLbl.textContent = totalTrades + ' trade' + (totalTrades !== 1 ? 's' : '') + ' recorded';
     const wr = d.win_rate || 0;
     const wrEl = document.getElementById('vtWinRate');
     wrEl.textContent = wr.toFixed(1) + '%';
@@ -2612,22 +2626,12 @@ async function resetVirtualTracker() {
 setInterval(refreshVirtualTracker, 3000);
 refreshVirtualTracker();
 
-// Trades button — proper mobile tap (prevent ghost click from touchend+click double-fire)
+// Trade History button — simple anchor, no touch complexity
 (function() {
-  let _tapped = false;
-  const btn = document.getElementById('vtTradesBtn');
+  const btn = document.getElementById('vtTradeHistoryBtn');
   if (btn) {
-    btn.addEventListener('touchstart', function(e) {
-      _tapped = true;
-      this.style.background = 'rgba(48,144,255,0.22)';
-    }, {passive: true});
-    btn.addEventListener('touchend', function(e) {
-      this.style.background = 'rgba(48,144,255,0.1)';
-      e.preventDefault(); // block the subsequent click event on mobile
-      openVtTradeHistory();
-    });
     btn.addEventListener('click', function(e) {
-      if (_tapped) { _tapped = false; return; } // already handled by touchend
+      e.preventDefault();
       openVtTradeHistory();
     });
   }
