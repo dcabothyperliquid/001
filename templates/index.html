@@ -1057,9 +1057,9 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
         <div style="font-size:8px;color:rgba(13,240,224,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Total P&amp;L</div>
         <div style="font-family:var(--mono);font-size:22px;font-weight:800;letter-spacing:-0.5px;" id="vtTotalPnl">—</div>
       </div>
-      <div style="flex:1;min-width:70px;padding:0 16px;border-right:1px solid rgba(255,255,255,0.06);">
-        <button onclick="openVtTradeHistory()" style="background:none;border:none;padding:0;margin:0;cursor:pointer;text-align:left;width:100%;display:block;" title="View trade history">
-          <div style="font-size:8px;color:rgba(48,144,255,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;font-family:var(--mono);">Trades ↗</div>
+      <div style="flex:1;min-width:70px;padding:0 16px;border-right:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;">
+        <button onclick="openVtTradeHistory()" style="background:rgba(48,144,255,0.1);border:1px solid rgba(48,144,255,0.35);border-radius:10px;padding:8px 12px;cursor:pointer;text-align:left;width:100%;display:block;transition:background 0.15s,border-color 0.15s;" onmousedown="this.style.background='rgba(48,144,255,0.22)'" onmouseup="this.style.background='rgba(48,144,255,0.1)'" ontouchstart="this.style.background='rgba(48,144,255,0.22)'" ontouchend="this.style.background='rgba(48,144,255,0.1)'" title="View trade history">
+          <div style="font-size:8px;color:rgba(48,144,255,0.8);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;font-family:var(--mono);">Trades ↗</div>
           <div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--blue);" id="vtTotalTrades">—</div>
         </button>
       </div>
