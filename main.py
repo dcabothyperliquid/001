@@ -1009,6 +1009,7 @@ class AsyncEngine:
                                         price_cache.update(perp_mids)
                                     # ── VT SL/TP/Trail check on every tick (WSS-driven) ──
                                     self._vt_check_exits(mids)
+                                    self._real_check_exits(mids)
                         except Exception as e:
                             logger.warning(f"WS parse error: {e}")
             except Exception as e:
@@ -1076,6 +1077,46 @@ class AsyncEngine:
             if exit_reason:
                 logger.info(f"[VT-WSS] EXIT {symbol} @ {price:.4f} reason={exit_reason}")
                 _record_sell_signal(symbol, price, exit_reason=exit_reason)
+
+    def _real_check_exits(self, mids: dict):
+        """WSS-driven exit for REAL holdings — same logic as VT, fires on every allMids tick."""
+        holdings = dict(self.bot.holdings)  # snapshot
+        if not holdings:
+            return
+        for symbol, holding in holdings.items():
+            if not holding.get('entries'):
+                continue
+            # Get price from cache (already updated before this call)
+            price = self.client.get_spot_price(symbol)
+            if not price:
+                continue
+            entries   = holding['entries']
+            avg_entry = sum(e['usdt'] for e in entries) / sum(e['amount'] for e in entries) if entries else 0
+            if not avg_entry:
+                continue
+            # Update peak
+            peak = holding.get('peak_price', avg_entry)
+            if price > peak:
+                self.bot.holdings[symbol]['peak_price'] = price
+                peak = price
+            sl_price    = avg_entry * (1 - VT_SL_PCT   / 100)
+            tp_price    = avg_entry * (1 + VT_TP_PCT   / 100)
+            trail_price = peak     * (1 - VT_TRAIL_PCT / 100)
+            exit_reason = None
+            if price <= sl_price:
+                exit_reason = f'sl_{VT_SL_PCT}pct'
+            elif price >= tp_price:
+                exit_reason = f'tp_{VT_TP_PCT}pct'
+            elif price <= trail_price and peak > avg_entry:
+                exit_reason = f'trail_{VT_TRAIL_PCT}pct'
+            if exit_reason:
+                logger.info(f"[REAL-WSS] EXIT {symbol} @ {price:.4f} reason={exit_reason}")
+                self.bot.holdings[symbol]['last_sell_ts'] = __import__('time').time()
+                # Schedule sell as async task — don't block WSS loop
+                asyncio.ensure_future(
+                    self._run_order(self.bot._execute_sell, symbol, price, exit_reason),
+                    loop=self.loop
+                )
 
     # ── WebSocket candle feed — real-time push, replaces REST polling ─────────
     async def _ws_candle_feed(self):
@@ -1325,27 +1366,34 @@ class AsyncEngine:
 
                 # 1. Stop Loss
                 if price <= sl_price:
+                    holding['last_sell_ts'] = __import__('time').time()
                     await self._run_order(self.bot._execute_sell, symbol, price, f'sl_{VT_SL_PCT}pct')
                     return
 
                 # 2. Take Profit
                 if price >= tp_price:
+                    holding['last_sell_ts'] = __import__('time').time()
                     await self._run_order(self.bot._execute_sell, symbol, price, f'tp_{VT_TP_PCT}pct')
                     return
 
-                # 3. Trailing Stop — only fires if price moved up at least 0.2% from entry
-                if price <= trail_price:
+                # 3. Trailing Stop — only fires if price moved up from entry (peak > avg_entry)
+                if price <= trail_price and peak > avg_entry:
+                    holding['last_sell_ts'] = __import__('time').time()
                     await self._run_order(self.bot._execute_sell, symbol, price, f'trail_{VT_TRAIL_PCT}pct')
                     return
 
                 # 4. Signal-based sell — same TF pe bearish reversal
                 tf_sig = (mtf.get('tf_results') or {}).get(trade_tf, {}).get('signal', 'neutral')
                 if tf_sig == 'sell':
+                    holding['last_sell_ts'] = __import__('time').time()
                     await self._run_order(self.bot._execute_sell, symbol, price, f'signal_sell_{trade_tf}')
                     return
 
             else:
-                if direction == 'buy' and trade_cap > 0:
+                # 60s cooldown after sell before re-buying same coin
+                _last_sell = self.bot.holdings.get(symbol, {}).get('last_sell_ts', 0)
+                _cooldown_ok = (__import__('time').time() - _last_sell) >= 60
+                if direction == 'buy' and trade_cap > 0 and _cooldown_ok:
                     await self._run_order(self.bot._execute_buy, symbol, trade_cap, price,
                                           f'signal_buy_{best_tf}')
 
