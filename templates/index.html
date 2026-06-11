@@ -1058,7 +1058,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
         <div style="font-family:var(--mono);font-size:22px;font-weight:800;letter-spacing:-0.5px;" id="vtTotalPnl">—</div>
       </div>
       <div style="flex:1;min-width:70px;padding:0 16px;border-right:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;">
-        <button onclick="openVtTradeHistory()" style="background:rgba(48,144,255,0.1);border:1px solid rgba(48,144,255,0.35);border-radius:10px;padding:8px 12px;cursor:pointer;text-align:left;width:100%;display:block;transition:background 0.15s,border-color 0.15s;" onmousedown="this.style.background='rgba(48,144,255,0.22)'" onmouseup="this.style.background='rgba(48,144,255,0.1)'" ontouchstart="this.style.background='rgba(48,144,255,0.22)'" ontouchend="this.style.background='rgba(48,144,255,0.1)'" title="View trade history">
+        <button id="vtTradesBtn" style="background:rgba(48,144,255,0.1);border:1px solid rgba(48,144,255,0.35);border-radius:10px;padding:8px 12px;cursor:pointer;text-align:left;width:100%;display:block;transition:background 0.15s,border-color 0.15s;" title="View trade history">
           <div style="font-size:8px;color:rgba(48,144,255,0.8);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;font-family:var(--mono);">Trades ↗</div>
           <div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--blue);" id="vtTotalTrades">—</div>
         </button>
@@ -2612,6 +2612,27 @@ async function resetVirtualTracker() {
 setInterval(refreshVirtualTracker, 3000);
 refreshVirtualTracker();
 
+// Trades button — proper mobile tap (prevent ghost click from touchend+click double-fire)
+(function() {
+  let _tapped = false;
+  const btn = document.getElementById('vtTradesBtn');
+  if (btn) {
+    btn.addEventListener('touchstart', function(e) {
+      _tapped = true;
+      this.style.background = 'rgba(48,144,255,0.22)';
+    }, {passive: true});
+    btn.addEventListener('touchend', function(e) {
+      this.style.background = 'rgba(48,144,255,0.1)';
+      e.preventDefault(); // block the subsequent click event on mobile
+      openVtTradeHistory();
+    });
+    btn.addEventListener('click', function(e) {
+      if (_tapped) { _tapped = false; return; } // already handled by touchend
+      openVtTradeHistory();
+    });
+  }
+})();
+
 // MEMORY WIDGET
 async function refreshMemory() {
   try {
@@ -2818,10 +2839,16 @@ async function toggleCoinTf(symbol, tf, btn) {
 let _vtTradeData = [];
 
 function openVtTradeHistory() {
-  const drawer = document.getElementById('vtTradeDrawer');
-  if (drawer) { drawer.style.display = 'flex'; renderVtTrades(); return; }
-
-  // Build drawer DOM once
+  // Always fetch fresh trade data first
+  fetch('/api/vt/summary').then(r=>r.json()).then(d=>{
+    if (d && d.recent_trades) _vtTradeData = d.recent_trades;
+    let drawer = document.getElementById('vtTradeDrawer');
+    if (drawer) {
+      drawer.style.display = 'flex';
+      renderVtTrades();
+      return;
+    }
+    // Build drawer DOM once
   const el = document.createElement('div');
   el.id = 'vtTradeDrawer';
   el.style.cssText = `
@@ -2864,6 +2891,7 @@ function openVtTradeHistory() {
   el.addEventListener('click', e => { if (e.target === el) closeVtTradeHistory(); });
   document.body.appendChild(el);
   renderVtTrades();
+  }).catch(()=>{ renderVtTrades(); });
 }
 
 function closeVtTradeHistory() {

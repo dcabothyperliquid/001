@@ -1024,9 +1024,34 @@ class AsyncEngine:
                               if pos.get('buy_price')}
         if not open_positions:
             return
+
+        # Build a fast symbol→price lookup from this tick's mids
+        # Covers both @idx spot keys and plain perp keys
+        SPOT_ALIAS_TO_PLAIN = {
+            'UZEC':'ZEC','UWLD':'WLD','UMOG':'MOG','UPUMP':'PUMP',
+            'USOL':'SOL','UBTC':'BTC','UETH':'ETH',
+        }
+        def _price_from_mids(symbol):
+            # price_cache already updated with this tick before we were called
+            p = self.client.get_spot_price(symbol)
+            if p:
+                return p
+            # Fallback: try plain key and alias keys directly in mids
+            for key in [symbol.upper(),
+                        f'U{symbol.upper()}',
+                        *[k for k,v in SPOT_ALIAS_TO_PLAIN.items() if v == symbol.upper()]]:
+                raw = mids.get(key)
+                if raw:
+                    try:
+                        val = float(raw)
+                        if 1e-9 < val < 1e9:
+                            return val
+                    except Exception:
+                        pass
+            return None
+
         for symbol, pos in open_positions.items():
-            # price_cache already updated from this tick's mids just before this call
-            price = self.client.get_spot_price(symbol)
+            price = _price_from_mids(symbol)
             if not price:
                 continue
             # Update peak price
