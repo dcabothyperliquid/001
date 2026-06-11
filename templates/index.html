@@ -959,7 +959,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
           </div>
           <div class="fgrp">
             <label>TAKE PROFIT %</label>
-            <input id="inpTp" type="number" value="2.0" min="0.5" max="50" step="0.5" />
+            <input id="inpTp" type="number" value="0.5" min="0.5" max="50" step="0.5" />
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;">
@@ -1645,7 +1645,7 @@ async function addCoin() {
   const symbol        = (inp.getAttribute('data-display') || inp.value).trim().toUpperCase();
   const capital       = parseFloat(document.getElementById('inpCap').value);
   const stop_loss     = parseFloat(document.getElementById('inpSl').value);
-  const take_profit   = parseFloat(document.getElementById('inpTp').value) || 2.0;
+  const take_profit   = parseFloat(document.getElementById('inpTp').value) || 0.5;
   if (!symbol) { toastRich('Enter a symbol', '', 'err'); return; }
   if (isNaN(capital) || capital <= 0) { toastRich('Enter valid capital', '', 'err'); return; }
   const r = await api('/coins', 'POST', { symbol, capital, timeframe:'auto', stop_loss, take_profit });

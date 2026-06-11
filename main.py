@@ -787,7 +787,7 @@ _VT_TAKER_FEE = 0.00070   # 0.07% per side
 # Virtual Tracker — configurable risk params (same defaults as real bot)
 VT_SL_PCT    = 1.5   # Stop Loss: % below entry price
 VT_TRAIL_PCT = 1.0   # Trailing Stop: % below peak price
-VT_TP_PCT    = 2.0   # Take Profit: % above entry price
+VT_TP_PCT    = 0.5   # Take Profit: % above entry price
 
 def _vt_on_buy(symbol, price, timeframe, initial_fund=None):
     """Record virtual BUY at signal price."""
@@ -1706,7 +1706,7 @@ class BotEngine:
         except Exception as e: logger.error(f"Live sell error {symbol}: {e}"); return None
 
     # ── Coin management ───────────────────────────────────────────────────────
-    def add_coin(self, symbol, capital, timeframe='auto', stop_loss=1.5, trailing_stop=1.0, take_profit=2.0):
+    def add_coin(self, symbol, capital, timeframe='auto', stop_loss=1.5, trailing_stop=1.0, take_profit=0.5):
         symbol = symbol.upper().strip()
         # Validate coin exists on Hyperliquid spot — also handles aliases (ETH→UETH etc)
         idx = self.client.sym_to_index(symbol)
