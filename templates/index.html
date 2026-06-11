@@ -2834,10 +2834,8 @@ async function toggleCoinTf(symbol, tf, btn) {
 let _vtTradeData = [];
 
 function openVtTradeHistory() {
-  // Always fetch fresh trade data first
-  fetch('/api/vt/summary').then(r=>r.json()).then(d=>{
-    if (d && d.recent_trades) _vtTradeData = d.recent_trades;
-    let drawer = document.getElementById('vtTradeDrawer');
+  // Use already-cached trade data from refreshVirtualTracker, open drawer directly
+  let drawer = document.getElementById('vtTradeDrawer');
     if (drawer) {
       drawer.style.display = 'flex';
       renderVtTrades();
@@ -2886,7 +2884,6 @@ function openVtTradeHistory() {
   el.addEventListener('click', e => { if (e.target === el) closeVtTradeHistory(); });
   document.body.appendChild(el);
   renderVtTrades();
-  }).catch(()=>{ renderVtTrades(); });
 }
 
 function closeVtTradeHistory() {
