@@ -2501,18 +2501,14 @@ async function refreshVirtualTracker() {
                 <div id="vtLivePrice_${sym}" style="font-family:var(--mono);font-size:12px;color:var(--cyan);font-weight:700;">${livePrice !== null ? '$'+fmtPrice(livePrice) : '...'}</div>
               </div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:6px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:6px;">
               <div style="border-radius:7px;padding:6px 8px;background:rgba(255,48,96,0.15);border:1px solid rgba(255,48,96,0.5);">
-                <div style="font-size:6.5px;color:#ff3060;letter-spacing:1.2px;margin-bottom:2px;font-weight:700;">SL</div>
+                <div style="font-size:6.5px;color:#ff3060;letter-spacing:1.2px;margin-bottom:2px;font-weight:700;">SL · ${info.sl_pct ?? 1.5}%</div>
                 <div style="font-family:var(--mono);font-size:10px;color:#ff4070;font-weight:800;">${slPrice !== null ? '$'+fmtPrice(slPrice) : '—'}</div>
               </div>
               <div style="border-radius:7px;padding:6px 8px;background:rgba(13,255,140,0.13);border:1px solid rgba(13,255,140,0.5);">
-                <div style="font-size:6.5px;color:#00cc70;letter-spacing:1.2px;margin-bottom:2px;font-weight:700;">TP</div>
+                <div style="font-size:6.5px;color:#00cc70;letter-spacing:1.2px;margin-bottom:2px;font-weight:700;">TP · ${info.tp_pct ?? 0.5}%</div>
                 <div style="font-family:var(--mono);font-size:10px;color:#0dff8c;font-weight:800;">${tpPrice !== null ? '$'+fmtPrice(tpPrice) : '—'}</div>
-              </div>
-              <div style="border-radius:7px;padding:6px 8px;background:rgba(255,184,0,0.13);border:1px solid rgba(255,184,0,0.5);">
-                <div style="font-size:6.5px;color:#e09000;letter-spacing:1.2px;margin-bottom:2px;font-weight:700;">TRAIL</div>
-                <div style="font-family:var(--mono);font-size:10px;color:#ffb800;font-weight:800;">${trailPrice !== null ? '$'+fmtPrice(trailPrice) : '—'}</div>
               </div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">

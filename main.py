@@ -938,7 +938,8 @@ def _vt_get_summary():
                 # Risk levels for open positions — use coin-level settings (same as real bot)
                 'vt_sl_price':    round(_ep * (1 - _sl_pct_c / 100), 6) if in_pos else None,
                 'vt_tp_price':    round(_ep * (1 + _tp_pct_c / 100), 6) if in_pos else None,
-                'vt_trail_price': round(op.get('peak_price', _ep) * (1 - _tr_pct_c / 100), 6) if in_pos else None,
+                'sl_pct':         _sl_pct_c,
+                'tp_pct':         _tp_pct_c,
                 'vt_peak_price':  op.get('peak_price') if in_pos else None,
                 'buy_usd':        round(op.get('fund', 0.0), 4) if in_pos else None,
                 'buy_qty':        round(op.get('amount', 0.0), 6) if in_pos else None,
@@ -1072,16 +1073,16 @@ class AsyncEngine:
                 else:
                     continue  # position already closed
             entry_price = pos.get('entry_price', pos['buy_price'])
-            sl_price    = entry_price * (1 - VT_SL_PCT    / 100)
-            tp_price    = entry_price * (1 + VT_TP_PCT    / 100)
-            trail_price = peak_price  * (1 - VT_TRAIL_PCT / 100)
+            _ccfg2      = self.bot.coins.get(symbol, {})
+            _sl_p2      = _ccfg2.get('stop_loss',   VT_SL_PCT)
+            _tp_p2      = _ccfg2.get('take_profit', VT_TP_PCT)
+            sl_price    = entry_price * (1 - _sl_p2 / 100)
+            tp_price    = entry_price * (1 + _tp_p2 / 100)
             exit_reason = None
             if price <= sl_price:
-                exit_reason = f'SL {VT_SL_PCT}%'
+                exit_reason = f'SL {_sl_p2}%'
             elif price >= tp_price:
-                exit_reason = f'TP {VT_TP_PCT}%'
-            elif price <= trail_price and peak_price > entry_price:
-                exit_reason = f'Trail {VT_TRAIL_PCT}%'
+                exit_reason = f'TP {_tp_p2}%'
             if exit_reason:
                 logger.info(f"[VT-WSS] EXIT {symbol} @ {price:.4f} reason={exit_reason}")
                 _record_sell_signal(symbol, price, exit_reason=exit_reason)
@@ -1102,33 +1103,13 @@ class AsyncEngine:
             avg_entry = sum(e['usdt'] for e in entries) / sum(e['amount'] for e in entries) if entries else 0
             if not avg_entry:
                 continue
-            # Update peak + update trailing SL bracket order if peak moved
-            peak = holding.get('peak_price', avg_entry)
-            if price > peak:
-                self.bot.holdings[symbol]['peak_price'] = price
-                peak = price
-                # ── Update trailing SL bracket order on exchange ──
-                if self.bot.live_mode and symbol in self.bot.bracket_orders:
-                    trail_pct   = self.bot.coins.get(symbol, {}).get('trailing_stop', 1.0) / 100
-                    new_sl_px   = round(peak * (1 - trail_pct), 6)
-                    old_sl_px   = self.bot.bracket_orders[symbol].get('sl_oid')
-                    # Only update if SL would move up meaningfully (>0.01%)
-                    b = self.bot.bracket_orders.get(symbol, {})
-                    prev_fill   = b.get('fill_price', avg_entry)
-                    cur_sl_approx = round(prev_fill * (1 - trail_pct), 6)
-                    if new_sl_px > cur_sl_approx * 1.0001:
-                        self.bot._update_bracket_sl(symbol, new_sl_px)
-                        self.bot.bracket_orders[symbol]['fill_price'] = peak  # update reference
             sl_price    = avg_entry * (1 - VT_SL_PCT   / 100)
             tp_price    = avg_entry * (1 + VT_TP_PCT   / 100)
-            trail_price = peak     * (1 - VT_TRAIL_PCT / 100)
             exit_reason = None
             if price <= sl_price:
                 exit_reason = f'sl_{VT_SL_PCT}pct'
             elif price >= tp_price:
                 exit_reason = f'tp_{VT_TP_PCT}pct'
-            elif price <= trail_price and peak > avg_entry:
-                exit_reason = f'trail_{VT_TRAIL_PCT}pct'
             if exit_reason:
                 logger.info(f"[REAL-WSS] EXIT {symbol} @ {price:.4f} reason={exit_reason}")
                 self.bot.holdings[symbol]['last_sell_ts'] = __import__('time').time()
@@ -1342,15 +1323,12 @@ class AsyncEngine:
 
                 sl_price    = entry_price * (1 - _sl_pct    / 100)
                 tp_price    = entry_price * (1 + _tp_pct    / 100)
-                trail_price = peak_price  * (1 - _trail_pct / 100)
 
                 vt_exit_reason = None
                 if price <= sl_price:
                     vt_exit_reason = f'SL {_sl_pct}%'
                 elif price >= tp_price:
                     vt_exit_reason = f'TP {_tp_pct}%'
-                elif price <= trail_price and peak_price > entry_price:
-                    vt_exit_reason = f'Trail {_trail_pct}%'
                 else:
                     # No price-based exit — check signal on locked TF
                     vt_tf     = vt_pos.get('timeframe', best_tf)
@@ -1384,10 +1362,9 @@ class AsyncEngine:
                     holding['peak_price'] = price
                     peak = price
 
-                # Fixed % exits — same as VT logic
+                # Fixed % exits — SL + TP only (no trailing stop)
                 sl_price    = avg_entry * (1 - VT_SL_PCT   / 100)
                 tp_price    = avg_entry * (1 + VT_TP_PCT   / 100)
-                trail_price = peak     * (1 - VT_TRAIL_PCT / 100)
 
                 # 1. Stop Loss
                 if price <= sl_price:
@@ -1401,13 +1378,7 @@ class AsyncEngine:
                     await self._run_order(self.bot._execute_sell, symbol, price, f'tp_{VT_TP_PCT}pct')
                     return
 
-                # 3. Trailing Stop — only fires if price moved up from entry (peak > avg_entry)
-                if price <= trail_price and peak > avg_entry:
-                    holding['last_sell_ts'] = __import__('time').time()
-                    await self._run_order(self.bot._execute_sell, symbol, price, f'trail_{VT_TRAIL_PCT}pct')
-                    return
-
-                # 4. Signal-based sell — same TF pe bearish reversal
+                # 3. Signal-based sell — same TF pe bearish reversal
                 tf_sig = (mtf.get('tf_results') or {}).get(trade_tf, {}).get('signal', 'neutral')
                 if tf_sig == 'sell':
                     holding['last_sell_ts'] = __import__('time').time()
