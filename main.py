@@ -728,7 +728,8 @@ def _signal_state_set(symbol, state):
 # Max wait: 120 seconds — after that entry is cancelled.
 _bb_pending   = {}   # symbol → {ts, price, capital, best_tf, mode}  mode=vt|live
 _bb_pend_lock = __import__('threading').Lock()
-BB_PENDING_TTL = 120  # seconds max wait
+BB_PENDING_TTL = 120  # default fallback
+BB_TTL_BY_TF   = {'5m': 60, '15m': 120, '30m': 180, '1h': 300, '2h': 600, '4h': 900}
 
 # ── Virtual P&L Tracker ───────────────────────────────────────────────────────
 # Tracks hypothetical trades based purely on BUY/SELL signals (no real orders).
@@ -1039,9 +1040,11 @@ class AsyncEngine:
         """Called on every allMids WSS tick — fires queued entries when %B crosses 0.5."""
         now = __import__('time').time()
         with _bb_pend_lock:
-            expired = [s for s, d in _bb_pending.items() if now - d['ts'] > BB_PENDING_TTL]
+            expired = [s for s, d in _bb_pending.items()
+                        if now - d['ts'] > BB_TTL_BY_TF.get(d.get('best_tf','1h'), BB_PENDING_TTL)]
             for s in expired:
-                logger.info(f"[BB-WAIT] {s} expired after {BB_PENDING_TTL}s — entry cancelled")
+                _ttl = BB_TTL_BY_TF.get(_bb_pending[s].get('best_tf','1h'), BB_PENDING_TTL)
+                logger.info(f"[BB-WAIT] {s} expired after {_ttl}s — entry cancelled")
                 del _bb_pending[s]
             ready = []
             for symbol, data in list(_bb_pending.items()):
@@ -2112,13 +2115,13 @@ class BotEngine:
         hist_now        = macd_ln[-1] - sig_ln[-1]
         macd_sig_str    = 'bullish' if hist_now > 0 else ('bearish' if hist_now < 0 else 'neutral')
 
-        # MACD cross detection — 3 candle window (not just exact cross candle)
-        def _bull_cross_recent(ml, sl, window=3):
+        # MACD cross detection — 2 candle window (fresh crosses only)
+        def _bull_cross_recent(ml, sl, window=2):
             for i in range(1, min(window+1, len(ml))):
                 if ml[-(i+1)] <= sl[-(i+1)] and ml[-i] > sl[-i]:
                     return True
             return False
-        def _bear_cross_recent(ml, sl, window=3):
+        def _bear_cross_recent(ml, sl, window=2):
             for i in range(1, min(window+1, len(ml))):
                 if ml[-(i+1)] >= sl[-(i+1)] and ml[-i] < sl[-i]:
                     return True
@@ -2152,7 +2155,7 @@ class BotEngine:
             bb_rising = bb_pct_b > 0.5
 
         # BUY: MACD bull cross + RSI in range (BB does NOT block signal)
-        if macd_bull_cross and 28 <= rsi_now <= 68:
+        if macd_bull_cross and 28 <= rsi_now <= 60:
             return 'buy', rsi_now, macd_sig_str, vol_sig, atr, bb_signal, bb_rising
 
         # SELL: MACD bear cross + RSI elevated
