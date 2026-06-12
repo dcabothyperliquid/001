@@ -1345,10 +1345,13 @@ class AsyncEngine:
                 _vt_last_sell = _vt_fund.get(symbol, {}).get('last_sell_ts', 0)
                 _vt_cooldown_ok = (__import__('time').time() - _vt_last_sell) >= 60
                 if direction == 'buy' and _vt_cooldown_ok:
-                    _coin_capital = self.bot.coins.get(symbol, {}).get('compound_capital',
-                                    self.bot.coins.get(symbol, {}).get('capital', _VT_INITIAL))
-                    _vt_on_buy(symbol, price, best_tf, initial_fund=_coin_capital)
-                    logger.info(f"[VT] BUY  {symbol} @ {price:.4f} TF={best_tf}")
+                    # BB entry timing: skip if price near upper band
+                    _bb_sig_vt = mtf.get('bb_signal', 'mid')
+                    if _bb_sig_vt in ('lower', 'mid'):
+                        _coin_capital = self.bot.coins.get(symbol, {}).get('compound_capital',
+                                        self.bot.coins.get(symbol, {}).get('capital', _VT_INITIAL))
+                        _vt_on_buy(symbol, price, best_tf, initial_fund=_coin_capital)
+                        logger.info(f"[VT] BUY  {symbol} @ {price:.4f} TF={best_tf} BB={_bb_sig_vt}")
 
             if has_holding:
                 holding   = self.bot.holdings[symbol]
@@ -1390,8 +1393,13 @@ class AsyncEngine:
                 _last_sell = self.bot.holdings.get(symbol, {}).get('last_sell_ts', 0)
                 _cooldown_ok = (__import__('time').time() - _last_sell) >= 60
                 if direction == 'buy' and trade_cap > 0 and _cooldown_ok:
-                    await self._run_order(self.bot._execute_buy, symbol, trade_cap, price,
-                                          f'signal_buy_{best_tf}')
+                    # BB entry timing: prefer buying near/below lower band
+                    # If price is near upper band, wait for better entry
+                    _bb_sig = mtf.get('bb_signal', 'mid')
+                    _bb_entry_ok = _bb_sig in ('lower', 'mid')  # skip only if upper band
+                    if _bb_entry_ok:
+                        await self._run_order(self.bot._execute_buy, symbol, trade_cap, price,
+                                              f'signal_buy_{best_tf}')
 
         except Exception as e:
             logger.error(f"Async process error {symbol}: {e}")
@@ -2033,7 +2041,7 @@ class BotEngine:
         macd_bull_cross = _bull_cross_recent(macd_ln, sig_ln)
         macd_bear_cross = _bear_cross_recent(macd_ln, sig_ln)
 
-        # ── Bollinger Bands (20, 2s) for mean-reversion entry filter ─────────
+        # ── Bollinger Bands (20, 2s) — display only, NOT used as signal filter ─
         bb_period = 20
         bb_signal = 'mid'  # default: price within bands
         if len(closes) >= bb_period:
@@ -2044,20 +2052,16 @@ class BotEngine:
             bb_lower    = bb_mid - 2.0 * bb_std
             bb_upper    = bb_mid + 2.0 * bb_std
             cur_price   = closes[-1]
-            # Price within 0.5% above lower band = reversion entry zone
-            bb_buy_ok   = cur_price <= bb_lower * 1.005
-            # BB signal for display
+            # BB signal for display only
             if cur_price <= bb_lower * 1.01:
-                bb_signal = 'lower'   # near/below lower band → bullish reversion
+                bb_signal = 'lower'   # near/below lower band
             elif cur_price >= bb_upper * 0.99:
-                bb_signal = 'upper'   # near/above upper band → bearish squeeze
+                bb_signal = 'upper'   # near/above upper band
             else:
                 bb_signal = 'mid'
-        else:
-            bb_buy_ok   = True  # not enough candles, don't block signal
 
-        # BUY: MACD bull cross + RSI in range + BB lower band confirmation
-        if macd_bull_cross and 28 <= rsi_now <= 68 and bb_buy_ok:
+        # BUY: MACD bull cross + RSI in range (BB does NOT block signal)
+        if macd_bull_cross and 28 <= rsi_now <= 68:
             return 'buy', rsi_now, macd_sig_str, vol_sig, atr, bb_signal
 
         # SELL: MACD bear cross + RSI elevated
