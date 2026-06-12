@@ -882,7 +882,8 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
   </div>
 
   <!-- STATS STRIP -->
-  <div class="stat-strip" style="margin-bottom:16px;">
+  <!-- STATS ROW 1: Trading -->
+  <div class="stat-strip" style="margin-bottom:6px;">
     <div class="stat-strip-item">
       <div class="stat-strip-label">BALANCE</div>
       <div class="stat-strip-val cyan" id="s-bal">—</div>
@@ -898,6 +899,9 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
       <div class="stat-strip-val amber" id="s-wr">—</div>
       <div class="stat-strip-sub" id="s-trades">0 TRADES</div>
     </div>
+  </div>
+  <!-- STATS ROW 2: System -->
+  <div class="stat-strip" style="margin-bottom:16px;">
     <div class="stat-strip-item">
       <div class="stat-strip-label">HOLDINGS</div>
       <div class="stat-strip-val cyan" id="s-hold">0</div>
@@ -908,7 +912,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
       <div class="stat-strip-val cyan" id="s-mon">0</div>
       <div class="stat-strip-sub">COINS</div>
     </div>
-    <div class="stat-strip-item" style="min-width:120px;">
+    <div class="stat-strip-item" style="flex:2;">
       <div class="stat-strip-label" style="display:flex;align-items:center;justify-content:space-between;">
         <span>MEMORY</span>
         <div id="memDot" class="dot blink" style="background:var(--cyan);width:5px;height:5px;"></div>
@@ -925,29 +929,28 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
     </div>
   </div>
 
-  <!-- WALLET BAR (compact) -->
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;background:linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:8px 14px;flex-wrap:wrap;" id="walletBar">
-    <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-      <div class="dot blink" style="background:var(--cyan);width:6px;height:6px;"></div>
-      <span style="font-family:var(--mono);font-size:8px;letter-spacing:2px;color:var(--muted2);">WALLET</span>
-      <span id="walletMode" class="badge badge-neutral" style="font-size:7px;padding:2px 5px;">ENV</span>
-    </div>
-    <div style="width:1px;height:14px;background:rgba(255,255,255,0.07);flex-shrink:0;"></div>
-    <div style="display:flex;align-items:center;gap:5px;flex:1;min-width:0;">
+  <!-- WALLET BAR (2 rows) -->
+  <div style="margin-bottom:16px;background:linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:8px 14px;" id="walletBar">
+    <!-- Row 1: Identity -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+        <div class="dot blink" style="background:var(--cyan);width:6px;height:6px;"></div>
+        <span style="font-family:var(--mono);font-size:8px;letter-spacing:2px;color:var(--muted2);">WALLET</span>
+        <span id="walletMode" class="badge badge-neutral" style="font-size:7px;padding:2px 5px;">ENV</span>
+      </div>
+      <div style="width:1px;height:14px;background:rgba(255,255,255,0.07);flex-shrink:0;"></div>
       <span style="font-family:var(--mono);font-size:8px;color:var(--muted2);letter-spacing:1px;flex-shrink:0;">ADDR</span>
-      <span class="wallet-val cyan" id="walletAddr" style="font-size:9px;font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span>
+      <span class="wallet-val cyan" id="walletAddr" style="font-size:9px;font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">—</span>
+      <div style="width:1px;height:14px;background:rgba(255,255,255,0.07);flex-shrink:0;"></div>
+      <span style="font-family:var(--mono);font-size:8px;color:var(--muted2);letter-spacing:1px;flex-shrink:0;">KEY</span>
+      <span id="envKeyStatus" class="env-miss" style="font-size:7px;padding:2px 6px;flex-shrink:0;">NOT SET</span>
     </div>
-    <div style="width:1px;height:14px;background:rgba(255,255,255,0.07);flex-shrink:0;"></div>
-    <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-      <span style="font-family:var(--mono);font-size:8px;color:var(--muted2);letter-spacing:1px;">KEY</span>
-      <span id="envKeyStatus" class="env-miss" style="font-size:7px;padding:2px 6px;">NOT SET</span>
+    <!-- Row 2: Balance + Refresh -->
+    <div style="display:flex;align-items:center;gap:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.05);">
+      <span style="font-family:var(--mono);font-size:8px;color:var(--muted2);letter-spacing:1px;">USDC BALANCE</span>
+      <span class="wallet-val green" id="balOut" style="font-family:var(--mono);font-size:12px;font-weight:700;">—</span>
+      <button onclick="fetchBalance()" style="margin-left:auto;background:rgba(13,240,224,0.08);border:1px solid rgba(13,240,224,0.2);color:var(--cyan);font-family:var(--mono);font-size:8px;letter-spacing:1.5px;padding:4px 10px;border-radius:5px;cursor:pointer;flex-shrink:0;transition:background 0.2s;" onmouseover="this.style.background='rgba(13,240,224,0.15)'" onmouseout="this.style.background='rgba(13,240,224,0.08)'">↻ REFRESH</button>
     </div>
-    <div style="width:1px;height:14px;background:rgba(255,255,255,0.07);flex-shrink:0;"></div>
-    <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-      <span style="font-family:var(--mono);font-size:8px;color:var(--muted2);letter-spacing:1px;">BAL</span>
-      <span class="wallet-val green" id="balOut" style="font-family:var(--mono);font-size:10px;font-weight:700;">—</span>
-    </div>
-    <button onclick="fetchBalance()" style="margin-left:auto;background:rgba(13,240,224,0.08);border:1px solid rgba(13,240,224,0.2);color:var(--cyan);font-family:var(--mono);font-size:8px;letter-spacing:1.5px;padding:4px 10px;border-radius:5px;cursor:pointer;flex-shrink:0;transition:background 0.2s;" onmouseover="this.style.background='rgba(13,240,224,0.15)'" onmouseout="this.style.background='rgba(13,240,224,0.08)'">↻ REFRESH</button>
   </div>
 
   <!-- ADD COIN -->
