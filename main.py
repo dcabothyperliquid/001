@@ -1345,13 +1345,14 @@ class AsyncEngine:
                 _vt_last_sell = _vt_fund.get(symbol, {}).get('last_sell_ts', 0)
                 _vt_cooldown_ok = (__import__('time').time() - _vt_last_sell) >= 60
                 if direction == 'buy' and _vt_cooldown_ok:
-                    # BB entry timing: skip if price near upper band
-                    _bb_sig_vt = mtf.get('bb_signal', 'mid')
-                    if _bb_sig_vt in ('lower', 'mid'):
+                    # BB entry timing: only buy if price is rising (momentum up)
+                    _best_tf_data = mtf.get('tf_results', {}).get(best_tf, {})
+                    _bb_rising_vt = _best_tf_data.get('bb_rising', True)
+                    if _bb_rising_vt:
                         _coin_capital = self.bot.coins.get(symbol, {}).get('compound_capital',
                                         self.bot.coins.get(symbol, {}).get('capital', _VT_INITIAL))
                         _vt_on_buy(symbol, price, best_tf, initial_fund=_coin_capital)
-                        logger.info(f"[VT] BUY  {symbol} @ {price:.4f} TF={best_tf} BB={_bb_sig_vt}")
+                        logger.info(f"[VT] BUY  {symbol} @ {price:.4f} TF={best_tf} BB={_best_tf_data.get('bb','mid')} rising={_bb_rising_vt}")
 
             if has_holding:
                 holding   = self.bot.holdings[symbol]
@@ -1393,11 +1394,10 @@ class AsyncEngine:
                 _last_sell = self.bot.holdings.get(symbol, {}).get('last_sell_ts', 0)
                 _cooldown_ok = (__import__('time').time() - _last_sell) >= 60
                 if direction == 'buy' and trade_cap > 0 and _cooldown_ok:
-                    # BB entry timing: prefer buying near/below lower band
-                    # If price is near upper band, wait for better entry
-                    _bb_sig = mtf.get('bb_signal', 'mid')
-                    _bb_entry_ok = _bb_sig in ('lower', 'mid')  # skip only if upper band
-                    if _bb_entry_ok:
+                    # BB entry timing: only buy if price is moving upward
+                    _best_tf_data2 = mtf.get('tf_results', {}).get(best_tf, {})
+                    _bb_rising_live = _best_tf_data2.get('bb_rising', True)
+                    if _bb_rising_live:
                         await self._run_order(self.bot._execute_buy, symbol, trade_cap, price,
                                               f'signal_buy_{best_tf}')
 
@@ -2041,10 +2041,11 @@ class BotEngine:
         macd_bull_cross = _bull_cross_recent(macd_ln, sig_ln)
         macd_bear_cross = _bear_cross_recent(macd_ln, sig_ln)
 
-        # ── Bollinger Bands (20, 2s) — display only, NOT used as signal filter ─
-        bb_period = 20
-        bb_signal = 'mid'  # default: price within bands
-        if len(closes) >= bb_period:
+        # ── Bollinger Bands (20, 2s) — momentum direction for entry timing ──
+        bb_period  = 20
+        bb_signal  = 'mid'   # display label
+        bb_rising  = True    # default: allow entry
+        if len(closes) >= bb_period + 3:
             bb_window   = closes[-bb_period:]
             bb_mid      = sum(bb_window) / bb_period
             bb_variance = sum((x - bb_mid) ** 2 for x in bb_window) / bb_period
@@ -2052,23 +2053,26 @@ class BotEngine:
             bb_lower    = bb_mid - 2.0 * bb_std
             bb_upper    = bb_mid + 2.0 * bb_std
             cur_price   = closes[-1]
-            # BB signal for display only
+            prev_price  = closes[-4]   # 3 candles ago
+            # BB zone for display
             if cur_price <= bb_lower * 1.01:
-                bb_signal = 'lower'   # near/below lower band
+                bb_signal = 'lower'
             elif cur_price >= bb_upper * 0.99:
-                bb_signal = 'upper'   # near/above upper band
+                bb_signal = 'upper'
             else:
                 bb_signal = 'mid'
+            # Momentum: is price moving UP over last 3 candles?
+            bb_rising = cur_price > prev_price
 
         # BUY: MACD bull cross + RSI in range (BB does NOT block signal)
         if macd_bull_cross and 28 <= rsi_now <= 68:
-            return 'buy', rsi_now, macd_sig_str, vol_sig, atr, bb_signal
+            return 'buy', rsi_now, macd_sig_str, vol_sig, atr, bb_signal, bb_rising
 
         # SELL: MACD bear cross + RSI elevated
         if macd_bear_cross and rsi_now > 52:
-            return 'sell', rsi_now, macd_sig_str, vol_sig, atr, bb_signal
+            return 'sell', rsi_now, macd_sig_str, vol_sig, atr, bb_signal, bb_rising
 
-        return 'neutral', rsi_now, macd_sig_str, vol_sig, atr, bb_signal
+        return 'neutral', rsi_now, macd_sig_str, vol_sig, atr, bb_signal, bb_rising
 
     def _mtf_scan(self, symbol: str) -> dict:
         tf_results  = {}
@@ -2090,10 +2094,10 @@ class BotEngine:
                 tf_results[tf] = {'signal': 'neutral', 'score': 0, 'rsi': 50.0,
                                   'macd': 'neutral', 'vol': False, 'atr': 0.0}
                 continue
-            signal, rsi, macd, vol, atr, bb_sig = self._signal_for_candles(candles)
+            signal, rsi, macd, vol, atr, bb_sig, bb_rising = self._signal_for_candles(candles)
             score = SIGNAL_SCORES.get(signal, 0)
             tf_results[tf] = {'signal': signal, 'score': score, 'rsi': rsi,
-                              'macd': macd, 'vol': vol, 'atr': atr, 'bb': bb_sig}
+                              'macd': macd, 'vol': vol, 'atr': atr, 'bb': bb_sig, 'bb_rising': bb_rising}
 
         # Highest-priority TF with a clear signal wins
         # Conflict check: if HTF says sell but LTF says buy → skip (wait for alignment)
