@@ -1877,6 +1877,7 @@ class BotEngine:
                         'mtf_score': market.get('mtf_score', 0),
                         'best_timeframe': market.get('best_timeframe','N/A'),
                         'confidence': market.get('confidence','low'),
+                        'bb_signal': market.get('bb_signal','mid'),
                         'holding': total_held, 'avg_entry': avg_entry,
                         'pnl_pct': round(pnl, 2),
                         'peak_price': holding.get('peak_price',0) if holding else 0}
@@ -2034,25 +2035,36 @@ class BotEngine:
 
         # ── Bollinger Bands (20, 2s) for mean-reversion entry filter ─────────
         bb_period = 20
+        bb_signal = 'mid'  # default: price within bands
         if len(closes) >= bb_period:
             bb_window   = closes[-bb_period:]
             bb_mid      = sum(bb_window) / bb_period
             bb_variance = sum((x - bb_mid) ** 2 for x in bb_window) / bb_period
-            bb_lower    = bb_mid - 2.0 * (bb_variance ** 0.5)
+            bb_std      = bb_variance ** 0.5
+            bb_lower    = bb_mid - 2.0 * bb_std
+            bb_upper    = bb_mid + 2.0 * bb_std
+            cur_price   = closes[-1]
             # Price within 0.5% above lower band = reversion entry zone
-            bb_buy_ok   = closes[-1] <= bb_lower * 1.005
+            bb_buy_ok   = cur_price <= bb_lower * 1.005
+            # BB signal for display
+            if cur_price <= bb_lower * 1.01:
+                bb_signal = 'lower'   # near/below lower band → bullish reversion
+            elif cur_price >= bb_upper * 0.99:
+                bb_signal = 'upper'   # near/above upper band → bearish squeeze
+            else:
+                bb_signal = 'mid'
         else:
             bb_buy_ok   = True  # not enough candles, don't block signal
 
         # BUY: MACD bull cross + RSI in range + BB lower band confirmation
         if macd_bull_cross and 28 <= rsi_now <= 68 and bb_buy_ok:
-            return 'buy', rsi_now, macd_sig_str, vol_sig, atr
+            return 'buy', rsi_now, macd_sig_str, vol_sig, atr, bb_signal
 
         # SELL: MACD bear cross + RSI elevated
         if macd_bear_cross and rsi_now > 52:
-            return 'sell', rsi_now, macd_sig_str, vol_sig, atr
+            return 'sell', rsi_now, macd_sig_str, vol_sig, atr, bb_signal
 
-        return 'neutral', rsi_now, macd_sig_str, vol_sig, atr
+        return 'neutral', rsi_now, macd_sig_str, vol_sig, atr, bb_signal
 
     def _mtf_scan(self, symbol: str) -> dict:
         tf_results  = {}
@@ -2074,10 +2086,10 @@ class BotEngine:
                 tf_results[tf] = {'signal': 'neutral', 'score': 0, 'rsi': 50.0,
                                   'macd': 'neutral', 'vol': False, 'atr': 0.0}
                 continue
-            signal, rsi, macd, vol, atr = self._signal_for_candles(candles)
+            signal, rsi, macd, vol, atr, bb_sig = self._signal_for_candles(candles)
             score = SIGNAL_SCORES.get(signal, 0)
             tf_results[tf] = {'signal': signal, 'score': score, 'rsi': rsi,
-                              'macd': macd, 'vol': vol, 'atr': atr}
+                              'macd': macd, 'vol': vol, 'atr': atr, 'bb': bb_sig}
 
         # Highest-priority TF with a clear signal wins
         # Conflict check: if HTF says sell but LTF says buy → skip (wait for alignment)
@@ -2125,7 +2137,7 @@ class BotEngine:
                 'tf_breakdown': {tf: v['signal'] for tf, v in tf_results.items()},
                 'tf_results': tf_results,
                 'buy_tfs': buy_tfs, 'sell_tfs': sell_tfs,
-                'rsi': best['rsi'], 'macd_signal': best['macd'], 'volume_signal': best['vol'],
+                'rsi': best['rsi'], 'macd_signal': best['macd'], 'volume_signal': best['vol'], 'bb_signal': best.get('bb','mid'),
                 'signal': direction if direction != 'neutral' else 'neutral'}
 
     # ── Market data (for REST API) ────────────────────────────────────────────
@@ -2140,7 +2152,7 @@ class BotEngine:
                     'volume_signal': mtf['volume_signal'], 'signal': mtf['signal'],
                     'mtf_score': mtf['total_score'], 'best_timeframe': mtf['best_timeframe'],
                     'confidence': mtf['confidence'], 'capital_pct': mtf['capital_pct'],
-                    'tf_breakdown': mtf['tf_breakdown']}
+                    'tf_breakdown': mtf['tf_breakdown'], 'bb_signal': mtf.get('bb_signal','mid')}
         except Exception as e:
             logger.error(f"Market data error {symbol}: {e}")
             return {'price':0,'rsi':50,'macd_signal':'neutral','volume_signal':False,

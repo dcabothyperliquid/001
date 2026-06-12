@@ -620,7 +620,7 @@ body.day .coin-card:hover{box-shadow:0 4px 14px rgba(0,0,0,0.08);}
 .cc-pnl.up{color:var(--green);}
 .cc-pnl.dn{color:var(--red);}
 .cc-pnl.flat{color:var(--muted2);}
-.cc-metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;margin-bottom:4px;}
+.cc-metrics{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:2px;margin-bottom:4px;}
 .cc-met{display:flex;flex-direction:column;gap:1px;}
 .met-label{font-family:var(--mono);font-size:7px;color:var(--muted);letter-spacing:0.5px;}
 .met-val{font-family:var(--mono);font-size:9px;font-weight:500;color:var(--text);}
@@ -994,29 +994,6 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
 
 
     <!-- GLOBAL TIMEFRAMES -->
-  <div style="margin-bottom:18px;background:rgba(0,224,255,0.03);border:1px solid rgba(0,224,255,0.1);border-radius:10px;padding:12px 14px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <div class="bar" style="background:var(--cyan);height:14px;flex-shrink:0;"></div>
-        <span style="font-size:11px;font-weight:800;letter-spacing:.12em;color:rgba(255,255,255,0.7);font-family:var(--mono);">DEFAULT TIMEFRAMES</span>
-        <span style="font-size:9px;color:rgba(255,255,255,0.3);font-family:var(--mono);">FOR NEW COINS</span>
-      </div>
-      <span style="font-size:9px;font-family:var(--mono);font-weight:700;color:#00e0ff;" id="tfActiveMeta">—</span>
-    </div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;">
-      <button class="tf-btn" data-tf="5m"  onpointerdown="globalTfHoldStart('5m',this)"  onpointerup="globalTfHoldCancel('5m',this)"  onpointerleave="globalTfHoldCancel('5m',this)">5m</button>
-      <button class="tf-btn" data-tf="15m" onpointerdown="globalTfHoldStart('15m',this)" onpointerup="globalTfHoldCancel('15m',this)" onpointerleave="globalTfHoldCancel('15m',this)">15m</button>
-      <button class="tf-btn" data-tf="30m" onpointerdown="globalTfHoldStart('30m',this)" onpointerup="globalTfHoldCancel('30m',this)" onpointerleave="globalTfHoldCancel('30m',this)">30m</button>
-      <button class="tf-btn" data-tf="1h"  onpointerdown="globalTfHoldStart('1h',this)"  onpointerup="globalTfHoldCancel('1h',this)"  onpointerleave="globalTfHoldCancel('1h',this)">1h</button>
-      <button class="tf-btn" data-tf="2h"  onpointerdown="globalTfHoldStart('2h',this)"  onpointerup="globalTfHoldCancel('2h',this)"  onpointerleave="globalTfHoldCancel('2h',this)">2h</button>
-      <button class="tf-btn" data-tf="4h"  onpointerdown="globalTfHoldStart('4h',this)"  onpointerup="globalTfHoldCancel('4h',this)"  onpointerleave="globalTfHoldCancel('4h',this)">4h</button>
-    </div>
-    <div style="margin-top:8px;font-size:8px;font-family:var(--mono);color:rgba(255,255,255,0.2);letter-spacing:.06em;">
-      HOLD 500ms TO TOGGLE · HIGHER TF SIGNALS TAKE PRIORITY · PER-COIN OVERRIDE POSSIBLE
-    </div>
-  </div>
-
-  <!-- GLOBAL TIMEFRAMES -->
   <div style="margin-bottom:18px;background:rgba(0,224,255,0.03);border:1px solid rgba(0,224,255,0.1);border-radius:10px;padding:12px 14px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <div style="display:flex;align-items:center;gap:8px;">
@@ -1817,6 +1794,11 @@ function rsiColor(r) {
   return 'var(--muted2)';
 }
 function macdIcon(s) { return s === 'bullish' ? '▲' : s === 'bearish' ? '▼' : '–'; }
+function bbIcon(s) {
+  if (s === 'lower') return {icon:'▲', color:'#0dff8c', title:'Near lower band — bullish reversion zone'};
+  if (s === 'upper') return {icon:'▼', color:'#ff3060', title:'Near upper band — bearish squeeze zone'};
+  return {icon:'–', color:'rgba(255,255,255,0.35)', title:'Price within bands'};
+}
 
 // ═══════════════════════════════════════════════════════════════
 // RENDER COINS
@@ -1860,6 +1842,10 @@ function _buildCoinCard(c) {
       <div class="cc-met" style="flex-direction:column;align-items:flex-start;gap:2px;">
         <span class="met-label">CAP</span>
         <span class="met-val c-cy" id="lm-cap-${sym}">$${c.capital||0}</span>
+      </div>
+      <div class="cc-met">
+        <span class="met-label">BB</span>
+        <span class="met-val" id="lm-bb-${sym}" style="color:${bbIcon(c.bb_signal).color}" title="${bbIcon(c.bb_signal).title}">${bbIcon(c.bb_signal).icon}</span>
       </div>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;" id="lm-sig-${sym}">
@@ -1953,6 +1939,9 @@ function renderCoins(coins) {
     // MACD
     const macdEl = document.getElementById(`lm-macd-${sym}`);
     if (macdEl) { macdEl.innerHTML = macdIcon(c.macd_signal); macdEl.className = `met-val ${c.macd_signal==='bullish'?'c-up':c.macd_signal==='bearish'?'c-dn':''}`; }
+    // BB
+    const bbEl = document.getElementById(`lm-bb-${sym}`);
+    if (bbEl) { const bb = bbIcon(c.bb_signal); bbEl.textContent = bb.icon; bbEl.style.color = bb.color; bbEl.title = bb.title; }
 
     // CAP
     set(`lm-cap-${sym}`, `$${c.capital||0}`);
