@@ -985,11 +985,8 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
             <input id="inpTp" type="number" value="0.5" min="0.1" max="10" step="0.1" />
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;">
-          <div style="background:var(--bg);border:1px solid var(--line2);padding:7px 11px;border-radius:5px;font-family:var(--mono);font-size:11px;color:var(--cyan);flex:1;min-width:160px;">
-            ⚡ AUTO — 1H · 2H · 4H · 1D
-          </div>
-          <button class="btn btn-primary" onclick="addCoin()" style="padding:8px 24px;white-space:nowrap;flex-shrink:0;">+ ADD COIN</button>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
+          <button class="btn btn-primary" onclick="addCoin()" style="padding:8px 24px;white-space:nowrap;">+ ADD COIN</button>
         </div>
       </div>
     </div>
@@ -997,6 +994,29 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
 
 
     <!-- GLOBAL TIMEFRAMES -->
+  <div style="margin-bottom:18px;background:rgba(0,224,255,0.03);border:1px solid rgba(0,224,255,0.1);border-radius:10px;padding:12px 14px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="bar" style="background:var(--cyan);height:14px;flex-shrink:0;"></div>
+        <span style="font-size:11px;font-weight:800;letter-spacing:.12em;color:rgba(255,255,255,0.7);font-family:var(--mono);">DEFAULT TIMEFRAMES</span>
+        <span style="font-size:9px;color:rgba(255,255,255,0.3);font-family:var(--mono);">FOR NEW COINS</span>
+      </div>
+      <span style="font-size:9px;font-family:var(--mono);font-weight:700;color:#00e0ff;" id="tfActiveMeta">—</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+      <button class="tf-btn" data-tf="5m"  onpointerdown="globalTfHoldStart('5m',this)"  onpointerup="globalTfHoldCancel('5m',this)"  onpointerleave="globalTfHoldCancel('5m',this)">5m</button>
+      <button class="tf-btn" data-tf="15m" onpointerdown="globalTfHoldStart('15m',this)" onpointerup="globalTfHoldCancel('15m',this)" onpointerleave="globalTfHoldCancel('15m',this)">15m</button>
+      <button class="tf-btn" data-tf="30m" onpointerdown="globalTfHoldStart('30m',this)" onpointerup="globalTfHoldCancel('30m',this)" onpointerleave="globalTfHoldCancel('30m',this)">30m</button>
+      <button class="tf-btn" data-tf="1h"  onpointerdown="globalTfHoldStart('1h',this)"  onpointerup="globalTfHoldCancel('1h',this)"  onpointerleave="globalTfHoldCancel('1h',this)">1h</button>
+      <button class="tf-btn" data-tf="2h"  onpointerdown="globalTfHoldStart('2h',this)"  onpointerup="globalTfHoldCancel('2h',this)"  onpointerleave="globalTfHoldCancel('2h',this)">2h</button>
+      <button class="tf-btn" data-tf="4h"  onpointerdown="globalTfHoldStart('4h',this)"  onpointerup="globalTfHoldCancel('4h',this)"  onpointerleave="globalTfHoldCancel('4h',this)">4h</button>
+    </div>
+    <div style="margin-top:8px;font-size:8px;font-family:var(--mono);color:rgba(255,255,255,0.2);letter-spacing:.06em;">
+      HOLD 500ms TO TOGGLE · HIGHER TF SIGNALS TAKE PRIORITY · PER-COIN OVERRIDE POSSIBLE
+    </div>
+  </div>
+
+  <!-- GLOBAL TIMEFRAMES -->
   <div style="margin-bottom:18px;background:rgba(0,224,255,0.03);border:1px solid rgba(0,224,255,0.1);border-radius:10px;padding:12px 14px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <div style="display:flex;align-items:center;gap:8px;">
