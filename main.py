@@ -2090,7 +2090,7 @@ class BotEngine:
         SELL: MACD line crosses below signal line + RSI above 55
         """
         if not candles or len(candles) < 35:
-            return 'neutral', 50.0, 'neutral', False, 0.0, 'mid'
+            return 'neutral', 50.0, 'neutral', False, 0.0, 'mid', True
 
         closes  = [float(c[4]) for c in candles]
         volumes = [float(c[5]) for c in candles]
@@ -2110,7 +2110,7 @@ class BotEngine:
         sig_ln  = ema(macd_ln, 9)
 
         if len(macd_ln) < 2 or len(sig_ln) < 2:
-            return 'neutral', rsi_now, 'neutral', vol_sig, atr, 'mid'
+            return 'neutral', rsi_now, 'neutral', vol_sig, atr, 'mid', True
 
         hist_now        = macd_ln[-1] - sig_ln[-1]
         macd_sig_str    = 'bullish' if hist_now > 0 else ('bearish' if hist_now < 0 else 'neutral')
