@@ -2060,10 +2060,10 @@ class BotEngine:
                 bb_signal = 'upper'
             else:
                 bb_signal = 'mid'
-            # Momentum: is current candle close above previous candle close?
-            # Just 1 candle comparison — instant check, no delay
-            prev_price  = closes[-2]
-            bb_rising   = cur_price > prev_price
+            # %B indicator: where is price within the bands?
+            # %B > 0.5 means price is above midline → upward momentum → entry ok
+            bb_pct_b  = (cur_price - bb_lower) / (bb_upper - bb_lower) if (bb_upper - bb_lower) > 0 else 0.5
+            bb_rising = bb_pct_b > 0.5
 
         # BUY: MACD bull cross + RSI in range (BB does NOT block signal)
         if macd_bull_cross and 28 <= rsi_now <= 68:
