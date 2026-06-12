@@ -940,7 +940,7 @@ def _vt_get_summary():
             'total_pnl': total_pnl, 'total_fees': total_fees,
             'total_trades': total_trades,
             'win_rate':  win_rate,  'by_coin': by_coin,
-            'recent_trades': list(reversed(_vt_trades[-50:])),
+            'recent_trades': list(reversed(_vt_trades[-1000:])),
         }
 
 
@@ -2049,9 +2049,20 @@ class BotEngine:
         macd_bull_cross = _bull_cross_recent(macd_ln, sig_ln)
         macd_bear_cross = _bear_cross_recent(macd_ln, sig_ln)
 
-        # BUY: MACD bull cross (3-candle window) + RSI in range
-        # Volume optional — confirms momentum but not required
-        if macd_bull_cross and 28 <= rsi_now <= 68:
+        # ── Bollinger Bands (20, 2s) for mean-reversion entry filter ─────────
+        bb_period = 20
+        if len(closes) >= bb_period:
+            bb_window   = closes[-bb_period:]
+            bb_mid      = sum(bb_window) / bb_period
+            bb_variance = sum((x - bb_mid) ** 2 for x in bb_window) / bb_period
+            bb_lower    = bb_mid - 2.0 * (bb_variance ** 0.5)
+            # Price within 0.5% above lower band = reversion entry zone
+            bb_buy_ok   = closes[-1] <= bb_lower * 1.005
+        else:
+            bb_buy_ok   = True  # not enough candles, don't block signal
+
+        # BUY: MACD bull cross + RSI in range + BB lower band confirmation
+        if macd_bull_cross and 28 <= rsi_now <= 68 and bb_buy_ok:
             return 'buy', rsi_now, macd_sig_str, vol_sig, atr
 
         # SELL: MACD bear cross + RSI elevated
@@ -2629,6 +2640,35 @@ def vt_close_position(symbol):
     _vt_on_sell(symbol, price, exit_reason='manual')
     logger.info(f"[VT] Manual close {symbol} @ {price}")
     return jsonify({'ok': True, 'symbol': symbol, 'close_price': price})
+
+@app.route('/api/vt/settings', methods=['GET', 'POST'])
+def vt_settings():
+    """GET or SET global VT SL/TP/Trail percentages. POST body: {sl_pct, tp_pct, trail_pct}"""
+    global VT_SL_PCT, VT_TP_PCT, VT_TRAIL_PCT
+    if request.method == 'GET':
+        return jsonify({'sl_pct': VT_SL_PCT, 'tp_pct': VT_TP_PCT, 'trail_pct': VT_TRAIL_PCT})
+    data = request.get_json() or {}
+    changed = []
+    if 'sl_pct' in data:
+        v = float(data['sl_pct'])
+        if 0.1 <= v <= 10:
+            VT_SL_PCT = round(v, 2); changed.append(f'SL={v}%')
+        else:
+            return jsonify({'ok': False, 'error': 'sl_pct must be 0.1–10'}), 400
+    if 'tp_pct' in data:
+        v = float(data['tp_pct'])
+        if 0.1 <= v <= 10:
+            VT_TP_PCT = round(v, 2); changed.append(f'TP={v}%')
+        else:
+            return jsonify({'ok': False, 'error': 'tp_pct must be 0.1–10'}), 400
+    if 'trail_pct' in data:
+        v = float(data['trail_pct'])
+        if 0.1 <= v <= 10:
+            VT_TRAIL_PCT = round(v, 2); changed.append(f'Trail={v}%')
+        else:
+            return jsonify({'ok': False, 'error': 'trail_pct must be 0.1–10'}), 400
+    logger.info(f"[VT] Settings updated: {', '.join(changed)}")
+    return jsonify({'ok': True, 'sl_pct': VT_SL_PCT, 'tp_pct': VT_TP_PCT, 'trail_pct': VT_TRAIL_PCT})
 
 @app.route('/api/virtual/reset', methods=['POST'])
 def virtual_reset():
