@@ -972,6 +972,29 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
     </div>
   </div>
 
+  <!-- TIMEFRAME TOGGLE PANEL — between Add Coin and Live Monitor -->
+  <div style="margin-bottom:14px;background:rgba(0,224,255,0.03);border:1px solid rgba(0,224,255,0.1);border-radius:10px;padding:12px 14px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="bar" style="background:var(--cyan);height:14px;"></div>
+        <span style="font-size:11px;font-weight:800;letter-spacing:.12em;color:rgba(255,255,255,0.7);font-family:var(--mono);">DEFAULT TIMEFRAMES</span>
+        <span style="font-size:9px;color:rgba(255,255,255,0.3);font-family:var(--mono);">FOR NEW COINS</span>
+      </div>
+      <span style="font-size:9px;font-family:var(--mono);font-weight:700;color:#00e0ff;" id="tfActiveMeta">—</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+      <button class="tf-btn" data-tf="5m"  onclick="toggleTf('5m')">5m</button>
+      <button class="tf-btn" data-tf="15m" onclick="toggleTf('15m')">15m</button>
+      <button class="tf-btn" data-tf="30m" onclick="toggleTf('30m')">30m</button>
+      <button class="tf-btn" data-tf="1h"  onclick="toggleTf('1h')">1h</button>
+      <button class="tf-btn" data-tf="2h"  onclick="toggleTf('2h')">2h</button>
+      <button class="tf-btn" data-tf="4h"  onclick="toggleTf('4h')">4h</button>
+    </div>
+    <div style="margin-top:8px;font-size:8px;font-family:var(--mono);color:rgba(255,255,255,0.2);letter-spacing:.06em;">
+      ↑ YE TFs NAYE COIN KE DEFAULT BANENGE · HIGHER TF SIGNALS TAKE PRIORITY · PER-COIN TF OVERRIDE POSSIBLE
+    </div>
+  </div>
+
   <!-- LIVE MONITOR -->
   <div style="margin-bottom:14px;">
     <div class="sec-head">
@@ -1018,29 +1041,6 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
     </div>
   </div>
 
-
-  <!-- TIMEFRAME TOGGLE PANEL -->
-  <div style="margin-bottom:14px;background:rgba(0,224,255,0.03);border:1px solid rgba(0,224,255,0.1);border-radius:10px;padding:12px 14px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <div class="bar" style="background:var(--cyan);height:14px;"></div>
-        <span style="font-size:11px;font-weight:800;letter-spacing:.12em;color:rgba(255,255,255,0.7);font-family:var(--mono);">GLOBAL TIMEFRAMES</span>
-        <span style="font-size:9px;color:rgba(255,255,255,0.3);font-family:var(--mono);">DEFAULT FOR ALL COINS</span>
-      </div>
-      <span style="font-size:9px;font-family:var(--mono);font-weight:700;color:#00e0ff;" id="tfActiveMeta">—</span>
-    </div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;">
-      <button class="tf-btn" data-tf="5m"  onclick="toggleTf('5m')">5m</button>
-      <button class="tf-btn" data-tf="15m" onclick="toggleTf('15m')">15m</button>
-      <button class="tf-btn" data-tf="30m" onclick="toggleTf('30m')">30m</button>
-      <button class="tf-btn" data-tf="1h"  onclick="toggleTf('1h')">1h</button>
-      <button class="tf-btn" data-tf="2h"  onclick="toggleTf('2h')">2h</button>
-      <button class="tf-btn" data-tf="4h"  onclick="toggleTf('4h')">4h</button>
-    </div>
-    <div style="margin-top:8px;font-size:8px;font-family:var(--mono);color:rgba(255,255,255,0.2);letter-spacing:.06em;">
-      ↑ HIGHER TF SIGNALS TAKE PRIORITY · CONFLICTS RESOLVED AUTOMATICALLY · COINS WITH CUSTOM TF IGNORE THIS
-    </div>
-  </div>
 
   <!-- VIRTUAL P&L TRACKER -->
   <div style="margin-bottom:14px;">
@@ -1641,14 +1641,15 @@ async function fetchBalance() {
 // ═══════════════════════════════════════════════════════════════
 async function addCoin() {
   const inp           = document.getElementById('inpSym');
-  // Prefer data-display (set by dropdown select), else use raw input value
   const symbol        = (inp.getAttribute('data-display') || inp.value).trim().toUpperCase();
   const capital       = parseFloat(document.getElementById('inpCap').value);
   const stop_loss     = parseFloat(document.getElementById('inpSl').value);
   const take_profit   = parseFloat(document.getElementById('inpTp').value) || 0.5;
   if (!symbol) { toastRich('Enter a symbol', '', 'err'); return; }
   if (isNaN(capital) || capital <= 0) { toastRich('Enter valid capital', '', 'err'); return; }
-  const r = await api('/coins', 'POST', { symbol, capital, timeframe:'auto', stop_loss, take_profit });
+  // Use currently active global TFs as this coin's default timeframes
+  const timeframes = [..._activeTfs];
+  const r = await api('/coins', 'POST', { symbol, capital, timeframe:'auto', timeframes, stop_loss, take_profit });
   if (r?.success) {
     toastRich(`${symbol} added ✓`, `Capital: $${capital}`, 'ok');
     inp.value = '';

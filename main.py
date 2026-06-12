@@ -2362,7 +2362,14 @@ def add_coin():
     stop_loss     = float(d.get('stop_loss', 1.5))
     trailing_stop = float(d.get('trailing_stop', 1.0))
     take_profit   = float(d.get('take_profit', 2.0))
-    return jsonify(bot_engine.add_coin(symbol, capital, timeframe, stop_loss, trailing_stop, take_profit))
+    result        = bot_engine.add_coin(symbol, capital, timeframe, stop_loss, trailing_stop, take_profit)
+    # Apply timeframes array if provided (from global TF panel)
+    tfs = d.get('timeframes')
+    if tfs and isinstance(tfs, list):
+        valid_tfs = [tf for tf in tfs if tf in ALL_TIMEFRAMES]
+        if valid_tfs and symbol in bot_engine.coins:
+            bot_engine.coins[symbol]['timeframes'] = valid_tfs
+    return jsonify(result)
 
 @app.route('/api/coins/<symbol>', methods=['DELETE'])
 def remove_coin(symbol): return jsonify(bot_engine.remove_coin(symbol.upper()))
