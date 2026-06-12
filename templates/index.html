@@ -1797,12 +1797,6 @@ function rsiColor(r) {
   return 'var(--muted2)';
 }
 function macdIcon(s) { return s === 'bullish' ? '▲' : s === 'bearish' ? '▼' : '–'; }
-function bbIcon(s) {
-  if (s === 'lower') return {icon:'LOW', color:'#0dff8c', title:'Near lower band — bullish reversion zone'};
-  if (s === 'upper') return {icon:'HIGH', color:'#ff3060', title:'Near upper band — bearish squeeze zone'};
-  return {icon:'MID', color:'rgba(255,255,255,0.45)', title:'Price within bands'};
-}
-
 // ═══════════════════════════════════════════════════════════════
 // RENDER COINS
 // ═══════════════════════════════════════════════════════════════
@@ -1846,10 +1840,7 @@ function _buildCoinCard(c) {
         <span class="met-label">CAP</span>
         <span class="met-val c-cy" id="lm-cap-${sym}">$${c.capital||0}</span>
       </div>
-      <div class="cc-met">
-        <span class="met-label">BB</span>
-        <span id="lm-bb-${sym}" title="${bbIcon(c.bb_signal).title}" style="font-size:7px;font-family:var(--mono);font-weight:800;letter-spacing:.08em;padding:1px 5px;border-radius:3px;background:${c.bb_signal==='lower'?'rgba(13,255,140,0.12)':c.bb_signal==='upper'?'rgba(255,48,96,0.12)':'rgba(255,255,255,0.06)'};color:${bbIcon(c.bb_signal).color};border:1px solid ${c.bb_signal==='lower'?'rgba(13,255,140,0.25)':c.bb_signal==='upper'?'rgba(255,48,96,0.25)':'rgba(255,255,255,0.1)'};">${bbIcon(c.bb_signal).icon}</span>
-      </div>
+
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;" id="lm-sig-${sym}">
       ${signalBadge(c.signal)}
@@ -1942,17 +1933,6 @@ function renderCoins(coins) {
     // MACD
     const macdEl = document.getElementById(`lm-macd-${sym}`);
     if (macdEl) { macdEl.innerHTML = macdIcon(c.macd_signal); macdEl.className = `met-val ${c.macd_signal==='bullish'?'c-up':c.macd_signal==='bearish'?'c-dn':''}`; }
-    // BB
-    const bbEl = document.getElementById(`lm-bb-${sym}`);
-    if (bbEl) {
-      const bb = bbIcon(c.bb_signal);
-      bbEl.textContent = bb.icon;
-      bbEl.style.color = bb.color;
-      bbEl.title = bb.title;
-      bbEl.style.background = c.bb_signal==='lower'?'rgba(13,255,140,0.12)':c.bb_signal==='upper'?'rgba(255,48,96,0.12)':'rgba(255,255,255,0.06)';
-      bbEl.style.borderColor = c.bb_signal==='lower'?'rgba(13,255,140,0.25)':c.bb_signal==='upper'?'rgba(255,48,96,0.25)':'rgba(255,255,255,0.1)';
-    }
-
     // CAP
     set(`lm-cap-${sym}`, `$${c.capital||0}`);
 

@@ -723,14 +723,6 @@ def _signal_state_set(symbol, state):
     with _coin_signal_state_lock:
         _coin_signal_state[symbol] = state
 
-# ── BB Pending Entry Queue ────────────────────────────────────────────────────
-# When signal fires but %B < 0.5, store here and check on every WSS tick.
-# Max wait: 120 seconds — after that entry is cancelled.
-_bb_pending   = {}   # symbol → {ts, price, capital, best_tf, mode}  mode=vt|live
-_bb_pend_lock = __import__('threading').Lock()
-BB_PENDING_TTL = 120  # default fallback
-BB_TTL_BY_TF   = {'5m': 60, '15m': 120, '30m': 180, '1h': 300, '2h': 600, '4h': 900}
-
 # ── Virtual P&L Tracker ───────────────────────────────────────────────────────
 # Tracks hypothetical trades based purely on BUY/SELL signals (no real orders).
 # BUY signal -> assume bought at that price with current fund allocation.
@@ -1027,75 +1019,12 @@ class AsyncEngine:
                                     # ── VT SL/TP/Trail check on every tick (WSS-driven) ──
                                     self._vt_check_exits(mids)
                                     self._real_check_exits(mids)
-                                    # ── BB pending entry check ──
-                                    self._check_bb_pending(mids)
                         except Exception as e:
                             logger.warning(f"WS parse error: {e}")
             except Exception as e:
                 logger.warning(f"WS disconnected: {e} — reconnect in {backoff}s")
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
-
-    def _check_bb_pending(self, mids: dict):
-        """Called on every allMids WSS tick — fires queued entries when %B crosses 0.5."""
-        now = __import__('time').time()
-        with _bb_pend_lock:
-            expired = [s for s, d in _bb_pending.items()
-                        if now - d['ts'] > BB_TTL_BY_TF.get(d.get('best_tf','1h'), BB_PENDING_TTL)]
-            for s in expired:
-                _ttl = BB_TTL_BY_TF.get(_bb_pending[s].get('best_tf','1h'), BB_PENDING_TTL)
-                logger.info(f"[BB-WAIT] {s} expired after {_ttl}s — entry cancelled")
-                del _bb_pending[s]
-            ready = []
-            for symbol, data in list(_bb_pending.items()):
-                # Get current price from this tick
-                raw_price = None
-                for key in [f'@{self.bot.client._sym_index.get(symbol, "")}',
-                             symbol, f'U{symbol}']:
-                    v = mids.get(key)
-                    if v:
-                        try: raw_price = float(v); break
-                        except: pass
-                if not raw_price:
-                    continue
-                # Recalculate %B using cached candles
-                try:
-                    candles = candle_cache.get(symbol, data['best_tf'])
-                    if not candles or len(candles) < 21:
-                        continue
-                    closes = [float(c[4]) for c in candles]
-                    bb_window = closes[-20:]
-                    bb_mid = sum(bb_window) / 20
-                    bb_var = sum((x - bb_mid)**2 for x in bb_window) / 20
-                    bb_std = bb_var ** 0.5
-                    bb_lower = bb_mid - 2.0 * bb_std
-                    bb_upper = bb_mid + 2.0 * bb_std
-                    if (bb_upper - bb_lower) > 0:
-                        pct_b = (raw_price - bb_lower) / (bb_upper - bb_lower)
-                        if pct_b > 0.5:
-                            ready.append((symbol, data, raw_price))
-                except Exception as e:
-                    logger.warning(f"[BB-WAIT] {symbol} calc error: {e}")
-            for symbol, _, _ in ready:
-                del _bb_pending[symbol]
-
-        # Fire entries outside lock
-        for symbol, data, cur_price in ready:
-            try:
-                if data['mode'] == 'vt':
-                    _vt_cooldown_ok = (__import__('time').time() - _vt_fund.get(symbol, {}).get('last_sell_ts', 0)) >= 60
-                    if symbol not in _vt_fund and _vt_cooldown_ok:
-                        _vt_on_buy(symbol, cur_price, data['best_tf'], initial_fund=data['capital'])
-                        logger.info(f"[BB-WAIT] VT BUY {symbol} @ {cur_price:.4f} (%%B crossed 0.5)")
-                elif data['mode'] == 'live':
-                    if symbol not in self.bot.holdings:
-                        asyncio.ensure_future(self._run_order(
-                            self.bot._execute_buy, symbol, data['capital'], cur_price,
-                            f"bb_wait_buy_{data['best_tf']}"
-                        ))
-                        logger.info(f"[BB-WAIT] LIVE BUY {symbol} @ {cur_price:.4f} (%%B crossed 0.5)")
-            except Exception as e:
-                logger.error(f"[BB-WAIT] fire error {symbol}: {e}")
 
     def _vt_check_exits(self, mids: dict):
         """Called on every allMids WSS tick — checks SL/TP/Trail for all open VT positions.
@@ -1416,23 +1345,10 @@ class AsyncEngine:
                 _vt_last_sell = _vt_fund.get(symbol, {}).get('last_sell_ts', 0)
                 _vt_cooldown_ok = (__import__('time').time() - _vt_last_sell) >= 60
                 if direction == 'buy' and _vt_cooldown_ok:
-                    _best_tf_data = mtf.get('tf_results', {}).get(best_tf, {})
-                    _bb_rising_vt = _best_tf_data.get('bb_rising', True)
                     _coin_capital = self.bot.coins.get(symbol, {}).get('compound_capital',
                                     self.bot.coins.get(symbol, {}).get('capital', _VT_INITIAL))
-                    if _bb_rising_vt:
-                        # %B > 0.5 — instant entry
-                        _vt_on_buy(symbol, price, best_tf, initial_fund=_coin_capital)
-                        logger.info(f"[VT] BUY  {symbol} @ {price:.4f} TF={best_tf}")
-                    else:
-                        # %B < 0.5 — queue it, buy on next tick when %B crosses 0.5
-                        with _bb_pend_lock:
-                            if symbol not in _bb_pending:
-                                _bb_pending[symbol] = {
-                                    'ts': __import__('time').time(), 'capital': _coin_capital,
-                                    'best_tf': best_tf, 'mode': 'vt'
-                                }
-                                logger.info(f"[BB-WAIT] {symbol} queued VT entry, waiting %B>0.5")
+                    _vt_on_buy(symbol, price, best_tf, initial_fund=_coin_capital)
+                    logger.info(f"[VT] BUY  {symbol} @ {price:.4f} TF={best_tf}")
 
             if has_holding:
                 holding   = self.bot.holdings[symbol]
@@ -1474,21 +1390,8 @@ class AsyncEngine:
                 _last_sell = self.bot.holdings.get(symbol, {}).get('last_sell_ts', 0)
                 _cooldown_ok = (__import__('time').time() - _last_sell) >= 60
                 if direction == 'buy' and trade_cap > 0 and _cooldown_ok:
-                    _best_tf_data2 = mtf.get('tf_results', {}).get(best_tf, {})
-                    _bb_rising_live = _best_tf_data2.get('bb_rising', True)
-                    if _bb_rising_live:
-                        # %B > 0.5 — instant entry
-                        await self._run_order(self.bot._execute_buy, symbol, trade_cap, price,
-                                              f'signal_buy_{best_tf}')
-                    else:
-                        # %B < 0.5 — queue it, buy on next WSS tick when %B crosses 0.5
-                        with _bb_pend_lock:
-                            if symbol not in _bb_pending:
-                                _bb_pending[symbol] = {
-                                    'ts': __import__('time').time(), 'capital': trade_cap,
-                                    'best_tf': best_tf, 'mode': 'live'
-                                }
-                                logger.info(f"[BB-WAIT] {symbol} queued live entry, waiting %B>0.5")
+                    await self._run_order(self.bot._execute_buy, symbol, trade_cap, price,
+                                          f'signal_buy_{best_tf}')
 
         except Exception as e:
             logger.error(f"Async process error {symbol}: {e}")
@@ -1974,7 +1877,6 @@ class BotEngine:
                         'mtf_score': market.get('mtf_score', 0),
                         'best_timeframe': market.get('best_timeframe','N/A'),
                         'confidence': market.get('confidence','low'),
-                        'bb_signal': market.get('bb_signal','mid'),
                         'holding': total_held, 'avg_entry': avg_entry,
                         'pnl_pct': round(pnl, 2),
                         'peak_price': holding.get('peak_price',0) if holding else 0}
@@ -2090,7 +1992,7 @@ class BotEngine:
         SELL: MACD line crosses below signal line + RSI above 55
         """
         if not candles or len(candles) < 35:
-            return 'neutral', 50.0, 'neutral', False, 0.0, 'mid', True
+            return 'neutral', 50.0, 'neutral', False, 0.0
 
         closes  = [float(c[4]) for c in candles]
         volumes = [float(c[5]) for c in candles]
@@ -2110,7 +2012,7 @@ class BotEngine:
         sig_ln  = ema(macd_ln, 9)
 
         if len(macd_ln) < 2 or len(sig_ln) < 2:
-            return 'neutral', rsi_now, 'neutral', vol_sig, atr, 'mid', True
+            return 'neutral', rsi_now, 'neutral', vol_sig, atr
 
         hist_now        = macd_ln[-1] - sig_ln[-1]
         macd_sig_str    = 'bullish' if hist_now > 0 else ('bearish' if hist_now < 0 else 'neutral')
@@ -2130,39 +2032,15 @@ class BotEngine:
         macd_bull_cross = _bull_cross_recent(macd_ln, sig_ln)
         macd_bear_cross = _bear_cross_recent(macd_ln, sig_ln)
 
-        # ── Bollinger Bands (20, 2s) — momentum direction for entry timing ──
-        bb_period  = 20
-        bb_signal  = 'mid'   # display label
-        bb_rising  = True    # default: allow entry
-        if len(closes) >= bb_period + 1:
-            bb_window   = closes[-bb_period:]
-            bb_mid      = sum(bb_window) / bb_period
-            bb_variance = sum((x - bb_mid) ** 2 for x in bb_window) / bb_period
-            bb_std      = bb_variance ** 0.5
-            bb_lower    = bb_mid - 2.0 * bb_std
-            bb_upper    = bb_mid + 2.0 * bb_std
-            cur_price   = closes[-1]
-            # BB zone for display
-            if cur_price <= bb_lower * 1.01:
-                bb_signal = 'lower'
-            elif cur_price >= bb_upper * 0.99:
-                bb_signal = 'upper'
-            else:
-                bb_signal = 'mid'
-            # %B indicator: where is price within the bands?
-            # %B > 0.5 means price is above midline → upward momentum → entry ok
-            bb_pct_b  = (cur_price - bb_lower) / (bb_upper - bb_lower) if (bb_upper - bb_lower) > 0 else 0.5
-            bb_rising = bb_pct_b > 0.5
-
         # BUY: MACD bull cross + RSI in range (BB does NOT block signal)
         if macd_bull_cross and 28 <= rsi_now <= 60:
-            return 'buy', rsi_now, macd_sig_str, vol_sig, atr, bb_signal, bb_rising
+            return 'buy', rsi_now, macd_sig_str, vol_sig, atr
 
         # SELL: MACD bear cross + RSI elevated
         if macd_bear_cross and rsi_now > 52:
-            return 'sell', rsi_now, macd_sig_str, vol_sig, atr, bb_signal, bb_rising
+            return 'sell', rsi_now, macd_sig_str, vol_sig, atr
 
-        return 'neutral', rsi_now, macd_sig_str, vol_sig, atr, bb_signal, bb_rising
+        return 'neutral', rsi_now, macd_sig_str, vol_sig, atr
 
     def _mtf_scan(self, symbol: str) -> dict:
         tf_results  = {}
@@ -2184,10 +2062,10 @@ class BotEngine:
                 tf_results[tf] = {'signal': 'neutral', 'score': 0, 'rsi': 50.0,
                                   'macd': 'neutral', 'vol': False, 'atr': 0.0}
                 continue
-            signal, rsi, macd, vol, atr, bb_sig, bb_rising = self._signal_for_candles(candles)
+            signal, rsi, macd, vol, atr = self._signal_for_candles(candles)
             score = SIGNAL_SCORES.get(signal, 0)
             tf_results[tf] = {'signal': signal, 'score': score, 'rsi': rsi,
-                              'macd': macd, 'vol': vol, 'atr': atr, 'bb': bb_sig, 'bb_rising': bb_rising}
+                              'macd': macd, 'vol': vol, 'atr': atr}
 
         # Highest-priority TF with a clear signal wins
         # Conflict check: if HTF says sell but LTF says buy → skip (wait for alignment)
@@ -2235,7 +2113,7 @@ class BotEngine:
                 'tf_breakdown': {tf: v['signal'] for tf, v in tf_results.items()},
                 'tf_results': tf_results,
                 'buy_tfs': buy_tfs, 'sell_tfs': sell_tfs,
-                'rsi': best['rsi'], 'macd_signal': best['macd'], 'volume_signal': best['vol'], 'bb_signal': best.get('bb','mid'),
+                'rsi': best['rsi'], 'macd_signal': best['macd'], 'volume_signal': best['vol'],
                 'signal': direction if direction != 'neutral' else 'neutral'}
 
     # ── Market data (for REST API) ────────────────────────────────────────────
@@ -2250,7 +2128,7 @@ class BotEngine:
                     'volume_signal': mtf['volume_signal'], 'signal': mtf['signal'],
                     'mtf_score': mtf['total_score'], 'best_timeframe': mtf['best_timeframe'],
                     'confidence': mtf['confidence'], 'capital_pct': mtf['capital_pct'],
-                    'tf_breakdown': mtf['tf_breakdown'], 'bb_signal': mtf.get('bb_signal','mid')}
+                    'tf_breakdown': mtf['tf_breakdown']}
         except Exception as e:
             logger.error(f"Market data error {symbol}: {e}")
             return {'price':0,'rsi':50,'macd_signal':'neutral','volume_signal':False,
