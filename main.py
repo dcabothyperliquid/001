@@ -2045,7 +2045,7 @@ class BotEngine:
         bb_period  = 20
         bb_signal  = 'mid'   # display label
         bb_rising  = True    # default: allow entry
-        if len(closes) >= bb_period + 3:
+        if len(closes) >= bb_period + 1:
             bb_window   = closes[-bb_period:]
             bb_mid      = sum(bb_window) / bb_period
             bb_variance = sum((x - bb_mid) ** 2 for x in bb_window) / bb_period
@@ -2053,7 +2053,6 @@ class BotEngine:
             bb_lower    = bb_mid - 2.0 * bb_std
             bb_upper    = bb_mid + 2.0 * bb_std
             cur_price   = closes[-1]
-            prev_price  = closes[-4]   # 3 candles ago
             # BB zone for display
             if cur_price <= bb_lower * 1.01:
                 bb_signal = 'lower'
@@ -2061,8 +2060,10 @@ class BotEngine:
                 bb_signal = 'upper'
             else:
                 bb_signal = 'mid'
-            # Momentum: is price moving UP over last 3 candles?
-            bb_rising = cur_price > prev_price
+            # Momentum: is current candle close above previous candle close?
+            # Just 1 candle comparison — instant check, no delay
+            prev_price  = closes[-2]
+            bb_rising   = cur_price > prev_price
 
         # BUY: MACD bull cross + RSI in range (BB does NOT block signal)
         if macd_bull_cross and 28 <= rsi_now <= 68:
