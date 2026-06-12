@@ -910,6 +910,13 @@ def _vt_get_summary():
             # Pending buy fee already deducted in open position
             coin_fees = s.get('total_fees', 0.0)
 
+            # Coin-level SL/TP/Trail (same values used by real bot and VT logic)
+            _ccfg      = bot_engine.coins.get(sym, {})
+            _sl_pct_c  = _ccfg.get('stop_loss',     VT_SL_PCT)
+            _tp_pct_c  = _ccfg.get('take_profit',   VT_TP_PCT)
+            _tr_pct_c  = _ccfg.get('trailing_stop', VT_TRAIL_PCT)
+            _ep        = op.get('entry_price', op.get('buy_price', 0))
+
             by_coin[sym] = {
                 'total_trades':   s['total_trades'],
                 'wins':           s['wins'],
@@ -928,10 +935,10 @@ def _vt_get_summary():
                 'live_price':     live_price,
                 'unrealized_pnl': unrealized_pnl,
                 'unrealized_pct': unrealized_pct,
-                # Risk levels for open positions
-                'vt_sl_price':    round(op.get('entry_price', op.get('buy_price', 0)) * (1 - VT_SL_PCT / 100), 6) if in_pos else None,
-                'vt_tp_price':    round(op.get('entry_price', op.get('buy_price', 0)) * (1 + VT_TP_PCT / 100), 6) if in_pos else None,
-                'vt_trail_price': round(op.get('peak_price', op.get('buy_price', 0)) * (1 - VT_TRAIL_PCT / 100), 6) if in_pos else None,
+                # Risk levels for open positions — use coin-level settings (same as real bot)
+                'vt_sl_price':    round(_ep * (1 - _sl_pct_c / 100), 6) if in_pos else None,
+                'vt_tp_price':    round(_ep * (1 + _tp_pct_c / 100), 6) if in_pos else None,
+                'vt_trail_price': round(op.get('peak_price', _ep) * (1 - _tr_pct_c / 100), 6) if in_pos else None,
                 'vt_peak_price':  op.get('peak_price') if in_pos else None,
                 'buy_usd':        round(op.get('fund', 0.0), 4) if in_pos else None,
                 'buy_qty':        round(op.get('amount', 0.0), 6) if in_pos else None,
@@ -1328,17 +1335,22 @@ class AsyncEngine:
                 entry_price = vt_pos.get('entry_price', vt_pos['buy_price'])
                 peak_price  = _vt_fund[symbol].get('peak_price', entry_price)
 
-                sl_price    = entry_price * (1 - VT_SL_PCT    / 100)
-                tp_price    = entry_price * (1 + VT_TP_PCT    / 100)
-                trail_price = peak_price  * (1 - VT_TRAIL_PCT / 100)
+                _coin_cfg   = self.bot.coins.get(symbol, {})
+                _sl_pct     = _coin_cfg.get('stop_loss',     VT_SL_PCT)
+                _tp_pct     = _coin_cfg.get('take_profit',   VT_TP_PCT)
+                _trail_pct  = _coin_cfg.get('trailing_stop', VT_TRAIL_PCT)
+
+                sl_price    = entry_price * (1 - _sl_pct    / 100)
+                tp_price    = entry_price * (1 + _tp_pct    / 100)
+                trail_price = peak_price  * (1 - _trail_pct / 100)
 
                 vt_exit_reason = None
                 if price <= sl_price:
-                    vt_exit_reason = f'SL {VT_SL_PCT}%'
+                    vt_exit_reason = f'SL {_sl_pct}%'
                 elif price >= tp_price:
-                    vt_exit_reason = f'TP {VT_TP_PCT}%'
+                    vt_exit_reason = f'TP {_tp_pct}%'
                 elif price <= trail_price and peak_price > entry_price:
-                    vt_exit_reason = f'Trail {VT_TRAIL_PCT}%'
+                    vt_exit_reason = f'Trail {_trail_pct}%'
                 else:
                     # No price-based exit — check signal on locked TF
                     vt_tf     = vt_pos.get('timeframe', best_tf)

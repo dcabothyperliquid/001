@@ -1087,31 +1087,6 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
         <span style="font-size:18px;color:rgba(48,144,255,0.7);">›</span>
       </a>
     </div>
-    <!-- VT Risk Settings Panel -->
-    <div style="margin-bottom:10px;padding:14px 18px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.08);">
-      <div style="font-size:8px;color:var(--muted);letter-spacing:2px;font-family:var(--mono);margin-bottom:12px;font-weight:700;">⚙ VT RISK SETTINGS (0.1% – 10%)</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
-        <div>
-          <div style="font-size:8px;color:#ff4070;letter-spacing:1.5px;font-family:var(--mono);margin-bottom:5px;font-weight:700;">STOP LOSS %</div>
-          <input id="vtSlInput" type="number" value="1.5" min="0.1" max="10" step="0.1"
-            style="width:100%;background:rgba(255,48,96,0.08);border:1px solid rgba(255,48,96,0.4);border-radius:8px;color:#ff4070;font-family:var(--mono);font-size:14px;font-weight:800;padding:8px 10px;text-align:center;box-sizing:border-box;" />
-          <div id="vtSlDisplay" style="font-size:8px;color:rgba(255,64,112,0.5);font-family:var(--mono);text-align:center;margin-top:3px;">current: <span id="vtSlCur">1.5</span>%</div>
-        </div>
-        <div>
-          <div style="font-size:8px;color:#0dff8c;letter-spacing:1.5px;font-family:var(--mono);margin-bottom:5px;font-weight:700;">TAKE PROFIT %</div>
-          <input id="vtTpInput" type="number" value="0.5" min="0.1" max="10" step="0.1"
-            style="width:100%;background:rgba(13,255,140,0.08);border:1px solid rgba(13,255,140,0.4);border-radius:8px;color:#0dff8c;font-family:var(--mono);font-size:14px;font-weight:800;padding:8px 10px;text-align:center;box-sizing:border-box;" />
-          <div style="font-size:8px;color:rgba(13,255,140,0.5);font-family:var(--mono);text-align:center;margin-top:3px;">current: <span id="vtTpCur">0.5</span>%</div>
-        </div>
-        <div>
-          <div style="font-size:8px;color:#ffb800;letter-spacing:1.5px;font-family:var(--mono);margin-bottom:5px;font-weight:700;">TRAIL STOP %</div>
-          <input id="vtTrailInput" type="number" value="1.0" min="0.1" max="10" step="0.1"
-            style="width:100%;background:rgba(255,184,0,0.08);border:1px solid rgba(255,184,0,0.4);border-radius:8px;color:#ffb800;font-family:var(--mono);font-size:14px;font-weight:800;padding:8px 10px;text-align:center;box-sizing:border-box;" />
-          <div style="font-size:8px;color:rgba(255,184,0,0.5);font-family:var(--mono);text-align:center;margin-top:3px;">current: <span id="vtTrailCur">1.0</span>%</div>
-        </div>
-      </div>
-      <button onclick="applyVtSettings()" class="btn btn-primary" style="width:100%;font-size:10px;letter-spacing:2px;padding:10px;">APPLY SETTINGS</button>
-    </div>
     <!-- Per-coin cards -->
     <div id="vtCoinCards" style="display:flex;flex-direction:column;gap:4px;">
       <div class="panel empty-state" style="padding:24px;text-align:center;color:var(--muted);font-size:10px;letter-spacing:1px;grid-column:1/-1;">
@@ -2654,40 +2629,6 @@ async function resetVirtualTracker() {
     refreshVirtualTracker();
   } catch(e) {}
 }
-
-async function loadVtSettings() {
-  try {
-    const d = await api('/vt/settings');
-    if (!d) return;
-    document.getElementById('vtSlInput').value   = d.sl_pct   ?? 1.5;
-    document.getElementById('vtTpInput').value   = d.tp_pct   ?? 0.5;
-    document.getElementById('vtTrailInput').value= d.trail_pct?? 1.0;
-    document.getElementById('vtSlCur').textContent   = d.sl_pct   ?? 1.5;
-    document.getElementById('vtTpCur').textContent   = d.tp_pct   ?? 0.5;
-    document.getElementById('vtTrailCur').textContent= d.trail_pct?? 1.0;
-  } catch(e) {}
-}
-
-async function applyVtSettings() {
-  const sl    = parseFloat(document.getElementById('vtSlInput').value);
-  const tp    = parseFloat(document.getElementById('vtTpInput').value);
-  const trail = parseFloat(document.getElementById('vtTrailInput').value);
-  if (isNaN(sl)||isNaN(tp)||isNaN(trail)) return alert('Invalid values');
-  if (sl<0.1||sl>10||tp<0.1||tp>10||trail<0.1||trail>10) return alert('Values must be 0.1% – 10%');
-  try {
-    const r = await api('/vt/settings', 'POST', {sl_pct: sl, tp_pct: tp, trail_pct: trail});
-    if (r && r.ok) {
-      document.getElementById('vtSlCur').textContent   = r.sl_pct;
-      document.getElementById('vtTpCur').textContent   = r.tp_pct;
-      document.getElementById('vtTrailCur').textContent= r.trail_pct;
-      alert(`✅ Applied — SL: ${r.sl_pct}%  TP: ${r.tp_pct}%  Trail: ${r.trail_pct}%`);
-    } else {
-      alert('Error: ' + (r?.error || 'Unknown'));
-    }
-  } catch(e) { alert('Failed: ' + e); }
-}
-
-loadVtSettings();
 
 setInterval(refreshVirtualTracker, 3000);
 refreshVirtualTracker();
