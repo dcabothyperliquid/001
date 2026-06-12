@@ -723,6 +723,13 @@ def _signal_state_set(symbol, state):
     with _coin_signal_state_lock:
         _coin_signal_state[symbol] = state
 
+# ── BB Pending Entry Queue ────────────────────────────────────────────────────
+# When signal fires but %B < 0.5, store here and check on every WSS tick.
+# Max wait: 120 seconds — after that entry is cancelled.
+_bb_pending   = {}   # symbol → {ts, price, capital, best_tf, mode}  mode=vt|live
+_bb_pend_lock = __import__('threading').Lock()
+BB_PENDING_TTL = 120  # seconds max wait
+
 # ── Virtual P&L Tracker ───────────────────────────────────────────────────────
 # Tracks hypothetical trades based purely on BUY/SELL signals (no real orders).
 # BUY signal -> assume bought at that price with current fund allocation.
@@ -1019,12 +1026,73 @@ class AsyncEngine:
                                     # ── VT SL/TP/Trail check on every tick (WSS-driven) ──
                                     self._vt_check_exits(mids)
                                     self._real_check_exits(mids)
+                                    # ── BB pending entry check ──
+                                    self._check_bb_pending(mids)
                         except Exception as e:
                             logger.warning(f"WS parse error: {e}")
             except Exception as e:
                 logger.warning(f"WS disconnected: {e} — reconnect in {backoff}s")
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
+
+    def _check_bb_pending(self, mids: dict):
+        """Called on every allMids WSS tick — fires queued entries when %B crosses 0.5."""
+        now = __import__('time').time()
+        with _bb_pend_lock:
+            expired = [s for s, d in _bb_pending.items() if now - d['ts'] > BB_PENDING_TTL]
+            for s in expired:
+                logger.info(f"[BB-WAIT] {s} expired after {BB_PENDING_TTL}s — entry cancelled")
+                del _bb_pending[s]
+            ready = []
+            for symbol, data in list(_bb_pending.items()):
+                # Get current price from this tick
+                raw_price = None
+                for key in [f'@{self.bot.client._sym_index.get(symbol, "")}',
+                             symbol, f'U{symbol}']:
+                    v = mids.get(key)
+                    if v:
+                        try: raw_price = float(v); break
+                        except: pass
+                if not raw_price:
+                    continue
+                # Recalculate %B using cached candles
+                try:
+                    candles = candle_cache.get(symbol, data['best_tf'])
+                    if not candles or len(candles) < 21:
+                        continue
+                    closes = [float(c[4]) for c in candles]
+                    bb_window = closes[-20:]
+                    bb_mid = sum(bb_window) / 20
+                    bb_var = sum((x - bb_mid)**2 for x in bb_window) / 20
+                    bb_std = bb_var ** 0.5
+                    bb_lower = bb_mid - 2.0 * bb_std
+                    bb_upper = bb_mid + 2.0 * bb_std
+                    if (bb_upper - bb_lower) > 0:
+                        pct_b = (raw_price - bb_lower) / (bb_upper - bb_lower)
+                        if pct_b > 0.5:
+                            ready.append((symbol, data, raw_price))
+                except Exception as e:
+                    logger.warning(f"[BB-WAIT] {symbol} calc error: {e}")
+            for symbol, _, _ in ready:
+                del _bb_pending[symbol]
+
+        # Fire entries outside lock
+        for symbol, data, cur_price in ready:
+            try:
+                if data['mode'] == 'vt':
+                    _vt_cooldown_ok = (__import__('time').time() - _vt_fund.get(symbol, {}).get('last_sell_ts', 0)) >= 60
+                    if symbol not in _vt_fund and _vt_cooldown_ok:
+                        _vt_on_buy(symbol, cur_price, data['best_tf'], initial_fund=data['capital'])
+                        logger.info(f"[BB-WAIT] VT BUY {symbol} @ {cur_price:.4f} (%%B crossed 0.5)")
+                elif data['mode'] == 'live':
+                    if symbol not in self.bot.holdings:
+                        asyncio.ensure_future(self._run_order(
+                            self.bot._execute_buy, symbol, data['capital'], cur_price,
+                            f"bb_wait_buy_{data['best_tf']}"
+                        ))
+                        logger.info(f"[BB-WAIT] LIVE BUY {symbol} @ {cur_price:.4f} (%%B crossed 0.5)")
+            except Exception as e:
+                logger.error(f"[BB-WAIT] fire error {symbol}: {e}")
 
     def _vt_check_exits(self, mids: dict):
         """Called on every allMids WSS tick — checks SL/TP/Trail for all open VT positions.
@@ -1345,14 +1413,23 @@ class AsyncEngine:
                 _vt_last_sell = _vt_fund.get(symbol, {}).get('last_sell_ts', 0)
                 _vt_cooldown_ok = (__import__('time').time() - _vt_last_sell) >= 60
                 if direction == 'buy' and _vt_cooldown_ok:
-                    # BB entry timing: only buy if price is rising (momentum up)
                     _best_tf_data = mtf.get('tf_results', {}).get(best_tf, {})
                     _bb_rising_vt = _best_tf_data.get('bb_rising', True)
+                    _coin_capital = self.bot.coins.get(symbol, {}).get('compound_capital',
+                                    self.bot.coins.get(symbol, {}).get('capital', _VT_INITIAL))
                     if _bb_rising_vt:
-                        _coin_capital = self.bot.coins.get(symbol, {}).get('compound_capital',
-                                        self.bot.coins.get(symbol, {}).get('capital', _VT_INITIAL))
+                        # %B > 0.5 — instant entry
                         _vt_on_buy(symbol, price, best_tf, initial_fund=_coin_capital)
-                        logger.info(f"[VT] BUY  {symbol} @ {price:.4f} TF={best_tf} BB={_best_tf_data.get('bb','mid')} rising={_bb_rising_vt}")
+                        logger.info(f"[VT] BUY  {symbol} @ {price:.4f} TF={best_tf}")
+                    else:
+                        # %B < 0.5 — queue it, buy on next tick when %B crosses 0.5
+                        with _bb_pend_lock:
+                            if symbol not in _bb_pending:
+                                _bb_pending[symbol] = {
+                                    'ts': __import__('time').time(), 'capital': _coin_capital,
+                                    'best_tf': best_tf, 'mode': 'vt'
+                                }
+                                logger.info(f"[BB-WAIT] {symbol} queued VT entry, waiting %B>0.5")
 
             if has_holding:
                 holding   = self.bot.holdings[symbol]
@@ -1394,12 +1471,21 @@ class AsyncEngine:
                 _last_sell = self.bot.holdings.get(symbol, {}).get('last_sell_ts', 0)
                 _cooldown_ok = (__import__('time').time() - _last_sell) >= 60
                 if direction == 'buy' and trade_cap > 0 and _cooldown_ok:
-                    # BB entry timing: only buy if price is moving upward
                     _best_tf_data2 = mtf.get('tf_results', {}).get(best_tf, {})
                     _bb_rising_live = _best_tf_data2.get('bb_rising', True)
                     if _bb_rising_live:
+                        # %B > 0.5 — instant entry
                         await self._run_order(self.bot._execute_buy, symbol, trade_cap, price,
                                               f'signal_buy_{best_tf}')
+                    else:
+                        # %B < 0.5 — queue it, buy on next WSS tick when %B crosses 0.5
+                        with _bb_pend_lock:
+                            if symbol not in _bb_pending:
+                                _bb_pending[symbol] = {
+                                    'ts': __import__('time').time(), 'capital': trade_cap,
+                                    'best_tf': best_tf, 'mode': 'live'
+                                }
+                                logger.info(f"[BB-WAIT] {symbol} queued live entry, waiting %B>0.5")
 
         except Exception as e:
             logger.error(f"Async process error {symbol}: {e}")
