@@ -906,6 +906,8 @@ def _vt_get_summary():
                     # Unrealized P&L = price move only (buy fee already paid, sell fee not yet incurred)
                     unrealized_pnl = round(gross_live - original_fund, 4)
                     unrealized_pct = round((live_price - op['buy_price']) / op['buy_price'] * 100, 3)
+                    # display_fund = what the position is worth right now (gross, no sell fee yet)
+                    live_fund      = gross_live
 
             display_fund = live_fund if (in_pos and live_price) else cur_fund
             growth_pct   = round((display_fund - initial) / initial * 100, 2) if initial else 0
