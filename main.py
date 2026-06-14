@@ -599,8 +599,10 @@ class HyperliquidClient:
             p = price_cache.get(f'@{idx}')
             if _sane(p): return float(p)
 
-        # 1b. WS allMids plain key fallback
-        for key in [symbol.upper(), internal]:
+        # 1b. WS allMids plain key fallback — try internal alias first, then symbol
+        # IMPORTANT: for tokens with active spot markets (ZEC→UZEC, WLD→UWLD etc),
+        # plain symbol key may hold a stale perp price — prefer internal alias
+        for key in [internal, symbol.upper()]:
             p = price_cache.get(key)
             if _sane(p): return float(p)
 
@@ -1017,7 +1019,10 @@ class AsyncEngine:
                                     if spot_mids:
                                         price_cache.update(spot_mids)
                                     # Also store plain names as perp fallback for inactive spot pairs
-                                    PERP_FALLBACK = {'BTC','ETH','SOL','AVAX','LINK','AAVE','XRP','ZEC','WLD','MOG','HYPE'}
+                                    # NOTE: ZEC/WLD/MOG/PUMP/HYPE have active spot markets (UZEC/UWLD/etc)
+                                    # — do NOT store their perp price under plain key or get_spot_price
+                                    #   will return the wrong (perp) price when @idx is missing from cache
+                                    PERP_FALLBACK = {'BTC','ETH','SOL','AVAX','LINK','AAVE','XRP'}
                                     perp_mids = {k: v for k, v in mids.items() if k in PERP_FALLBACK}
                                     if perp_mids:
                                         price_cache.update(perp_mids)
