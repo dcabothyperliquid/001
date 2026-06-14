@@ -1072,6 +1072,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
       <div class="sec-title"><div class="bar" style="background:var(--amber);"></div>VIRTUAL TRACKER</div>
       <div style="display:flex;align-items:center;gap:8px;">
         <span class="sec-meta" id="vtSummaryMeta">SIGNAL-BASED PAPER TRADING</span>
+        <button onclick="refreshVirtualTracker()" class="btn btn-sm btn-ghost" style="padding:2px 8px;font-size:9px;color:var(--cyan);border-color:rgba(13,240,224,0.3);">↻ REFRESH</button>
         <button onclick="resetVirtualTracker()" class="btn btn-sm btn-ghost" style="padding:2px 8px;font-size:9px;color:var(--red);border-color:rgba(255,82,82,0.3);">RESET</button>
       </div>
     </div>
@@ -2520,9 +2521,9 @@ async function refreshVirtualTracker() {
     }
 
     // Full re-render (coin set changed or first load)
-    // Save which coins are expanded before re-render
+    // Save which coins are expanded before re-render (only actually-expanded cards)
     const expandedSet = new Set();
-    cardsEl.querySelectorAll('.coin-card').forEach(el => {
+    cardsEl.querySelectorAll('.coin-card.expanded').forEach(el => {
       expandedSet.add(el.dataset.vtSym);
     });
 
@@ -2548,7 +2549,7 @@ async function refreshVirtualTracker() {
       const peakPrice  = info.vt_peak_price  ?? null;
 
       const inPosHtml = info.in_position && info.entry_price
-        ? `<div style="margin-top:4px;padding:10px 12px;background:linear-gradient(135deg,rgba(255,184,0,0.08) 0%,rgba(255,120,0,0.04) 100%);border:1px solid rgba(255,184,0,0.2);border-radius:10px;position:relative;overflow:hidden;">
+        ? `<div id="vtInPos_${sym}" style="margin-top:4px;padding:10px 12px;background:linear-gradient(135deg,rgba(255,184,0,0.08) 0%,rgba(255,120,0,0.04) 100%);border:1px solid rgba(255,184,0,0.2);border-radius:10px;position:relative;overflow:hidden;">
             <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,rgba(255,184,0,0.5),transparent);"></div>
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
               <span style="font-size:8px;color:var(--amber);letter-spacing:2px;font-weight:800;">⬤ IN POSITION</span>
@@ -2596,7 +2597,7 @@ async function refreshVirtualTracker() {
               </div>
             </div>
           </div>`
-        : `<div style="margin-top:4px;padding:7px 12px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.05);border-radius:8px;font-size:9px;color:var(--muted);letter-spacing:1.5px;font-family:var(--mono);">⬤ WAITING FOR SIGNAL</div>`;
+        : `<div id="vtInPos_${sym}" style="margin-top:4px;padding:7px 12px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.05);border-radius:8px;font-size:9px;color:var(--muted);letter-spacing:1.5px;font-family:var(--mono);">⬤ WAITING FOR SIGNAL</div>`;
 
       // ── VT STRIP (always visible) ──────────────────────────────
       const inPosDot = info.in_position
