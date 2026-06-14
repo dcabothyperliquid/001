@@ -1065,6 +1065,21 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
     </div>
   </div>
 
+  <!-- LIVE POSITIONS -->
+  <div style="margin-bottom:14px;" id="livePosSec">
+    <div class="sec-head" style="margin-bottom:8px;">
+      <div class="sec-title">
+        <div class="bar" style="background:linear-gradient(180deg,#00ff88,#00cc55);"></div>
+        LIVE POSITIONS
+      </div>
+      <span style="font-size:8px;color:var(--green);font-family:var(--mono);letter-spacing:1px;display:flex;align-items:center;gap:4px;">
+        <span class="dot green blink"></span>OPEN TRADES
+      </span>
+    </div>
+    <div id="livePosCards" style="display:flex;flex-direction:column;gap:6px;">
+      <div style="padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);font-size:9px;color:var(--muted);font-family:var(--mono);text-align:center;letter-spacing:1.5px;">NO OPEN POSITIONS</div>
+    </div>
+  </div>
 
   <!-- VIRTUAL P&L TRACKER -->
   <div style="margin-bottom:14px;">
@@ -2361,6 +2376,124 @@ async function refreshSignals() {
 }
 setInterval(() => { if (_sigDayOffset === 0) refreshSignals(); }, 10000);
 refreshSignals();
+
+
+// ── LIVE POSITIONS ────────────────────────────────────────────────────────────
+function _fmtHeld(s) {
+  if (s < 60)   return s + 's';
+  if (s < 3600) return Math.floor(s/60) + 'm ' + (s%60) + 's';
+  return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
+}
+
+async function refreshLivePositions() {
+  try {
+    const pos = await api('/live_positions');
+    const el  = document.getElementById('livePosCards');
+    if (!el) return;
+
+    if (!pos || pos.length === 0) {
+      el.innerHTML = '<div style="padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);font-size:9px;color:var(--muted);font-family:var(--mono);text-align:center;letter-spacing:1.5px;">NO OPEN POSITIONS</div>';
+      return;
+    }
+
+    const fp = p => p > 1 ? p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4}) : (p?.toFixed(6) ?? '—');
+
+    el.innerHTML = pos.map(p => {
+      const upnl      = p.unreal_pnl ?? 0;
+      const upnlPct   = p.unreal_pct ?? 0;
+      const upnlCol   = upnl >= 0 ? 'var(--green)' : 'var(--red)';
+      const upnlSign  = upnl >= 0 ? '+' : '';
+      const livePx    = p.live_price ?? p.entry;
+      const entry     = p.entry;
+      const sl        = p.sl_price;
+      const tp        = p.tp_price;
+      const peak      = p.peak_price ?? entry;
+
+      // Progress bar: SL ←→ entry ←→ TP range
+      const totalRange = tp - sl;
+      const curPct     = totalRange > 0 ? Math.max(0, Math.min(100, (livePx - sl) / totalRange * 100)) : 50;
+      const entryPct   = totalRange > 0 ? Math.max(0, Math.min(100, (entry - sl) / totalRange * 100)) : 50;
+      const barCol     = upnl >= 0 ? '#00ff88' : '#ff3060';
+
+      return `
+      <div style="border-radius:12px;background:linear-gradient(135deg,rgba(0,255,136,0.04) 0%,rgba(13,240,224,0.03) 50%,rgba(48,144,255,0.04) 100%);border:1px solid rgba(0,255,136,0.18);padding:12px 14px;position:relative;overflow:hidden;">
+        <!-- glow top line -->
+        <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,rgba(0,255,136,0.5),rgba(13,240,224,0.3),transparent);"></div>
+
+        <!-- Header row -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div style="display:flex;align-items:center;gap:7px;">
+            <span style="width:7px;height:7px;border-radius:50%;background:#00ff88;box-shadow:0 0 6px #00ff88;display:inline-block;animation:blink 1.2s infinite;"></span>
+            <span style="font-family:var(--mono);font-size:14px;font-weight:900;color:#fff;letter-spacing:1px;">${p.symbol}</span>
+            <span style="font-size:7px;color:rgba(0,255,136,0.6);background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);padding:1px 6px;border-radius:4px;font-family:var(--mono);letter-spacing:1px;">${p.entry_tf}</span>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-family:var(--mono);font-size:15px;font-weight:800;color:${upnlCol};line-height:1;">${upnlSign}${upnl.toFixed(4)}</div>
+            <div style="font-family:var(--mono);font-size:9px;color:${upnlCol};opacity:0.75;">${upnlSign}${upnlPct.toFixed(3)}%</div>
+          </div>
+        </div>
+
+        <!-- Price grid: SL | Entry | Live | TP -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;margin-bottom:10px;">
+          <div style="border-radius:7px;padding:6px 7px;background:rgba(255,48,96,0.12);border:1px solid rgba(255,48,96,0.35);text-align:center;">
+            <div style="font-size:6px;color:#ff3060;letter-spacing:1.5px;margin-bottom:2px;font-weight:700;">SL</div>
+            <div style="font-family:var(--mono);font-size:9px;color:#ff4070;font-weight:800;">$${fp(sl)}</div>
+            <div style="font-size:6px;color:#ff6080;margin-top:1px;">-${p.sl_pct}%</div>
+          </div>
+          <div style="border-radius:7px;padding:6px 7px;background:rgba(255,184,0,0.1);border:1px solid rgba(255,184,0,0.3);text-align:center;">
+            <div style="font-size:6px;color:#c8a040;letter-spacing:1.5px;margin-bottom:2px;font-weight:700;">ENTRY</div>
+            <div style="font-family:var(--mono);font-size:9px;color:#ffe080;font-weight:800;">$${fp(entry)}</div>
+            <div style="font-size:6px;color:rgba(255,184,0,0.5);margin-top:1px;">${p.entry_time}</div>
+          </div>
+          <div style="border-radius:7px;padding:6px 7px;background:rgba(13,240,224,0.1);border:1px solid rgba(13,240,224,0.35);text-align:center;">
+            <div style="font-size:6px;color:#0df0e0;letter-spacing:1.5px;margin-bottom:2px;font-weight:700;">LIVE</div>
+            <div style="font-family:var(--mono);font-size:9px;color:var(--cyan);font-weight:800;">$${fp(livePx)}</div>
+            <div style="font-size:6px;color:rgba(13,240,224,0.5);margin-top:1px;">${_fmtHeld(p.held_s)}</div>
+          </div>
+          <div style="border-radius:7px;padding:6px 7px;background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.35);text-align:center;">
+            <div style="font-size:6px;color:#00cc70;letter-spacing:1.5px;margin-bottom:2px;font-weight:700;">TP</div>
+            <div style="font-family:var(--mono);font-size:9px;color:#0dff8c;font-weight:800;">$${fp(tp)}</div>
+            <div style="font-size:6px;color:#00dd80;margin-top:1px;">+${p.tp_pct}%</div>
+          </div>
+        </div>
+
+        <!-- SL→TP progress bar with live price marker -->
+        <div style="margin-bottom:8px;">
+          <div style="position:relative;height:4px;border-radius:2px;background:rgba(255,255,255,0.07);overflow:visible;">
+            <!-- filled bar from SL to current -->
+            <div style="position:absolute;left:0;top:0;height:100%;width:${curPct.toFixed(1)}%;background:linear-gradient(90deg,rgba(255,48,96,0.4),${barCol});border-radius:2px;transition:width 0.5s;"></div>
+            <!-- entry marker -->
+            <div style="position:absolute;top:-3px;left:calc(${entryPct.toFixed(1)}% - 1px);width:2px;height:10px;background:rgba(255,184,0,0.8);border-radius:1px;"></div>
+            <!-- live price dot -->
+            <div style="position:absolute;top:-5px;left:calc(${curPct.toFixed(1)}% - 5px);width:10px;height:14px;display:flex;align-items:center;justify-content:center;">
+              <div style="width:7px;height:7px;border-radius:50%;background:${barCol};box-shadow:0 0 5px ${barCol};"></div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:3px;">
+            <span style="font-size:6px;color:rgba(255,48,96,0.6);font-family:var(--mono);">SL</span>
+            <span style="font-size:6px;color:rgba(255,255,255,0.25);font-family:var(--mono);">──── PRICE RANGE ────</span>
+            <span style="font-size:6px;color:rgba(0,255,136,0.6);font-family:var(--mono);">TP</span>
+          </div>
+        </div>
+
+        <!-- Bottom row: qty + fund + peak -->
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="font-size:7px;color:var(--muted);font-family:var(--mono);">
+            QTY <span style="color:var(--fg);font-weight:700;">${p.amount}</span>
+            &nbsp;·&nbsp;
+            FUND <span style="color:var(--fg);font-weight:700;">$${p.orig_fund}</span>
+          </div>
+          <div style="font-size:7px;color:var(--muted);font-family:var(--mono);">
+            PEAK <span style="color:#ffb800;font-weight:700;">$${fp(peak)}</span>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+  } catch(e) { console.error('livePos err', e); }
+}
+setInterval(refreshLivePositions, 2000);
+refreshLivePositions();
 
 
 // ── VIRTUAL P&L TRACKER ───────────────────────────────────────────────────────

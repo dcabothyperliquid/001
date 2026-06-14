@@ -1238,6 +1238,10 @@ class AsyncEngine:
                     for tf in get_active_tfs():
                         await self._fetch_and_cache(session, sym, tf)
                         await asyncio.sleep(0.4)   # 400ms gap per request — safe under HL rate limit
+                    # Always refresh 3m for momentum filter (even if not in active TFs)
+                    if '3m' not in get_active_tfs():
+                        await self._fetch_and_cache(session, sym, '3m')
+                        await asyncio.sleep(0.4)
             logger.info(f"✅ Candle cache refreshed in {time.time()-t0:.2f}s for {len(coins)} coins")
         finally:
             self._refreshing = False
@@ -1315,6 +1319,42 @@ class AsyncEngine:
                     capital=_coin_capital
                 )
 
+            # ── 3m Momentum Confirmation ──────────────────────────────────────
+            # Before any buy (VT or real), fetch 3m candles and confirm:
+            #   EMA9 > EMA21  (short-term trend up)
+            #   RSI 35–68     (momentum zone, not overbought)
+            # If already in position, skip this check (only filter new entries)
+            _3m_momentum_ok = True   # default: allow (fail-open if candles unavailable)
+            if direction == 'buy':
+                try:
+                    _3m_candles = candle_cache.get(symbol, '3m')
+                    if not _3m_candles or len(_3m_candles) < 25:
+                        # Try async fetch inline
+                        async with aiohttp.ClientSession() as _sess:
+                            _3m_candles = await self.client.async_get_candles(_sess, symbol, '3m', lookback=50)
+                        if _3m_candles:
+                            await candle_cache.set(symbol, '3m', _3m_candles)
+                    if _3m_candles and len(_3m_candles) >= 22:
+                        _3m_closes = [float(c[4]) for c in _3m_candles]
+                        # EMA helper
+                        def _ema3(data, n):
+                            k = 2/(n+1); r = [data[0]]
+                            for p in data[1:]: r.append(p*k + r[-1]*(1-k))
+                            return r
+                        _ema9  = _ema3(_3m_closes, 9)
+                        _ema21 = _ema3(_3m_closes, 21)
+                        _rsi3  = self._calc_rsi(_3m_closes)
+                        _ema_bull = _ema9[-1] > _ema21[-1]          # EMA9 above EMA21
+                        _rsi_ok   = 35 <= _rsi3 <= 68               # momentum zone
+                        _3m_momentum_ok = _ema_bull and _rsi_ok
+                        logger.info(f"[3m-filter] {symbol} EMA9={_ema9[-1]:.4f} EMA21={_ema21[-1]:.4f} "
+                                    f"RSI={_rsi3:.1f} ema_bull={_ema_bull} rsi_ok={_rsi_ok} "
+                                    f"→ {'PASS ✅' if _3m_momentum_ok else 'SKIP ❌'}")
+                    else:
+                        logger.info(f"[3m-filter] {symbol} — not enough candles, fail-open")
+                except Exception as _e3m:
+                    logger.warning(f"[3m-filter] {symbol} error: {_e3m} — fail-open")
+
             # Virtual tracker — BUY/SELL cycle with SL / TP / Trailing Stop
             vt_pos = _vt_fund.get(symbol, {})
             if vt_pos.get('buy_price'):
@@ -1354,7 +1394,7 @@ class AsyncEngine:
                 # Cooldown: wait at least 60s after last sell before re-buying same coin
                 _vt_last_sell = _vt_fund.get(symbol, {}).get('last_sell_ts', 0)
                 _vt_cooldown_ok = (__import__('time').time() - _vt_last_sell) >= 60
-                if direction == 'buy' and _vt_cooldown_ok:
+                if direction == 'buy' and _vt_cooldown_ok and _3m_momentum_ok:
                     _coin_capital = self.bot.coins.get(symbol, {}).get('compound_capital',
                                     self.bot.coins.get(symbol, {}).get('capital', _VT_INITIAL))
                     _vt_on_buy(symbol, price, best_tf, initial_fund=_coin_capital)
@@ -1399,7 +1439,7 @@ class AsyncEngine:
                 # 60s cooldown after sell before re-buying same coin
                 _last_sell = self.bot.holdings.get(symbol, {}).get('last_sell_ts', 0)
                 _cooldown_ok = (__import__('time').time() - _last_sell) >= 60
-                if direction == 'buy' and trade_cap > 0 and _cooldown_ok:
+                if direction == 'buy' and trade_cap > 0 and _cooldown_ok and _3m_momentum_ok:
                     await self._run_order(self.bot._execute_buy, symbol, trade_cap, price,
                                           f'signal_buy_{best_tf}')
 
@@ -2567,6 +2607,64 @@ def signals_today():
 def virtual_summary():
     """Virtual P&L tracker — shows hypothetical performance based on BUY/SELL signals."""
     return jsonify(_vt_get_summary())
+
+@app.route('/api/live_positions', methods=['GET'])
+def live_positions():
+    """Live open positions (VT) with entry, SL, TP, current price, unrealized PnL."""
+    with _vt_lock:
+        out = []
+        for sym, op in _vt_fund.items():
+            if not op.get('buy_price'):
+                continue
+            entry   = op['buy_price']
+            amount  = op.get('amount', 0)
+            buy_fee = op.get('buy_fee', 0)
+            fund_in = op.get('fund', 0)
+            orig_fund = round(fund_in + buy_fee, 4)
+
+            _ccfg    = bot_engine.coins.get(sym, {})
+            sl_pct   = _ccfg.get('stop_loss',     VT_SL_PCT)
+            tp_pct   = _ccfg.get('take_profit',   VT_TP_PCT)
+            sl_price = round(entry * (1 - sl_pct / 100), 6)
+            tp_price = round(entry * (1 + tp_pct / 100), 6)
+
+            live_price = None
+            try:
+                live_price = bot_engine.client.get_spot_price(sym)
+            except Exception:
+                pass
+
+            unreal_pnl = None
+            unreal_pct = None
+            if live_price and amount:
+                gross = round(amount * live_price, 6)
+                unreal_pnl = round(gross - orig_fund, 4)
+                unreal_pct = round((live_price - entry) / entry * 100, 3)
+
+            entry_ts = op.get('entry_ts', 0)
+            held_s   = int(time.time() - entry_ts) if entry_ts else 0
+
+            out.append({
+                'symbol':      sym,
+                'entry':       entry,
+                'sl_price':    sl_price,
+                'tp_price':    tp_price,
+                'sl_pct':      sl_pct,
+                'tp_pct':      tp_pct,
+                'live_price':  live_price,
+                'amount':      round(amount, 8),
+                'orig_fund':   orig_fund,
+                'unreal_pnl':  unreal_pnl,
+                'unreal_pct':  unreal_pct,
+                'entry_time':  op.get('buy_time', '—'),
+                'entry_tf':    op.get('timeframe', '—'),
+                'held_s':      held_s,
+                'peak_price':  op.get('peak_price'),
+            })
+        out.sort(key=lambda x: x.get('entry_ts', 0) if x.get('entry_ts') else 0, reverse=True)
+    return jsonify(out)
+
+
 
 @app.route('/api/vt/state', methods=['GET'])
 def vt_state_debug():
