@@ -2652,8 +2652,8 @@ async function refreshLivePositions() {
         <!-- 3m Chart -->
         <div style="margin-bottom:8px;border-radius:8px;overflow:hidden;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.06);">
           <div style="padding:5px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.05);flex-wrap:wrap;gap:4px;">
-            <div style="display:flex;align-items:center;gap:6px;">
-              <span style="font-size:7px;color:var(--muted);font-family:var(--mono);letter-spacing:1px;" id="chartLabel_${p.symbol}"><span style="color:#0df0e0;font-weight:700;">${p.entry_tf?.toUpperCase()||'?'}</span> CHART · EMA9 <span style="color:#f7c948;">━</span> EMA21 <span style="color:#a060ff;">━</span></span>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span style="font-size:7px;color:var(--muted);font-family:var(--mono);letter-spacing:1px;" id="chartLabel_${p.symbol}"><span style="color:#0df0e0;font-weight:700;">${p.entry_tf?.toUpperCase()||'?'}</span> CHART · EMA9 <span style="color:#f7c948;">━</span> EMA21 <span style="color:#a060ff;">━</span> · SUPPORT <span style="color:#ff9f1a;">┄</span></span>
             </div>
             <div style="display:flex;gap:3px;flex-wrap:wrap;" id="chartTfBtns_${p.symbol}">
               ${['5m','15m','30m','1h','2h','4h'].map(tf => `
@@ -2669,6 +2669,8 @@ async function refreshLivePositions() {
             </div>
           </div>
           <div id="${cid}" style="width:100%;height:200px;position:relative;"></div>
+          <div style="padding:3px 10px 0;font-size:6.5px;color:var(--muted);font-family:var(--mono);letter-spacing:1px;border-top:1px solid rgba(255,255,255,0.05);">RSI(14) <span style="color:#a060ff;">━</span></div>
+          <div id="rsi_${p.symbol}" style="width:100%;height:60px;position:relative;"></div>
         </div>
 
         <!-- Price grid -->
@@ -2760,14 +2762,17 @@ async function switchPosChart(sym, tf, btnEl) {
 
 function _drawLWChart(containerId, ch, entry, sl, tp, livePrice, tf, sym) {
   const container = document.getElementById(containerId);
+  const rsiContainer = document.getElementById(`rsi_${sym}`);
   if (!container) return;
 
-  // Destroy previous chart instance if exists
+  // Destroy previous chart instances if exist
   if (_lwCharts[sym]) {
-    try { _lwCharts[sym].remove(); } catch(e) {}
+    try { _lwCharts[sym].main.remove(); } catch(e) {}
+    try { _lwCharts[sym].rsi?.remove(); } catch(e) {}
     delete _lwCharts[sym];
   }
   container.innerHTML = '';
+  if (rsiContainer) rsiContainer.innerHTML = '';
 
   if (typeof LightweightCharts === 'undefined') {
     // Fallback: show placeholder if library not loaded yet
@@ -2795,7 +2800,7 @@ function _drawLWChart(containerId, ch, entry, sl, tp, livePrice, tf, sym) {
     rightPriceScale: {
       borderColor: 'rgba(255,255,255,0.07)',
       textColor:   'rgba(200,220,232,0.5)',
-      scaleMargins: { top: 0.08, bottom: 0.08 },
+      scaleMargins: { top: 0.08, bottom: 0.22 },
     },
     timeScale: {
       borderColor:     'rgba(255,255,255,0.07)',
@@ -2806,6 +2811,21 @@ function _drawLWChart(containerId, ch, entry, sl, tp, livePrice, tf, sym) {
     handleScroll: true,
     handleScale:  true,
   });
+
+  // ── Volume histogram (bottom overlay pane) ───────────────────────────────────
+  const volumeSeries = chart.addHistogramSeries({
+    priceFormat:    { type: 'volume' },
+    priceScaleId:   'volume',
+    priceLineVisible: false,
+    lastValueVisible: false,
+  });
+  chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+  if (ch.volumes && ch.volumes.length) {
+    volumeSeries.setData(ch.volumes.map(([ts, v, up]) => ({
+      time: Math.floor(ts/1000), value: v,
+      color: up ? 'rgba(0,255,136,0.35)' : 'rgba(255,56,96,0.35)',
+    })));
+  }
 
   // ── Candlestick series ──────────────────────────────────────────────────────
   const candleSeries = chart.addCandlestickSeries({
@@ -2852,44 +2872,106 @@ function _drawLWChart(containerId, ch, entry, sl, tp, livePrice, tf, sym) {
   candleSeries.createPriceLine({ price: sl,    color: 'rgba(255,48,96,0.85)',   lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'SL' });
   candleSeries.createPriceLine({ price: tp,    color: 'rgba(0,255,136,0.85)',   lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'TP' });
 
+  // ── Support / resistance zone line ──────────────────────────────────────────
+  let supportLine = null;
+  if (ch.support) {
+    supportLine = candleSeries.createPriceLine({ price: ch.support, color: 'rgba(255,159,26,0.7)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.LargeDashed, axisLabelVisible: true, title: 'SUPPORT' });
+  }
+
   // ── Live price line ─────────────────────────────────────────────────────────
   if (livePrice) {
     const liveCol = livePrice >= entry ? 'rgba(13,240,224,0.9)' : 'rgba(255,48,96,0.9)';
     candleSeries.createPriceLine({ price: livePrice, color: liveCol, lineWidth: 1.5, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: '● LIVE' });
   }
 
-  // ── Entry marker on chart ───────────────────────────────────────────────────
-  if (candleData.length > 0) {
-    const entryTs = candleData[Math.floor(candleData.length * 0.35)].time;
-    candleSeries.setMarkers([{
-      time:     entryTs,
-      position: 'belowBar',
-      color:    '#ffb800',
-      shape:    'arrowUp',
-      text:     'ENTRY',
-      size:     1,
-    }]);
+  // ── Markers: ENTRY + MACD cross BUY/SELL ────────────────────────────────────
+  candleSeries.setMarkers(_buildMarkers(candleData, ch));
+
+  // ── RSI sub-panel (synced time scale) ───────────────────────────────────────
+  let rsiChart = null, rsiSeries = null;
+  if (rsiContainer && ch.rsi_series && ch.rsi_series.length === ch.candles.length) {
+    rsiChart = LightweightCharts.createChart(rsiContainer, {
+      width:  rsiContainer.clientWidth || 400,
+      height: 60,
+      layout: { background: { color: 'transparent' }, textColor: 'rgba(200,220,232,0.5)', fontSize: 8 },
+      grid:   { vertLines: { color: 'rgba(255,255,255,0.03)' }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+      rightPriceScale: { borderColor: 'rgba(255,255,255,0.07)', textColor: 'rgba(200,220,232,0.4)', scaleMargins: { top: 0.1, bottom: 0.1 } },
+      timeScale: { borderColor: 'rgba(255,255,255,0.07)', visible: false },
+      handleScroll: false, handleScale: false,
+    });
+    rsiSeries = rsiChart.addLineSeries({
+      color: '#a060ff', lineWidth: 1.5, priceLineVisible: false, lastValueVisible: true,
+      autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }),
+    });
+    rsiSeries.setData(ch.candles.map(([ts], i) => ({ time: Math.floor(ts/1000), value: ch.rsi_series[i] })));
+    rsiSeries.createPriceLine({ price: 70, color: 'rgba(255,56,96,0.45)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, axisLabelVisible: true, title: '70' });
+    rsiSeries.createPriceLine({ price: 30, color: 'rgba(0,255,136,0.45)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, axisLabelVisible: true, title: '30' });
+
+    // Two-way time-scale sync between main chart and RSI panel
+    let syncing = false;
+    chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+      if (!range || syncing) return;
+      syncing = true; rsiChart.timeScale().setVisibleLogicalRange(range); syncing = false;
+    });
+    rsiChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+      if (!range || syncing) return;
+      syncing = true; chart.timeScale().setVisibleLogicalRange(range); syncing = false;
+    });
   }
 
   // Fit content
   chart.timeScale().fitContent();
+  rsiChart?.timeScale().fitContent();
 
-  // Store instance
-  _lwCharts[sym] = chart;
-  _lwSeries[sym] = { candleSeries, ema9Series, ema21Series };
+  // Store instances
+  _lwCharts[sym] = { main: chart, rsi: rsiChart };
+  _lwSeries[sym] = { candleSeries, ema9Series, ema21Series, volumeSeries, rsiSeries, supportLine };
 
   // Responsive resize
   const ro = new ResizeObserver(() => {
     const w = container.clientWidth;
     if (w > 0) chart.applyOptions({ width: w });
+    if (rsiChart && rsiContainer) {
+      const rw = rsiContainer.clientWidth;
+      if (rw > 0) rsiChart.applyOptions({ width: rw });
+    }
   });
   ro.observe(container);
+}
+
+// Build chart markers: entry arrow + MACD bull/bear cross BUY/SELL signals
+function _buildMarkers(candleData, ch) {
+  const markers = [];
+  if (candleData.length > 0) {
+    markers.push({
+      time:     candleData[Math.floor(candleData.length * 0.35)].time,
+      position: 'belowBar',
+      color:    '#ffb800',
+      shape:    'arrowUp',
+      text:     'ENTRY',
+      size:     1,
+    });
+  }
+  if (ch.macd_cross && ch.macd_cross.length) {
+    const validTimes = new Set(candleData.map(c => c.time));
+    for (const cr of ch.macd_cross) {
+      if (!validTimes.has(cr.time)) continue;
+      if (cr.type === 'bull') {
+        markers.push({ time: cr.time, position: 'belowBar', color: '#0dff8c', shape: 'arrowUp', text: 'BUY', size: 1 });
+      } else {
+        markers.push({ time: cr.time, position: 'aboveBar', color: '#ff3060', shape: 'arrowDown', text: 'SELL', size: 1 });
+      }
+    }
+    markers.sort((a,b) => a.time - b.time);
+  }
+  return markers;
 }
 
 function _updateLWChart(sym, ch, entry, sl, tp, livePrice) {
   const series = _lwSeries[sym];
   if (!series) return;
-  const { candleSeries, ema9Series, ema21Series } = series;
+  const { candleSeries, ema9Series, ema21Series, volumeSeries, rsiSeries, supportLine } = series;
 
   const candleData = ch.candles.map(([ts, o, h, l, c]) => ({
     time: Math.floor(ts / 1000), open: o, high: h, low: l, close: c,
@@ -2902,19 +2984,23 @@ function _updateLWChart(sym, ch, entry, sl, tp, livePrice) {
   if (ch.ema21 && ch.ema21.length === ch.candles.length) {
     ema21Series.setData(ch.candles.map(([ts], i) => ({ time: Math.floor(ts/1000), value: ch.ema21[i] })));
   }
-
-  if (candleData.length > 0 && entry) {
-    candleSeries.setMarkers([{
-      time:     candleData[Math.floor(candleData.length * 0.35)].time,
-      position: 'belowBar',
-      color:    '#ffb800',
-      shape:    'arrowUp',
-      text:     'ENTRY',
-      size:     1,
-    }]);
+  if (volumeSeries && ch.volumes && ch.volumes.length) {
+    volumeSeries.setData(ch.volumes.map(([ts, v, up]) => ({
+      time: Math.floor(ts/1000), value: v,
+      color: up ? 'rgba(0,255,136,0.35)' : 'rgba(255,56,96,0.35)',
+    })));
+  }
+  if (rsiSeries && ch.rsi_series && ch.rsi_series.length === ch.candles.length) {
+    rsiSeries.setData(ch.candles.map(([ts], i) => ({ time: Math.floor(ts/1000), value: ch.rsi_series[i] })));
+  }
+  if (supportLine && ch.support) {
+    supportLine.applyOptions({ price: ch.support });
   }
 
-  _lwCharts[sym]?.timeScale().fitContent();
+  candleSeries.setMarkers(_buildMarkers(candleData, ch));
+
+  _lwCharts[sym]?.main.timeScale().fitContent();
+  _lwCharts[sym]?.rsi?.timeScale().fitContent();
 }
 
 setInterval(refreshLivePositions, 2000);

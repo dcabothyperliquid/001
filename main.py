@@ -106,6 +106,85 @@ INTERVAL_MS = {
     '1d': 86400000
 }
 
+# ── Shared math helpers (EMA / RSI / MACD-cross / RSI-series) ─────────────────
+def _ema_fn(data, n):
+    k = 2/(n+1); r = [data[0]]
+    for p in data[1:]: r.append(p*k + r[-1]*(1-k))
+    return r
+
+def _rsi_fn(closes, period=14):
+    if len(closes) < period+1: return 50.0
+    arr = np.array(closes, dtype=float)
+    d = np.diff(arr)
+    g = np.where(d>0, d, 0.0); l = np.where(d<0, -d, 0.0)
+    ag = float(np.mean(g[:period])); al = float(np.mean(l[:period]))
+    for i in range(period, len(g)):
+        ag = float((ag*(period-1)+g[i])/period); al = float((al*(period-1)+l[i])/period)
+    return float(round(100.0-(100.0/(1.0+ag/al)), 1)) if al > 0 else 100.0
+
+def _rsi_series_fn(closes, period=14):
+    """Rolling RSI value at every point (same length as closes, padded with 50.0)."""
+    n = len(closes)
+    out = [50.0] * n
+    if n < period+1: return out
+    arr = np.array(closes, dtype=float)
+    d = np.diff(arr)
+    g = np.where(d>0, d, 0.0); l = np.where(d<0, -d, 0.0)
+    ag = float(np.mean(g[:period])); al = float(np.mean(l[:period]))
+    rsi = 100.0 - (100.0/(1.0+ag/al)) if al > 0 else 100.0
+    out[period] = round(rsi, 1)
+    for i in range(period, len(g)):
+        ag = float((ag*(period-1)+g[i])/period); al = float((al*(period-1)+l[i])/period)
+        rsi = 100.0 - (100.0/(1.0+ag/al)) if al > 0 else 100.0
+        out[i+1] = round(rsi, 1)
+    return out
+
+def _macd_cross_markers(closes, timestamps):
+    """Return list of {time, type:'bull'|'bear'} where MACD crosses signal line."""
+    if len(closes) < 35: return []
+    ema_f   = _ema_fn(closes, 12)
+    ema_s   = _ema_fn(closes, 26)
+    macd_ln = [f - s for f, s in zip(ema_f, ema_s)]
+    sig_ln  = _ema_fn(macd_ln, 9)
+    out = []
+    for i in range(1, len(macd_ln)):
+        if macd_ln[i-1] <= sig_ln[i-1] and macd_ln[i] > sig_ln[i]:
+            out.append({'time': int(timestamps[i] / 1000), 'type': 'bull'})
+        elif macd_ln[i-1] >= sig_ln[i-1] and macd_ln[i] < sig_ln[i]:
+            out.append({'time': int(timestamps[i] / 1000), 'type': 'bear'})
+    return out
+
+def _build_chart_payload(raw, tail_n=80, support_lookback=20):
+    """Build full chart payload (candles+volume, EMA9/21, RSI series, support level, MACD cross markers)
+    from raw candle data [[ts,o,h,l,c,v], ...]. Returns None if not enough data."""
+    if len(raw) < 10:
+        return None
+    closes    = [float(c[4]) for c in raw]
+    ema9_all  = _ema_fn(closes, 9)
+    ema21_all = _ema_fn(closes, 21)
+    rsi_series_all = _rsi_series_fn(closes)
+    rsi_val   = rsi_series_all[-1]
+    tail      = raw[-tail_n:]
+    n         = len(tail)
+    ema9_t    = ema9_all[-n:]
+    ema21_t   = ema21_all[-n:]
+    rsi_t     = rsi_series_all[-n:]
+    timestamps = [int(c[0]) for c in tail]
+    tail_closes = closes[-n:]
+    support = min(float(c[3]) for c in raw[-support_lookback:]) if len(raw) >= 5 else None
+    return {
+        'candles':    [[int(c[0]), float(c[1]), float(c[2]), float(c[3]), float(c[4])] for c in tail],
+        'volumes':    [[int(c[0]), float(c[5]) if len(c) > 5 else 0.0, float(c[4]) >= float(c[1])] for c in tail],
+        'ema9':       [round(v, 6) for v in ema9_t],
+        'ema21':      [round(v, 6) for v in ema21_t],
+        'rsi':        rsi_val,
+        'rsi_series': rsi_t,
+        'ema_bull':   bool(ema9_all[-1] > ema21_all[-1]),
+        'rsi_ok':     bool(35 <= rsi_val <= 68),
+        'support':    round(support, 6) if support is not None else None,
+        'macd_cross': _macd_cross_markers(tail_closes, timestamps),
+    }
+
 # ═════════════════════════════════════════════════════════════════════════════
 # CandleCache  —  thread-safe, async-refreshed
 # ═════════════════════════════════════════════════════════════════════════════
@@ -2680,22 +2759,6 @@ def virtual_summary():
 @app.route('/api/live_positions', methods=['GET'])
 def live_positions():
     """Live open positions (VT) with entry, SL, TP, current price, unrealized PnL + 3m chart."""
-    import numpy as _np
-
-    def _ema_fn(data, n):
-        k = 2/(n+1); r = [data[0]]
-        for p in data[1:]: r.append(p*k + r[-1]*(1-k))
-        return r
-
-    def _rsi_fn(closes, period=14):
-        if len(closes) < period+1: return 50.0
-        arr = _np.array(closes, dtype=float)
-        d = _np.diff(arr)
-        g = _np.where(d>0, d, 0.0); l = _np.where(d<0, -d, 0.0)
-        ag = float(_np.mean(g[:period])); al = float(_np.mean(l[:period]))
-        for i in range(period, len(g)):
-            ag = float((ag*(period-1)+g[i])/period); al = float((al*(period-1)+l[i])/period)
-        return float(round(100.0-(100.0/(1.0+ag/al)), 1)) if al > 0 else 100.0
 
     with _vt_lock:
         out = []
@@ -2737,24 +2800,7 @@ def live_positions():
                 raw3 = candle_cache.get(sym, entry_tf_key) or []
                 if len(raw3) < 10:
                     raw3 = client.get_candles(sym, entry_tf_key, lookback=CANDLE_LOOKBACK) or []
-                if len(raw3) >= 10:
-                    closes3   = [float(c[4]) for c in raw3]
-                    ema9_all  = _ema_fn(closes3, 9)
-                    ema21_all = _ema_fn(closes3, 21)
-                    rsi3      = _rsi_fn(closes3)
-                    tail      = raw3[-80:]
-                    n         = len(tail)
-                    ema9_t    = ema9_all[-n:]
-                    ema21_t   = ema21_all[-n:]
-                    chart_3m  = {
-                        # [timestamp_ms, open, high, low, close]
-                        'candles':  [[int(c[0]), float(c[1]), float(c[2]), float(c[3]), float(c[4])] for c in tail],
-                        'ema9':     [round(v, 6) for v in ema9_t],
-                        'ema21':    [round(v, 6) for v in ema21_t],
-                        'rsi':      rsi3,
-                        'ema_bull': bool(ema9_all[-1] > ema21_all[-1]),
-                        'rsi_ok':   bool(35 <= rsi3 <= 68),
-                    }
+                chart_3m = _build_chart_payload(raw3)
             except Exception:
                 pass
 
@@ -2796,25 +2842,12 @@ def chart_candles():
         if len(raw) < 10:
             # Try live fetch from backend
             raw = client.get_candles(sym, tf, lookback=CANDLE_LOOKBACK) or []
-        if len(raw) < 5:
+        payload = _build_chart_payload(raw)
+        if not payload:
             return jsonify({'candles': [], 'ema9': [], 'ema21': []})
-        closes   = [float(c[4]) for c in raw]
-        ema9_all  = _ema_fn(closes, 9)
-        ema21_all = _ema_fn(closes, 21)
-        rsi_val   = _rsi_fn(closes)
-        tail      = raw[-80:]
-        n         = len(tail)
-        ema9_t    = ema9_all[-n:]
-        ema21_t   = ema21_all[-n:]
-        return jsonify({
-            'symbol':   sym,
-            'tf':       tf,
-            'candles':  [[int(c[0]), float(c[1]), float(c[2]), float(c[3]), float(c[4])] for c in tail],
-            'ema9':     [round(v, 6) for v in ema9_t],
-            'ema21':    [round(v, 6) for v in ema21_t],
-            'rsi':      rsi_val,
-            'ema_bull': bool(ema9_all[-1] > ema21_all[-1]) if ema9_all and ema21_all else False,
-        })
+        payload['symbol'] = sym
+        payload['tf'] = tf
+        return jsonify(payload)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
