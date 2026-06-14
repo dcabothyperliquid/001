@@ -821,6 +821,18 @@ def _vt_on_buy(symbol, price, timeframe, initial_fund=None):
         _vt_stats[symbol]['total_fees'] = round(_vt_stats[symbol].get('total_fees', 0.0) + buy_fee, 6)
     __import__('threading').Thread(target=_vt_persist, daemon=True).start()
 
+    # ── Push ORDER PLACED + BUY events — Steps 3 & 4 of trade flow (VT) ──────
+    try:
+        bot_engine._push_event('order_placed',
+            f"ORDER PLACED — VT BUY {symbol} @ ${price:.6f} | ${fund_after_fee:.4f} USDC | TF={timeframe}",
+            {'symbol': symbol, 'price': price, 'usdt': fund_after_fee,
+             'mode': 'VT', 'tf': timeframe, 'step': 'order_placed'})
+        bot_engine._push_event('buy', f"[VT] BUY {symbol} @ {price:.6f} — signal_buy_{timeframe}",
+            {'symbol': symbol, 'price': price, 'usdt': fund_after_fee,
+             'reason': f'signal_buy_{timeframe}'})
+    except Exception:
+        pass
+
 def _vt_on_sell(symbol, price, exit_reason='signal'):
     """Record virtual SELL at signal price, compound fund."""
     with _vt_lock:
@@ -1324,6 +1336,39 @@ class AsyncEngine:
                     executed=False,
                     capital=_coin_capital
                 )
+
+                # ── Push SIGNAL event — Step 1 of trade flow ──────────────────
+                tf_res    = (mtf.get('tf_results') or {}).get(best_tf, {})
+                rsi_now   = tf_res.get('rsi', 0)
+                macd_now  = tf_res.get('macd', 'neutral')
+                vol_now   = tf_res.get('vol', False)
+                self.bot._push_event('signal',
+                    f"SIGNAL — {symbol} @ ${price:.6f} | TF={best_tf} | RSI={rsi_now:.1f} | MACD={macd_now} | VOL={'Y' if vol_now else 'N'}",
+                    {'symbol': symbol, 'price': price, 'tf': best_tf,
+                     'rsi': rsi_now, 'macd': macd_now, 'vol': vol_now,
+                     'score': mtf_score, 'confidence': confidence,
+                     'step': 'signal'})
+
+                # ── Push SUPPORT CHECK event — Step 2 ─────────────────────────
+                candles_best = candle_cache.get(symbol, best_tf) or []
+                support_lvl  = self.bot._find_support_zone(candles_best, lookback=20) if len(candles_best) >= 5 else None
+                if support_lvl:
+                    dist_pct  = (price - support_lvl) / support_lvl * 100
+                    near_sup  = dist_pct <= 1.5
+                    ema9_arr = ema21_arr = []
+                    if len(candles_best) >= 22:
+                        closes_b  = [float(c[4]) for c in candles_best]
+                        ema9_arr  = _ema_fn(closes_b, 9)
+                        ema21_arr = _ema_fn(closes_b, 21)
+                    ema_bull_now = bool(ema9_arr and ema21_arr and ema9_arr[-1] > ema21_arr[-1])
+                    layers = sum([near_sup, ema_bull_now, bool(vol_now)])
+                    self.bot._push_event('support_check',
+                        f"SUPPORT CHECK — {symbol} | Support=${support_lvl:.6f} | Dist={dist_pct:.2f}% | Near={'Y' if near_sup else 'N'} | EMA={'Y' if ema_bull_now else 'N'} | Vol={'Y' if vol_now else 'N'} | Layers={layers}/3",
+                        {'symbol': symbol, 'price': price, 'tf': best_tf,
+                         'support': support_lvl, 'dist_pct': round(dist_pct, 3),
+                         'near_support': near_sup, 'ema_bull': ema_bull_now,
+                         'vol_ok': bool(vol_now), 'layers': layers,
+                         'step': 'support_check'})
 
             # ── Same-TF Momentum Confirmation ─────────────────────────────────
             # Confirm on the SAME TF that fired the signal (not fixed 3m)
@@ -2246,6 +2291,12 @@ class BotEngine:
         trail_pct = self.coins.get(symbol,{}).get('trailing_stop',1.0)/100
         self.holdings[symbol]['trailing_stop_price'] = actual_price*(1-trail_pct)
         self.trades.append(trade)
+        # ── Push ORDER PLACED event — Step 3 of trade flow ───────────────────
+        self._push_event('order_placed',
+            f"ORDER PLACED — {mode_tag} BUY {symbol} @ ${actual_price:.6f} | ${capital:.4f} USDC | TF={trade_tf}",
+            {'symbol': symbol, 'price': actual_price, 'usdt': capital,
+             'mode': mode_tag, 'tf': trade_tf, 'order_id': order_id,
+             'step': 'order_placed'})
         self._push_event('buy', f"[{mode_tag}] BUY {symbol} @ {actual_price:.6f} — {reason}",
                          {'symbol':symbol,'price':actual_price,'usdt':capital,'reason':reason})
         logger.info(f"[{mode_tag}] BUY {symbol} @ {actual_price:.6f} | {capital:.2f} USDC | {reason}")
