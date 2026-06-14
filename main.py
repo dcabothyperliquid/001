@@ -2679,16 +2679,19 @@ def live_positions():
             entry_ts = op.get('entry_ts', 0)
             held_s   = int(time.time() - entry_ts) if entry_ts else 0
 
-            # ── 3m chart data ─────────────────────────────────────────────────
+            # ── Chart data — uses the trade's entry timeframe ──────────────────
             chart_3m = None
             try:
-                raw3 = candle_cache.get(sym, '3m') or []
-                if len(raw3) >= 22:
+                entry_tf_key = op.get('timeframe', '5m') or '5m'
+                raw3 = candle_cache.get(sym, entry_tf_key) or []
+                if len(raw3) < 10:
+                    raw3 = client.get_candles(sym, entry_tf_key, lookback=CANDLE_LOOKBACK) or []
+                if len(raw3) >= 10:
                     closes3   = [float(c[4]) for c in raw3]
                     ema9_all  = _ema_fn(closes3, 9)
                     ema21_all = _ema_fn(closes3, 21)
                     rsi3      = _rsi_fn(closes3)
-                    tail      = raw3[-60:]
+                    tail      = raw3[-80:]
                     n         = len(tail)
                     ema9_t    = ema9_all[-n:]
                     ema21_t   = ema21_all[-n:]
@@ -2725,6 +2728,44 @@ def live_positions():
         out.sort(key=lambda x: x.get('entry_ts', 0) if x.get('entry_ts') else 0, reverse=True)
     return jsonify(out)
 
+
+
+@app.route('/api/chart_candles', methods=['GET'])
+def chart_candles():
+    """Return candle + EMA data for a given symbol and timeframe — used by live position TF chart switcher."""
+    sym = (request.args.get('symbol') or '').upper().strip()
+    tf  = (request.args.get('tf') or '5m').strip()
+    if not sym:
+        return jsonify({'error': 'symbol required'}), 400
+    valid_tfs = ['1m','3m','5m','15m','30m','1h','2h','4h']
+    if tf not in valid_tfs:
+        tf = '5m'
+    try:
+        raw = candle_cache.get(sym, tf) or []
+        if len(raw) < 10:
+            # Try live fetch from backend
+            raw = client.get_candles(sym, tf, lookback=CANDLE_LOOKBACK) or []
+        if len(raw) < 5:
+            return jsonify({'candles': [], 'ema9': [], 'ema21': []})
+        closes   = [float(c[4]) for c in raw]
+        ema9_all  = _ema_fn(closes, 9)
+        ema21_all = _ema_fn(closes, 21)
+        rsi_val   = _rsi_fn(closes)
+        tail      = raw[-80:]
+        n         = len(tail)
+        ema9_t    = ema9_all[-n:]
+        ema21_t   = ema21_all[-n:]
+        return jsonify({
+            'symbol':   sym,
+            'tf':       tf,
+            'candles':  [[int(c[0]), float(c[1]), float(c[2]), float(c[3]), float(c[4])] for c in tail],
+            'ema9':     [round(v, 6) for v in ema9_t],
+            'ema21':    [round(v, 6) for v in ema21_t],
+            'rsi':      rsi_val,
+            'ema_bull': bool(ema9_all[-1] > ema21_all[-1]) if ema9_all and ema21_all else False,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/vt/state', methods=['GET'])
