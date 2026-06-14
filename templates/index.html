@@ -1076,26 +1076,43 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
       </div>
     </div>
     <!-- Overall summary bar -->
-    <div style="margin-bottom:10px;padding:14px 18px;border-radius:12px;background:linear-gradient(135deg,rgba(13,240,224,0.06) 0%,rgba(48,144,255,0.06) 50%,rgba(160,96,255,0.06) 100%);border:1px solid rgba(13,240,224,0.12);display:flex;align-items:center;gap:0;flex-wrap:wrap;">
-      <div style="flex:1;min-width:90px;padding:0 16px 0 0;border-right:1px solid rgba(255,255,255,0.06);">
-        <div style="font-size:8px;color:rgba(13,240,224,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Total P&amp;L</div>
-        <div style="font-family:var(--mono);font-size:22px;font-weight:800;letter-spacing:-0.5px;" id="vtTotalPnl">—</div>
+    <div style="margin-bottom:10px;padding:14px 18px;border-radius:12px;background:linear-gradient(135deg,rgba(13,240,224,0.06) 0%,rgba(48,144,255,0.06) 50%,rgba(160,96,255,0.06) 100%);border:1px solid rgba(13,240,224,0.12);">
+      <!-- Row 1: Total PnL big number -->
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:8px;color:rgba(13,240,224,0.55);letter-spacing:2px;margin-bottom:3px;text-transform:uppercase;">Total P&amp;L <span style="color:rgba(255,255,255,0.18);font-size:7px;">(fees deducted)</span></div>
+          <div style="font-family:var(--mono);font-size:26px;font-weight:800;letter-spacing:-0.5px;line-height:1;" id="vtTotalPnl">—</div>
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;padding-left:6px;border-left:1px solid rgba(255,255,255,0.07);margin-left:4px;">
+          <div>
+            <div style="font-size:7px;color:rgba(13,255,140,0.5);letter-spacing:1.5px;margin-bottom:2px;">REALIZED</div>
+            <div style="font-family:var(--mono);font-size:13px;font-weight:700;" id="vtRealizedPnl">—</div>
+          </div>
+          <div>
+            <div style="font-size:7px;color:rgba(255,184,0,0.5);letter-spacing:1.5px;margin-bottom:2px;">UNREALIZED</div>
+            <div style="font-family:var(--mono);font-size:13px;font-weight:700;" id="vtUnrealizedPnl">—</div>
+          </div>
+        </div>
       </div>
-      <div style="flex:1;min-width:70px;padding:0 16px;border-right:1px solid rgba(255,255,255,0.06);">
-        <div style="font-size:8px;color:rgba(48,144,255,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Trades</div>
-        <div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--blue);" id="vtTotalTrades">—</div>
-      </div>
-      <div style="flex:1;min-width:80px;padding:0 16px;border-right:1px solid rgba(255,255,255,0.06);">
-        <div style="font-size:8px;color:rgba(160,96,255,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Win Rate</div>
-        <div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--purple);" id="vtWinRate">—</div>
-      </div>
-      <div style="flex:1;min-width:90px;padding:0 0 0 16px;">
-        <div style="font-size:8px;color:rgba(255,48,96,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Fees Paid</div>
-        <div style="font-family:var(--mono);font-size:18px;font-weight:800;color:var(--red);" id="vtTotalFees">—</div>
-        <div style="font-size:8px;color:rgba(255,255,255,0.2);margin-top:2px;font-family:var(--mono);">0.07%×2 incl. in P&amp;L</div>
-      </div>
-      <div style="margin-left:auto;font-size:8px;color:var(--muted);font-family:var(--mono);letter-spacing:1px;text-align:right;padding-left:12px;">
-        BUY→SELL cycle assumed<br><span style="color:rgba(13,255,140,0.4);">compounding on</span>
+      <!-- Row 2: stats -->
+      <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;padding-top:10px;border-top:1px solid rgba(255,255,255,0.05);">
+        <div style="flex:1;min-width:60px;padding-right:14px;border-right:1px solid rgba(255,255,255,0.06);">
+          <div style="font-size:7px;color:rgba(48,144,255,0.6);letter-spacing:1.5px;margin-bottom:2px;text-transform:uppercase;">Trades</div>
+          <div style="font-family:var(--mono);font-size:16px;font-weight:800;color:var(--blue);" id="vtTotalTrades">—</div>
+        </div>
+        <div style="flex:1;min-width:65px;padding:0 14px;border-right:1px solid rgba(255,255,255,0.06);">
+          <div style="font-size:7px;color:rgba(160,96,255,0.6);letter-spacing:1.5px;margin-bottom:2px;text-transform:uppercase;">Win Rate</div>
+          <div style="font-family:var(--mono);font-size:16px;font-weight:800;color:var(--purple);" id="vtWinRate">—</div>
+        </div>
+        <div style="flex:1;min-width:75px;padding:0 14px;border-right:1px solid rgba(255,255,255,0.06);">
+          <div style="font-size:7px;color:rgba(255,48,96,0.6);letter-spacing:1.5px;margin-bottom:2px;text-transform:uppercase;">Fees Paid</div>
+          <div style="font-family:var(--mono);font-size:14px;font-weight:800;color:var(--red);" id="vtTotalFees">—</div>
+          <div style="font-size:6px;color:rgba(255,255,255,0.18);margin-top:1px;font-family:var(--mono);">0.07% buy+sell</div>
+        </div>
+        <div style="flex:1;min-width:70px;padding-left:14px;text-align:right;">
+          <div style="font-size:7px;color:rgba(255,255,255,0.2);letter-spacing:1px;font-family:var(--mono);">BUY→SELL cycle</div>
+          <div style="font-size:7px;color:rgba(13,255,140,0.35);font-family:var(--mono);margin-top:2px;">compounding on</div>
+        </div>
       </div>
     </div>
     <!-- Trade History Button — dedicated, always visible -->
@@ -2359,17 +2376,21 @@ async function refreshVirtualTracker() {
       if (drawer && drawer.style.display !== 'none') renderVtTrades();
     }
 
-    // Overall summary bar — closed P&L + live unrealized P&L
-    const closedPnl = d.total_pnl || 0;
+    // ── Summary bar ── Realized + Unrealized = Total (all fees already deducted)
+    const realizedPnl = d.total_pnl || 0;   // closed trades net P&L after fees
     const byCoinRaw = d.by_coin || {};
-    // Sum unrealized only for coins where backend returned a real value
+    // Unrealized: sum open positions floating P&L (fees estimated, backend computed)
     const unrealizedTotal = Object.values(byCoinRaw).reduce((sum, c) => {
       return sum + (c.unrealized_pnl !== null && c.unrealized_pnl !== undefined ? c.unrealized_pnl : 0);
     }, 0);
-    const totalPnl = closedPnl + unrealizedTotal;
+    const hasOpenPos = Object.values(byCoinRaw).some(c => c.in_position);
+    const totalPnl = realizedPnl + unrealizedTotal;
+
+    // Total P&L (big number)
     const pnlEl = document.getElementById('vtTotalPnl');
     const prevPnl = parseFloat(pnlEl.dataset.prev ?? 'NaN');
-    pnlEl.textContent = (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(4) + ' USDC';
+    const pnlSign = totalPnl >= 0 ? '+' : '';
+    pnlEl.textContent = pnlSign + totalPnl.toFixed(4) + ' USDC';
     pnlEl.style.color = totalPnl >= 0 ? 'var(--green)' : 'var(--red)';
     if (!isNaN(prevPnl) && prevPnl !== totalPnl) {
       pnlEl.classList.remove('vt-flash-green','vt-flash-red');
@@ -2378,7 +2399,25 @@ async function refreshVirtualTracker() {
     }
     pnlEl.dataset.prev = totalPnl;
 
-    // Total fees
+    // Realized sub-label
+    const realEl = document.getElementById('vtRealizedPnl');
+    if (realEl) {
+      realEl.textContent = (realizedPnl >= 0 ? '+' : '') + realizedPnl.toFixed(4) + ' USDC';
+      realEl.style.color = realizedPnl >= 0 ? 'var(--green)' : 'var(--red)';
+    }
+    // Unrealized sub-label (show — if no open positions)
+    const unrEl = document.getElementById('vtUnrealizedPnl');
+    if (unrEl) {
+      if (!hasOpenPos) {
+        unrEl.textContent = '—';
+        unrEl.style.color = 'var(--muted)';
+      } else {
+        unrEl.textContent = (unrealizedTotal >= 0 ? '+' : '') + unrealizedTotal.toFixed(4) + ' USDC';
+        unrEl.style.color = unrealizedTotal >= 0 ? 'var(--amber)' : 'var(--red)';
+      }
+    }
+
+    // Fees (informational — already deducted from both realized and unrealized)
     const totalFees = d.total_fees || 0;
     const feesEl = document.getElementById('vtTotalFees');
     if (feesEl) feesEl.textContent = '-' + totalFees.toFixed(4) + ' USDC';
