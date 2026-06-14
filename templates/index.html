@@ -2399,42 +2399,63 @@ async function refreshLivePositions() {
     const fp = p => p > 1 ? p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4}) : (p?.toFixed(6) ?? '—');
 
     el.innerHTML = pos.map(p => {
-      const upnl      = p.unreal_pnl ?? 0;
-      const upnlPct   = p.unreal_pct ?? 0;
-      const upnlCol   = upnl >= 0 ? 'var(--green)' : 'var(--red)';
-      const upnlSign  = upnl >= 0 ? '+' : '';
-      const livePx    = p.live_price ?? p.entry;
-      const entry     = p.entry;
-      const sl        = p.sl_price;
-      const tp        = p.tp_price;
-      const peak      = p.peak_price ?? entry;
-
-      // Progress bar: SL ←→ entry ←→ TP range
+      const upnl     = p.unreal_pnl ?? 0;
+      const upnlPct  = p.unreal_pct ?? 0;
+      const upnlCol  = upnl >= 0 ? '#00ff88' : '#ff3060';
+      const upnlSign = upnl >= 0 ? '+' : '';
+      const livePx   = p.live_price ?? p.entry;
+      const entry    = p.entry;
+      const sl       = p.sl_price;
+      const tp       = p.tp_price;
+      const peak     = p.peak_price ?? entry;
+      const barCol   = upnl >= 0 ? '#00ff88' : '#ff3060';
       const totalRange = tp - sl;
-      const curPct     = totalRange > 0 ? Math.max(0, Math.min(100, (livePx - sl) / totalRange * 100)) : 50;
-      const entryPct   = totalRange > 0 ? Math.max(0, Math.min(100, (entry - sl) / totalRange * 100)) : 50;
-      const barCol     = upnl >= 0 ? '#00ff88' : '#ff3060';
+      const curPct   = totalRange > 0 ? Math.max(0,Math.min(100,(livePx-sl)/totalRange*100)) : 50;
+      const entryPct = totalRange > 0 ? Math.max(0,Math.min(100,(entry-sl)/totalRange*100)) : 50;
+      const cid      = `chart3m_${p.symbol}`;
+
+      // 3m indicator badges
+      const ch = p.chart_3m;
+      const emaBull  = ch?.ema_bull;
+      const rsiOk    = ch?.rsi_ok;
+      const rsi      = ch?.rsi ?? '—';
+      const emaBadge = emaBull
+        ? `<span style="font-size:6.5px;padding:1px 5px;border-radius:3px;background:rgba(0,255,136,0.12);color:#00ff88;border:1px solid rgba(0,255,136,0.3);font-family:var(--mono);">EMA↑</span>`
+        : `<span style="font-size:6.5px;padding:1px 5px;border-radius:3px;background:rgba(255,48,96,0.12);color:#ff3060;border:1px solid rgba(255,48,96,0.3);font-family:var(--mono);">EMA↓</span>`;
+      const rsiBadge = `<span style="font-size:6.5px;padding:1px 5px;border-radius:3px;background:rgba(160,96,255,0.12);color:#a060ff;border:1px solid rgba(160,96,255,0.3);font-family:var(--mono);">RSI ${rsi}</span>`;
+      const confBadge = (emaBull && rsiOk)
+        ? `<span style="font-size:6.5px;padding:1px 5px;border-radius:3px;background:rgba(0,255,136,0.15);color:#00ff88;border:1px solid rgba(0,255,136,0.4);font-family:var(--mono);font-weight:700;">✓ CONFIRMED</span>`
+        : `<span style="font-size:6.5px;padding:1px 5px;border-radius:3px;background:rgba(255,184,0,0.12);color:#ffb800;border:1px solid rgba(255,184,0,0.3);font-family:var(--mono);font-weight:700;">⚠ WEAK</span>`;
 
       return `
       <div style="border-radius:12px;background:linear-gradient(135deg,rgba(0,255,136,0.04) 0%,rgba(13,240,224,0.03) 50%,rgba(48,144,255,0.04) 100%);border:1px solid rgba(0,255,136,0.18);padding:12px 14px;position:relative;overflow:hidden;">
-        <!-- glow top line -->
         <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,rgba(0,255,136,0.5),rgba(13,240,224,0.3),transparent);"></div>
 
-        <!-- Header row -->
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <div style="display:flex;align-items:center;gap:7px;">
-            <span style="width:7px;height:7px;border-radius:50%;background:#00ff88;box-shadow:0 0 6px #00ff88;display:inline-block;animation:blink 1.2s infinite;"></span>
+        <!-- Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="width:7px;height:7px;border-radius:50%;background:#00ff88;box-shadow:0 0 6px #00ff88;display:inline-block;"></span>
             <span style="font-family:var(--mono);font-size:14px;font-weight:900;color:#fff;letter-spacing:1px;">${p.symbol}</span>
-            <span style="font-size:7px;color:rgba(0,255,136,0.6);background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);padding:1px 6px;border-radius:4px;font-family:var(--mono);letter-spacing:1px;">${p.entry_tf}</span>
+            <span style="font-size:7px;color:rgba(0,255,136,0.6);background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);padding:1px 5px;border-radius:4px;font-family:var(--mono);">${p.entry_tf}</span>
+            ${emaBadge}${rsiBadge}${confBadge}
           </div>
-          <div style="text-align:right;">
+          <div style="text-align:right;flex-shrink:0;margin-left:8px;">
             <div style="font-family:var(--mono);font-size:15px;font-weight:800;color:${upnlCol};line-height:1;">${upnlSign}${upnl.toFixed(4)}</div>
             <div style="font-family:var(--mono);font-size:9px;color:${upnlCol};opacity:0.75;">${upnlSign}${upnlPct.toFixed(3)}%</div>
           </div>
         </div>
 
-        <!-- Price grid: SL | Entry | Live | TP -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;margin-bottom:10px;">
+        <!-- 3m Chart -->
+        <div style="margin-bottom:8px;border-radius:8px;overflow:hidden;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.06);">
+          <div style="padding:4px 8px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.05);">
+            <span style="font-size:7px;color:var(--muted);font-family:var(--mono);letter-spacing:1px;">3M CHART · EMA9 <span style="color:#f7c948;">━</span> EMA21 <span style="color:#a060ff;">━</span></span>
+            <span style="font-size:7px;color:var(--muted);font-family:var(--mono);">ENTRY <span style="color:#ffb800;">┄</span> &nbsp; SL <span style="color:#ff3060;">┄</span> &nbsp; TP <span style="color:#00ff88;">┄</span></span>
+          </div>
+          <canvas id="${cid}" width="640" height="140" style="width:100%;height:140px;display:block;"></canvas>
+        </div>
+
+        <!-- Price grid -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;margin-bottom:8px;">
           <div style="border-radius:7px;padding:6px 7px;background:rgba(255,48,96,0.12);border:1px solid rgba(255,48,96,0.35);text-align:center;">
             <div style="font-size:6px;color:#ff3060;letter-spacing:1.5px;margin-bottom:2px;font-weight:700;">SL</div>
             <div style="font-family:var(--mono);font-size:9px;color:#ff4070;font-weight:800;">$${fp(sl)}</div>
@@ -2457,41 +2478,166 @@ async function refreshLivePositions() {
           </div>
         </div>
 
-        <!-- SL→TP progress bar with live price marker -->
+        <!-- SL→TP progress bar -->
         <div style="margin-bottom:8px;">
           <div style="position:relative;height:4px;border-radius:2px;background:rgba(255,255,255,0.07);overflow:visible;">
-            <!-- filled bar from SL to current -->
             <div style="position:absolute;left:0;top:0;height:100%;width:${curPct.toFixed(1)}%;background:linear-gradient(90deg,rgba(255,48,96,0.4),${barCol});border-radius:2px;transition:width 0.5s;"></div>
-            <!-- entry marker -->
             <div style="position:absolute;top:-3px;left:calc(${entryPct.toFixed(1)}% - 1px);width:2px;height:10px;background:rgba(255,184,0,0.8);border-radius:1px;"></div>
-            <!-- live price dot -->
-            <div style="position:absolute;top:-5px;left:calc(${curPct.toFixed(1)}% - 5px);width:10px;height:14px;display:flex;align-items:center;justify-content:center;">
+            <div style="position:absolute;top:-4px;left:calc(${curPct.toFixed(1)}% - 4px);width:8px;height:12px;display:flex;align-items:center;justify-content:center;">
               <div style="width:7px;height:7px;border-radius:50%;background:${barCol};box-shadow:0 0 5px ${barCol};"></div>
             </div>
           </div>
           <div style="display:flex;justify-content:space-between;margin-top:3px;">
             <span style="font-size:6px;color:rgba(255,48,96,0.6);font-family:var(--mono);">SL</span>
-            <span style="font-size:6px;color:rgba(255,255,255,0.25);font-family:var(--mono);">──── PRICE RANGE ────</span>
+            <span style="font-size:6px;color:rgba(255,255,255,0.2);font-family:var(--mono);">── PRICE RANGE ──</span>
             <span style="font-size:6px;color:rgba(0,255,136,0.6);font-family:var(--mono);">TP</span>
           </div>
         </div>
 
-        <!-- Bottom row: qty + fund + peak -->
+        <!-- Bottom row -->
         <div style="display:flex;align-items:center;justify-content:space-between;">
-          <div style="font-size:7px;color:var(--muted);font-family:var(--mono);">
-            QTY <span style="color:var(--fg);font-weight:700;">${p.amount}</span>
-            &nbsp;·&nbsp;
-            FUND <span style="color:var(--fg);font-weight:700;">$${p.orig_fund}</span>
-          </div>
-          <div style="font-size:7px;color:var(--muted);font-family:var(--mono);">
-            PEAK <span style="color:#ffb800;font-weight:700;">$${fp(peak)}</span>
-          </div>
+          <div style="font-size:7px;color:var(--muted);font-family:var(--mono);">QTY <span style="color:var(--fg);font-weight:700;">${p.amount}</span> · FUND <span style="color:var(--fg);font-weight:700;">$${p.orig_fund}</span></div>
+          <div style="font-size:7px;color:var(--muted);font-family:var(--mono);">PEAK <span style="color:#ffb800;font-weight:700;">$${fp(peak)}</span></div>
         </div>
       </div>`;
     }).join('');
 
+    // Draw 3m charts for each position
+    pos.forEach(p => {
+      const ch = p.chart_3m;
+      if (!ch || !ch.candles || ch.candles.length < 5) return;
+      const canvas = document.getElementById(`chart3m_${p.symbol}`);
+      if (!canvas) return;
+      _draw3mChart(canvas, ch, p.entry, p.sl_price, p.tp_price, p.live_price);
+    });
+
   } catch(e) { console.error('livePos err', e); }
 }
+
+function _draw3mChart(canvas, ch, entry, sl, tp, livePrice) {
+  const ctx    = canvas.getContext('2d');
+  const W      = canvas.width;
+  const H      = canvas.height;
+  const candles = ch.candles;
+  const ema9   = ch.ema9;
+  const ema21  = ch.ema21;
+  const n      = candles.length;
+  if (!n) return;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Price range — include SL, TP, EMA lines in range
+  const allPrices = candles.flatMap(c => [c[2], c[3]])
+    .concat(ema9, ema21, [entry, sl, tp, livePrice].filter(Boolean));
+  let pMin = Math.min(...allPrices);
+  let pMax = Math.max(...allPrices);
+  const pad = (pMax - pMin) * 0.12;
+  pMin -= pad; pMax += pad;
+  const pRange = pMax - pMin || 1;
+
+  const PAD_L = 2, PAD_R = 2, PAD_T = 6, PAD_B = 4;
+  const cW    = (W - PAD_L - PAD_R) / n;
+
+  const pY = price => PAD_T + (1 - (price - pMin) / pRange) * (H - PAD_T - PAD_B);
+  const cX = i     => PAD_L + i * cW;
+
+  // Background grid lines (subtle)
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth   = 1;
+  for (let g = 0; g <= 4; g++) {
+    const y = PAD_T + g * (H - PAD_T - PAD_B) / 4;
+    ctx.beginPath(); ctx.moveTo(PAD_L, y); ctx.lineTo(W - PAD_R, y); ctx.stroke();
+  }
+
+  // SL dashed line
+  ctx.setLineDash([4, 3]);
+  ctx.strokeStyle = 'rgba(255,48,96,0.55)';
+  ctx.lineWidth   = 1.5;
+  const slY = pY(sl);
+  ctx.beginPath(); ctx.moveTo(PAD_L, slY); ctx.lineTo(W - PAD_R, slY); ctx.stroke();
+
+  // TP dashed line
+  ctx.strokeStyle = 'rgba(0,255,136,0.55)';
+  const tpY = pY(tp);
+  ctx.beginPath(); ctx.moveTo(PAD_L, tpY); ctx.lineTo(W - PAD_R, tpY); ctx.stroke();
+
+  // Entry dashed line
+  ctx.strokeStyle = 'rgba(255,184,0,0.7)';
+  ctx.lineWidth   = 1.5;
+  const entY = pY(entry);
+  ctx.beginPath(); ctx.moveTo(PAD_L, entY); ctx.lineTo(W - PAD_R, entY); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Candles
+  for (let i = 0; i < n; i++) {
+    const [ts, o, h, l, c] = candles[i];
+    const bull   = c >= o;
+    const xLeft  = cX(i) + 1;
+    const xRight = cX(i) + cW - 1;
+    const xMid   = (xLeft + xRight) / 2;
+    const bodyT  = pY(Math.max(o, c));
+    const bodyB  = pY(Math.min(o, c));
+    const bodyH  = Math.max(1.5, bodyB - bodyT);
+
+    // Wick
+    ctx.strokeStyle = bull ? 'rgba(0,255,136,0.6)' : 'rgba(255,72,72,0.6)';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.moveTo(xMid, pY(h));
+    ctx.lineTo(xMid, pY(l));
+    ctx.stroke();
+
+    // Body
+    ctx.fillStyle = bull ? 'rgba(0,255,136,0.75)' : 'rgba(255,72,72,0.75)';
+    ctx.fillRect(xLeft, bodyT, xRight - xLeft, bodyH);
+  }
+
+  // EMA21 line (purple, drawn first so EMA9 is on top)
+  if (ema21.length === n) {
+    ctx.strokeStyle = 'rgba(160,96,255,0.85)';
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ema21.forEach((v, i) => {
+      i === 0 ? ctx.moveTo(cX(i) + cW/2, pY(v)) : ctx.lineTo(cX(i) + cW/2, pY(v));
+    });
+    ctx.stroke();
+  }
+
+  // EMA9 line (yellow)
+  if (ema9.length === n) {
+    ctx.strokeStyle = 'rgba(247,201,72,0.95)';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    ema9.forEach((v, i) => {
+      i === 0 ? ctx.moveTo(cX(i) + cW/2, pY(v)) : ctx.lineTo(cX(i) + cW/2, pY(v));
+    });
+    ctx.stroke();
+  }
+
+  // Live price marker (right edge dot)
+  if (livePrice) {
+    const lY = pY(livePrice);
+    ctx.fillStyle = _livePxColor(livePrice, entry);
+    ctx.beginPath();
+    ctx.arc(W - PAD_R - 3, lY, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Label: SL / ENTRY / TP on right edge
+  ctx.font      = 'bold 8px monospace';
+  ctx.fillStyle = 'rgba(255,48,96,0.8)';
+  ctx.fillText('SL',  W - 14, slY  - 2);
+  ctx.fillStyle = 'rgba(255,184,0,0.8)';
+  ctx.fillText('E',   W - 9,  entY - 2);
+  ctx.fillStyle = 'rgba(0,255,136,0.8)';
+  ctx.fillText('TP',  W - 14, tpY  + 8);
+}
+
+function _livePxColor(live, entry) {
+  return live >= entry ? '#00ff88' : '#ff3060';
+}
+
 setInterval(refreshLivePositions, 2000);
 refreshLivePositions();
 

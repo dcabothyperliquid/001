@@ -2610,7 +2610,24 @@ def virtual_summary():
 
 @app.route('/api/live_positions', methods=['GET'])
 def live_positions():
-    """Live open positions (VT) with entry, SL, TP, current price, unrealized PnL."""
+    """Live open positions (VT) with entry, SL, TP, current price, unrealized PnL + 3m chart."""
+    import numpy as _np
+
+    def _ema_fn(data, n):
+        k = 2/(n+1); r = [data[0]]
+        for p in data[1:]: r.append(p*k + r[-1]*(1-k))
+        return r
+
+    def _rsi_fn(closes, period=14):
+        if len(closes) < period+1: return 50.0
+        arr = _np.array(closes, dtype=float)
+        d = _np.diff(arr)
+        g = _np.where(d>0, d, 0.0); l = _np.where(d<0, -d, 0.0)
+        ag = float(_np.mean(g[:period])); al = float(_np.mean(l[:period]))
+        for i in range(period, len(g)):
+            ag = (ag*(period-1)+g[i])/period; al = (al*(period-1)+l[i])/period
+        return round(100.0-(100.0/(1.0+ag/al)), 1) if al > 0 else 100.0
+
     with _vt_lock:
         out = []
         for sym, op in _vt_fund.items():
@@ -2644,22 +2661,48 @@ def live_positions():
             entry_ts = op.get('entry_ts', 0)
             held_s   = int(time.time() - entry_ts) if entry_ts else 0
 
+            # ── 3m chart data ─────────────────────────────────────────────────
+            chart_3m = None
+            try:
+                raw3 = candle_cache.get(sym, '3m') or []
+                if len(raw3) >= 22:
+                    closes3   = [float(c[4]) for c in raw3]
+                    ema9_all  = _ema_fn(closes3, 9)
+                    ema21_all = _ema_fn(closes3, 21)
+                    rsi3      = _rsi_fn(closes3)
+                    tail      = raw3[-60:]
+                    n         = len(tail)
+                    ema9_t    = ema9_all[-n:]
+                    ema21_t   = ema21_all[-n:]
+                    chart_3m  = {
+                        # [timestamp_ms, open, high, low, close]
+                        'candles':  [[int(c[0]), float(c[1]), float(c[2]), float(c[3]), float(c[4])] for c in tail],
+                        'ema9':     [round(v, 6) for v in ema9_t],
+                        'ema21':    [round(v, 6) for v in ema21_t],
+                        'rsi':      rsi3,
+                        'ema_bull': ema9_all[-1] > ema21_all[-1],
+                        'rsi_ok':   35 <= rsi3 <= 68,
+                    }
+            except Exception:
+                pass
+
             out.append({
-                'symbol':      sym,
-                'entry':       entry,
-                'sl_price':    sl_price,
-                'tp_price':    tp_price,
-                'sl_pct':      sl_pct,
-                'tp_pct':      tp_pct,
-                'live_price':  live_price,
-                'amount':      round(amount, 8),
-                'orig_fund':   orig_fund,
-                'unreal_pnl':  unreal_pnl,
-                'unreal_pct':  unreal_pct,
-                'entry_time':  op.get('buy_time', '—'),
-                'entry_tf':    op.get('timeframe', '—'),
-                'held_s':      held_s,
-                'peak_price':  op.get('peak_price'),
+                'symbol':     sym,
+                'entry':      entry,
+                'sl_price':   sl_price,
+                'tp_price':   tp_price,
+                'sl_pct':     sl_pct,
+                'tp_pct':     tp_pct,
+                'live_price': live_price,
+                'amount':     round(amount, 8),
+                'orig_fund':  orig_fund,
+                'unreal_pnl': unreal_pnl,
+                'unreal_pct': unreal_pct,
+                'entry_time': op.get('buy_time', '—'),
+                'entry_tf':   op.get('timeframe', '—'),
+                'held_s':     held_s,
+                'peak_price': op.get('peak_price'),
+                'chart_3m':   chart_3m,
             })
         out.sort(key=lambda x: x.get('entry_ts', 0) if x.get('entry_ts') else 0, reverse=True)
     return jsonify(out)
