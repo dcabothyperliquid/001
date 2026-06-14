@@ -1092,7 +1092,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
       <div style="flex:1;min-width:90px;padding:0 0 0 16px;">
         <div style="font-size:8px;color:rgba(255,48,96,0.6);letter-spacing:2px;margin-bottom:4px;text-transform:uppercase;">Fees Paid</div>
         <div style="font-family:var(--mono);font-size:18px;font-weight:800;color:var(--red);" id="vtTotalFees">—</div>
-        <div style="font-size:8px;color:rgba(255,255,255,0.2);margin-top:2px;font-family:var(--mono);">0.07% taker/side</div>
+        <div style="font-size:8px;color:rgba(255,255,255,0.2);margin-top:2px;font-family:var(--mono);">0.07%×2 incl. in P&amp;L</div>
       </div>
       <div style="margin-left:auto;font-size:8px;color:var(--muted);font-family:var(--mono);letter-spacing:1px;text-align:right;padding-left:12px;">
         BUY→SELL cycle assumed<br><span style="color:rgba(13,255,140,0.4);">compounding on</span>
@@ -2621,7 +2621,7 @@ async function refreshVirtualTracker() {
         </div>
         <!-- Fees row -->
         <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:rgba(255,48,96,0.05);border:1px solid rgba(255,48,96,0.1);border-radius:6px;margin-bottom:8px;">
-          <span style="font-size:8px;color:rgba(255,48,96,0.55);letter-spacing:1.5px;font-family:var(--mono);">FEES PAID</span>
+          <span style="font-size:8px;color:rgba(255,48,96,0.55);letter-spacing:1.5px;font-family:var(--mono);">FEES (incl. in P&amp;L)</span>
           <span id="vtFeesCoin_${sym}" style="font-family:var(--mono);font-size:11px;font-weight:700;color:rgba(255,96,96,0.8);">-${(info.total_fees||0).toFixed(4)} USDC</span>
         </div>
         ${inPosHtml}

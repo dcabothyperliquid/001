@@ -783,7 +783,7 @@ def _vt_load():
 
 # Hyperliquid spot base tier fees (taker = market order, which bot uses)
 _VT_TAKER_FEE = 0.00070   # 0.07% per side (buy = market IOC)
-_VT_MAKER_FEE = 0.00000   # 0.00% maker (sell = GTC limit bracket orders)
+_VT_MAKER_FEE = 0.00070   # 0.07% (sell = SL/TP/signal all fire as market/IOC = taker)
 
 # Virtual Tracker — configurable risk params (same defaults as real bot)
 VT_SL_PCT    = 1.5   # Stop Loss: % below entry price
@@ -832,12 +832,13 @@ def _vt_on_sell(symbol, price, exit_reason='signal'):
         peak_price = entry.get('peak_price', buy_price)   # ATH since buy
 
         gross_out  = round(amount * price, 6)
-        sell_fee   = round(gross_out * _VT_MAKER_FEE, 6)   # sell = GTC limit bracket (maker = 0%)
-        fund_out   = round(gross_out - sell_fee, 4)          # buy_fee already deducted at buy time
+        sell_fee   = round(gross_out * _VT_MAKER_FEE, 6)    # sell = taker (SL/TP/signal = market IOC)
+        fund_out   = round(gross_out - sell_fee, 4)          # net after sell fee
         total_fee  = round(buy_fee + sell_fee, 6)
-
-        pnl_gross  = round(gross_out - fund_in, 4)          # before fees
-        pnl_usdt   = round(fund_out  - fund_in, 4)          # after both fees (real P&L)
+        # fund_in is post-buy-fee capital; recover original to get true net PnL vs what we started with
+        original_fund = round(fund_in + buy_fee, 6)
+        pnl_gross  = round(gross_out - original_fund, 4)    # price move only, before any fees
+        pnl_usdt   = round(fund_out  - original_fund, 4)    # true net P&L after BOTH buy+sell fees
         pnl_pct    = round((price - buy_price) / buy_price * 100, 2)
         peak_pct   = round((peak_price - buy_price) / buy_price * 100, 2)  # max pump %
 
