@@ -900,12 +900,11 @@ def _vt_get_summary():
                 # If price unavailable, leave unrealized_pnl as None (UI shows "...")
                 if live_price and op.get('amount') and op.get('buy_price'):
                     gross_live     = round(op['amount'] * live_price, 6)
-                    sell_fee_est   = round(gross_live * _VT_MAKER_FEE, 6)
-                    live_fund      = round(gross_live - sell_fee_est, 4)
                     # original_fund = capital deployed before buy fee deducted
                     _buy_fee_op    = op.get('buy_fee', round(op['fund'] * _VT_TAKER_FEE / (1 - _VT_TAKER_FEE), 6))
                     original_fund  = round(op['fund'] + _buy_fee_op, 6)
-                    unrealized_pnl = round(live_fund - original_fund, 4)   # true net P&L vs capital deployed
+                    # Unrealized P&L = price move only (buy fee already paid, sell fee not yet incurred)
+                    unrealized_pnl = round(gross_live - original_fund, 4)
                     unrealized_pct = round((live_price - op['buy_price']) / op['buy_price'] * 100, 3)
 
             display_fund = live_fund if (in_pos and live_price) else cur_fund
