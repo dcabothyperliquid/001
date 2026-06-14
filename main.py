@@ -2625,8 +2625,8 @@ def live_positions():
         g = _np.where(d>0, d, 0.0); l = _np.where(d<0, -d, 0.0)
         ag = float(_np.mean(g[:period])); al = float(_np.mean(l[:period]))
         for i in range(period, len(g)):
-            ag = (ag*(period-1)+g[i])/period; al = (al*(period-1)+l[i])/period
-        return round(100.0-(100.0/(1.0+ag/al)), 1) if al > 0 else 100.0
+            ag = float((ag*(period-1)+g[i])/period); al = float((al*(period-1)+l[i])/period)
+        return float(round(100.0-(100.0/(1.0+ag/al)), 1)) if al > 0 else 100.0
 
     with _vt_lock:
         out = []
@@ -2680,8 +2680,8 @@ def live_positions():
                         'ema9':     [round(v, 6) for v in ema9_t],
                         'ema21':    [round(v, 6) for v in ema21_t],
                         'rsi':      rsi3,
-                        'ema_bull': ema9_all[-1] > ema21_all[-1],
-                        'rsi_ok':   35 <= rsi3 <= 68,
+                        'ema_bull': bool(ema9_all[-1] > ema21_all[-1]),
+                        'rsi_ok':   bool(35 <= rsi3 <= 68),
                     }
             except Exception:
                 pass
