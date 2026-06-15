@@ -2180,7 +2180,7 @@ class BotEngine:
         Confirmation (support/EMA/volume) is done AFTER signal in _process_coin.
         """
         if not candles or len(candles) < 35:
-            return 'neutral', 50.0, 'neutral', False, 0.0
+            return 'neutral', 50.0, 'neutral', False, 0.0, 'sideways'
 
         closes  = [float(c[4]) for c in candles]
         volumes = [float(c[5]) for c in candles]
@@ -2200,7 +2200,7 @@ class BotEngine:
         sig_ln  = ema(macd_ln, 9)
 
         if len(macd_ln) < 2 or len(sig_ln) < 2:
-            return 'neutral', rsi_now, 'neutral', vol_sig, atr
+            return 'neutral', rsi_now, 'neutral', vol_sig, atr, 'sideways'
 
         hist_now     = macd_ln[-1] - sig_ln[-1]
         macd_sig_str = 'bullish' if hist_now > 0 else ('bearish' if hist_now < 0 else 'neutral')
@@ -2223,14 +2223,24 @@ class BotEngine:
             return 'sell', rsi_now, macd_sig_str, vol_sig, atr
 
         # Uptrend check: last candle made a higher high than previous candle
-        highs = [float(c[2]) for c in candles]
+        highs  = [float(c[2]) for c in candles]
+        lows   = [float(c[3]) for c in candles]
         higher_high = highs[-1] > highs[-2]
+        lower_low   = lows[-1] < lows[-2]
+
+        # trend_dir: uptrend / downtrend / sideways
+        if higher_high and not lower_low:
+            trend_dir = 'uptrend'
+        elif lower_low and not higher_high:
+            trend_dir = 'downtrend'
+        else:
+            trend_dir = 'sideways'
 
         # BUY: MACD bull cross + RSI in range + uptrend (higher high) only — no layers here
         if macd_bull_cross and 10 <= rsi_now <= 80 and higher_high:
-            return 'buy', rsi_now, macd_sig_str, vol_sig, atr
+            return 'buy', rsi_now, macd_sig_str, vol_sig, atr, trend_dir
 
-        return 'neutral', rsi_now, macd_sig_str, vol_sig, atr
+        return 'neutral', rsi_now, macd_sig_str, vol_sig, atr, trend_dir
 
     def _mtf_scan(self, symbol: str) -> dict:
         tf_results  = {}
@@ -2250,12 +2260,12 @@ class BotEngine:
             candles = candle_cache.get(symbol, tf)
             if not candles:
                 tf_results[tf] = {'signal': 'neutral', 'score': 0, 'rsi': 50.0,
-                                  'macd': 'neutral', 'vol': False, 'atr': 0.0}
+                                  'macd': 'neutral', 'vol': False, 'atr': 0.0, 'trend_dir': 'sideways'}
                 continue
-            signal, rsi, macd, vol, atr = self._signal_for_candles(candles)
+            signal, rsi, macd, vol, atr, trend_dir = self._signal_for_candles(candles)
             score = SIGNAL_SCORES.get(signal, 0)
             tf_results[tf] = {'signal': signal, 'score': score, 'rsi': rsi,
-                              'macd': macd, 'vol': vol, 'atr': atr}
+                              'macd': macd, 'vol': vol, 'atr': atr, 'trend_dir': trend_dir}
 
         # Simple rule: jis TF pe signal mile trade karo.
         # Agar dono buy + sell hon to highest TF (HTF-priority) wala wins.
@@ -2298,6 +2308,7 @@ class BotEngine:
                 'tf_results': tf_results,
                 'buy_tfs': buy_tfs, 'sell_tfs': sell_tfs,
                 'rsi': best['rsi'], 'macd_signal': best['macd'], 'volume_signal': best['vol'],
+                'trend_dir': best.get('trend_dir', 'sideways'),
                 'signal': direction if direction != 'neutral' else 'neutral'}
 
     # ── Market data (for REST API) ────────────────────────────────────────────
@@ -2312,7 +2323,7 @@ class BotEngine:
                     'volume_signal': mtf['volume_signal'], 'signal': mtf['signal'],
                     'mtf_score': mtf['total_score'], 'best_timeframe': mtf['best_timeframe'],
                     'confidence': mtf['confidence'], 'capital_pct': mtf['capital_pct'],
-                    'tf_breakdown': mtf['tf_breakdown']}
+                    'tf_breakdown': mtf['tf_breakdown'], 'trend_dir': mtf.get('trend_dir','sideways')}
         except Exception as e:
             logger.error(f"Market data error {symbol}: {e}")
             return {'price':0,'rsi':50,'macd_signal':'neutral','volume_signal':False,
