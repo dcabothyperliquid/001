@@ -2052,6 +2052,7 @@ class BotEngine:
                         'mtf_score': market.get('mtf_score', 0),
                         'best_timeframe': market.get('best_timeframe','N/A'),
                         'confidence': market.get('confidence','low'),
+                        'trend_dir': market.get('trend_dir', 'sideways'),
                         'holding': total_held, 'avg_entry': avg_entry,
                         'pnl_pct': round(pnl, 2),
                         'peak_price': holding.get('peak_price',0) if holding else 0}
@@ -2060,7 +2061,8 @@ class BotEngine:
                 return {**self.coins.get(sym,{}),
                         'price':0,'rsi':50,'macd_signal':'neutral','volume_signal':False,
                         'signal':'neutral','mtf_score':0,'best_timeframe':'N/A',
-                        'confidence':'low','holding':0,'avg_entry':0,'pnl_pct':0,'peak_price':0}
+                        'confidence':'low','trend_dir':'sideways',
+                        'holding':0,'avg_entry':0,'pnl_pct':0,'peak_price':0}
 
         with ThreadPoolExecutor(max_workers=min(len(syms), 20)) as ex:
             results = list(ex.map(_fetch, syms))
