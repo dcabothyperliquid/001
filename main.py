@@ -2219,9 +2219,6 @@ class BotEngine:
         macd_bull_cross = _bull_cross_recent(macd_ln, sig_ln)
         macd_bear_cross = _bear_cross_recent(macd_ln, sig_ln)
 
-        if macd_bear_cross and rsi_now > 52:
-            return 'sell', rsi_now, macd_sig_str, vol_sig, atr
-
         # Uptrend check: last candle made a higher high than previous candle
         highs  = [float(c[2]) for c in candles]
         lows   = [float(c[3]) for c in candles]
@@ -2235,6 +2232,9 @@ class BotEngine:
             trend_dir = 'downtrend'
         else:
             trend_dir = 'sideways'
+
+        if macd_bear_cross and rsi_now > 52:
+            return 'sell', rsi_now, macd_sig_str, vol_sig, atr, trend_dir
 
         # BUY: MACD bull cross + RSI in range + uptrend (higher high) only — no layers here
         if macd_bull_cross and 10 <= rsi_now <= 80 and higher_high:
