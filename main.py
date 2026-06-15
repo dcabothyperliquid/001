@@ -2259,8 +2259,8 @@ class BotEngine:
             tf_results[tf] = {'signal': signal, 'score': score, 'rsi': rsi,
                               'macd': macd, 'vol': vol, 'atr': atr}
 
-        # Highest-priority TF with a clear signal wins
-        # Conflict check: if HTF says sell but LTF says buy → skip (wait for alignment)
+        # Simple rule: jis TF pe signal mile trade karo.
+        # Agar dono buy + sell hon to highest TF (HTF-priority) wala wins.
         direction  = 'neutral'
         confidence = 'low'
         best_tf    = None
@@ -2269,23 +2269,17 @@ class BotEngine:
         buy_tfs  = [tf for tf in active_sorted if tf_results[tf]['signal'] == 'buy']
         sell_tfs = [tf for tf in active_sorted if tf_results[tf]['signal'] == 'sell']
 
-        if buy_tfs and not sell_tfs:
-            # Clean buy — no conflicting sell signal on any TF
-            best_tf    = buy_tfs[0]   # highest priority TF with buy
-            direction  = 'buy'
-            confidence = 'high' if len(buy_tfs) > 1 else 'medium'
-        elif sell_tfs and not buy_tfs:
-            best_tf    = sell_tfs[0]
-            direction  = 'sell'
-            confidence = 'high' if len(sell_tfs) > 1 else 'medium'
-        elif buy_tfs and sell_tfs:
-            # Conflict — HTF signal overrides LTF
+        if buy_tfs or sell_tfs:
             htf_buy  = TF_PRIORITY.index(buy_tfs[0])  if buy_tfs  else 99
             htf_sell = TF_PRIORITY.index(sell_tfs[0]) if sell_tfs else 99
-            if htf_buy < htf_sell:
-                best_tf = buy_tfs[0]; direction = 'buy'; confidence = 'low'
+            if htf_buy <= htf_sell:
+                best_tf   = buy_tfs[0]
+                direction = 'buy'
+                confidence = 'high' if len(buy_tfs) > 1 else 'medium'
             else:
-                best_tf = sell_tfs[0]; direction = 'sell'; confidence = 'low'
+                best_tf   = sell_tfs[0]
+                direction = 'sell'
+                confidence = 'high' if len(sell_tfs) > 1 else 'medium'
 
         if best_tf is None:
             # Fallback: pick highest active TF as reference
