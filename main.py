@@ -1422,41 +1422,63 @@ class AsyncEngine:
                 macd_now  = tf_res.get('macd', 'neutral')
                 vol_now   = tf_res.get('vol', False)
                 self.bot._push_event('signal',
-                    f"SIGNAL — {symbol} @ ${price:.6f} | TF={best_tf} | RSI={rsi_now:.1f} | MACD={macd_now} | VOL={'Y' if vol_now else 'N'}",
+                    f"📶 SIGNAL — {symbol} @ ${price:.6f} | TF={best_tf} | RSI={rsi_now:.1f} | MACD={macd_now}",
                     {'symbol': symbol, 'price': price, 'tf': best_tf,
                      'rsi': rsi_now, 'macd': macd_now, 'vol': vol_now,
                      'score': mtf_score, 'confidence': confidence,
                      'step': 'signal'})
 
-                # ── Push SUPPORT CHECK event — Step 2 ─────────────────────────
+                # ── Step 2: Confirmation checks — Support, EMA9>EMA21, Volume ──
                 candles_best = candle_cache.get(symbol, best_tf) or []
                 support_lvl  = self.bot._find_support_zone(candles_best, lookback=20) if len(candles_best) >= 5 else None
-                if support_lvl:
-                    dist_pct  = (price - support_lvl) / support_lvl * 100
-                    near_sup  = dist_pct <= 1.5
-                    ema9_arr = ema21_arr = []
-                    if len(candles_best) >= 22:
-                        closes_b  = [float(c[4]) for c in candles_best]
-                        ema9_arr  = _ema_fn(closes_b, 9)
-                        ema21_arr = _ema_fn(closes_b, 21)
-                    ema_bull_now = bool(ema9_arr and ema21_arr and ema9_arr[-1] > ema21_arr[-1])
-                    layers = sum([near_sup, ema_bull_now, bool(vol_now)])
-                    self.bot._push_event('support_check',
-                        f"SUPPORT CHECK — {symbol} | Support=${support_lvl:.6f} | Dist={dist_pct:.2f}% | Near={'Y' if near_sup else 'N'} | EMA={'Y' if ema_bull_now else 'N'} | Vol={'Y' if vol_now else 'N'} | Layers={layers}/3",
+                near_sup     = False
+                dist_pct     = 0.0
+                if support_lvl and support_lvl > 0:
+                    dist_pct = (price - support_lvl) / support_lvl * 100
+                    near_sup = dist_pct <= 1.5
+
+                ema9_arr = ema21_arr = []
+                if len(candles_best) >= 22:
+                    closes_b  = [float(c[4]) for c in candles_best]
+                    ema9_arr  = _ema_fn(closes_b, 9)
+                    ema21_arr = _ema_fn(closes_b, 21)
+                ema_bull_now = bool(ema9_arr and ema21_arr and ema9_arr[-1] > ema21_arr[-1])
+
+                layers_ok = sum([near_sup, ema_bull_now, bool(vol_now)])
+
+                # Push confirmation check event to UI
+                self.bot._push_event('support_check',
+                    f"🔍 CHECK — {symbol} | Support={'✅' if near_sup else '❌'}({dist_pct:.1f}%) | EMA={'✅' if ema_bull_now else '❌'} | Vol={'✅' if vol_now else '❌'} | {layers_ok}/3 passed",
+                    {'symbol': symbol, 'price': price, 'tf': best_tf,
+                     'support': support_lvl, 'dist_pct': round(dist_pct, 3),
+                     'near_support': near_sup, 'ema_bull': ema_bull_now,
+                     'vol_ok': bool(vol_now), 'layers': layers_ok,
+                     'step': 'support_check'})
+
+                # ── Step 3: BUY or SKIP decision ─────────────────────────────
+                _confirm_ok = layers_ok >= 2
+
+                if not _confirm_ok:
+                    # Build skip reason
+                    skip_reasons = []
+                    if not near_sup:
+                        skip_reasons.append(f"Support door ({dist_pct:.1f}%)")
+                    if not ema_bull_now:
+                        skip_reasons.append("EMA9<EMA21 (trend nahi)")
+                    if not vol_now:
+                        skip_reasons.append("Volume weak")
+                    skip_msg = " | ".join(skip_reasons) if skip_reasons else "Confirmation fail"
+                    self.bot._push_event('warn',
+                        f"⛔ SKIP — {symbol} @ ${price:.6f} | TF={best_tf} | {skip_msg}",
                         {'symbol': symbol, 'price': price, 'tf': best_tf,
-                         'support': support_lvl, 'dist_pct': round(dist_pct, 3),
-                         'near_support': near_sup, 'ema_bull': ema_bull_now,
-                         'vol_ok': bool(vol_now), 'layers': layers,
-                         'step': 'support_check'})
+                         'skip_reasons': skip_reasons, 'layers': layers_ok,
+                         'step': 'skip'})
+                    direction = 'neutral'  # block actual buy below
 
             # ── Same-TF Momentum Confirmation ─────────────────────────────────
-            # Confirm on the SAME TF that fired the signal (not fixed 3m)
-            # EMA9 > EMA21 on best_tf = short-term momentum is up
-            # This is already checked inside _signal_for_candles (Layer 2)
-            # Here we just set the flag — always True since logic is inside signal fn
-            _3m_momentum_ok = True   # momentum confirmed inside _signal_for_candles
-            if direction == 'buy':
-                logger.info(f"[momentum-filter] {symbol} TF={best_tf} — confirmed inside signal logic")
+            # direction already set to 'neutral' if confirmation failed (SKIP path above)
+            _3m_momentum_ok = True
+            _buy_confirmed  = (direction == 'buy')
 
             # Virtual tracker — BUY/SELL cycle with SL / TP / Trailing Stop
             vt_pos = _vt_fund.get(symbol, {})
@@ -1497,7 +1519,7 @@ class AsyncEngine:
                 # Cooldown: wait at least 60s after last sell before re-buying same coin
                 _vt_last_sell = _vt_fund.get(symbol, {}).get('last_sell_ts', 0)
                 _vt_cooldown_ok = (__import__('time').time() - _vt_last_sell) >= 60
-                if direction == 'buy' and _vt_cooldown_ok and _3m_momentum_ok:
+                if _buy_confirmed and _vt_cooldown_ok and _3m_momentum_ok:
                     _coin_capital = self.bot.coins.get(symbol, {}).get('compound_capital',
                                     self.bot.coins.get(symbol, {}).get('capital', _VT_INITIAL))
                     _vt_on_buy(symbol, price, best_tf, initial_fund=_coin_capital)
@@ -1542,7 +1564,7 @@ class AsyncEngine:
                 # 60s cooldown after sell before re-buying same coin
                 _last_sell = self.bot.holdings.get(symbol, {}).get('last_sell_ts', 0)
                 _cooldown_ok = (__import__('time').time() - _last_sell) >= 60
-                if direction == 'buy' and trade_cap > 0 and _cooldown_ok and _3m_momentum_ok:
+                if _buy_confirmed and trade_cap > 0 and _cooldown_ok and _3m_momentum_ok:
                     await self._run_order(self.bot._execute_buy, symbol, trade_cap, price,
                                           f'signal_buy_{best_tf}')
 
@@ -2152,20 +2174,16 @@ class BotEngine:
 
     def _signal_for_candles(self, candles):
         """
-        Entry Logic:
-        1. MACD bull cross + RSI filter (base signal)
-        2. Support zone check — price within 1.5% of support (good entry zone)
-        3. Momentum confirm — EMA9 > EMA21 on same TF (trend up)
-        4. Volume spike confirm
-        BUY:  All 4 conditions met
-        SELL: MACD bear cross + RSI elevated
+        Signal Detection (pure):
+        BUY:  MACD bull cross (last 2 candles) + RSI 28-60
+        SELL: MACD bear cross (last 2 candles) + RSI > 52
+        Confirmation (support/EMA/volume) is done AFTER signal in _process_coin.
         """
         if not candles or len(candles) < 35:
             return 'neutral', 50.0, 'neutral', False, 0.0
 
         closes  = [float(c[4]) for c in candles]
         volumes = [float(c[5]) for c in candles]
-        price   = closes[-1]
 
         rsi_now = self._calc_rsi(closes)
         atr     = self._calc_atr(candles)
@@ -2178,8 +2196,6 @@ class BotEngine:
 
         ema_f   = ema(closes, 12)
         ema_s   = ema(closes, 26)
-        ema9    = ema(closes, 9)
-        ema21   = ema(closes, 21)
         macd_ln = [f - s for f, s in zip(ema_f, ema_s)]
         sig_ln  = ema(macd_ln, 9)
 
@@ -2189,7 +2205,6 @@ class BotEngine:
         hist_now     = macd_ln[-1] - sig_ln[-1]
         macd_sig_str = 'bullish' if hist_now > 0 else ('bearish' if hist_now < 0 else 'neutral')
 
-        # ── MACD cross detection — 2 candle window (fresh crosses only) ──
         def _bull_cross_recent(ml, sl, window=2):
             for i in range(1, min(window+1, len(ml))):
                 if ml[-(i+1)] <= sl[-(i+1)] and ml[-i] > sl[-i]:
@@ -2204,33 +2219,12 @@ class BotEngine:
         macd_bull_cross = _bull_cross_recent(macd_ln, sig_ln)
         macd_bear_cross = _bear_cross_recent(macd_ln, sig_ln)
 
-        # ── SELL: MACD bear cross + RSI elevated ──
         if macd_bear_cross and rsi_now > 52:
             return 'sell', rsi_now, macd_sig_str, vol_sig, atr
 
-        # ── BUY: 4-layer confirmation ──
+        # BUY: MACD bull cross + RSI in range only — no layers here
         if macd_bull_cross and 28 <= rsi_now <= 60:
-
-            # Layer 1 — Support zone check
-            # Price should be within 1.5% above support (good entry zone near base)
-            support      = self._find_support_zone(candles, lookback=20)
-            dist_from_sup = (price - support) / support * 100  # % above support
-            near_support  = dist_from_sup <= 1.5               # within 1.5% of support
-
-            # Layer 2 — Momentum: EMA9 > EMA21 on same TF (short-term trend up)
-            ema_momentum  = ema9[-1] > ema21[-1]
-
-            # Layer 3 — Volume spike (money flowing in)
-            volume_ok     = vol_sig
-
-            # All 3 layers must pass for a clean entry
-            if near_support and ema_momentum and volume_ok:
-                return 'buy', rsi_now, macd_sig_str, vol_sig, atr
-
-            # Partial confirm — 2 out of 3 layers pass (looser entry)
-            layers_passed = sum([near_support, ema_momentum, volume_ok])
-            if layers_passed >= 2:
-                return 'buy', rsi_now, macd_sig_str, vol_sig, atr
+            return 'buy', rsi_now, macd_sig_str, vol_sig, atr
 
         return 'neutral', rsi_now, macd_sig_str, vol_sig, atr
 
