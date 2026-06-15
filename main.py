@@ -2235,14 +2235,11 @@ class BotEngine:
         else:
             trend_dir = 'sideways'
 
-        # SELL: MACD currently bearish (matches red ▼ shown on card) + RSI > 52
-        if (macd_sig_str == 'bearish' or macd_bear_cross) and rsi_now > 52:
+        if macd_bear_cross and rsi_now > 52:
             return 'sell', rsi_now, macd_sig_str, vol_sig, atr, trend_dir
 
-        # BUY: MACD currently bullish (matches green ▲ shown on card) + RSI in range + uptrend
-        # (previously required a FRESH cross within last 2 candles — that's why cards
-        #  showed all-green but stayed NEUTRAL once the cross moved out of that window)
-        if (macd_sig_str == 'bullish' or macd_bull_cross) and 10 <= rsi_now <= 80 and higher_high:
+        # BUY: MACD bull cross + RSI in range + uptrend (higher high) only — no layers here
+        if macd_bull_cross and 10 <= rsi_now <= 80 and higher_high:
             return 'buy', rsi_now, macd_sig_str, vol_sig, atr, trend_dir
 
         return 'neutral', rsi_now, macd_sig_str, vol_sig, atr, trend_dir
@@ -2305,14 +2302,11 @@ class BotEngine:
         total_score = best['score']
         capital_pct = 1.0 if direction == 'buy' else 0.0
 
-        # trend_dir: use best_tf value, but fallback to any TF with real candle data
+        # trend_dir: ALWAYS best_tf's own value — must stay consistent with RSI/MACD/signal
+        # (a cross-TF fallback here used to show a 'green' trend from a different TF than
+        #  the one actually checked for the BUY/SELL signal, which looked like everything
+        #  was green while the real best_tf trend was sideways — so BUY never fired)
         trend_dir_final = best.get('trend_dir', 'sideways')
-        if trend_dir_final == 'sideways':
-            for tf in active_sorted:
-                td = tf_results.get(tf, {}).get('trend_dir', 'sideways')
-                if td != 'sideways':
-                    trend_dir_final = td
-                    break
 
         return {'total_score': total_score, 'confidence': confidence,
                 'direction': direction, 'best_timeframe': best_tf,
