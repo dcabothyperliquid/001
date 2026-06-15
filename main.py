@@ -2175,7 +2175,7 @@ class BotEngine:
     def _signal_for_candles(self, candles):
         """
         Signal Detection (pure):
-        BUY:  MACD bull cross (last 2 candles) + RSI 28-60
+        BUY:  MACD bull cross (last 2 candles) + RSI 28-75
         SELL: MACD bear cross (last 2 candles) + RSI > 52
         Confirmation (support/EMA/volume) is done AFTER signal in _process_coin.
         """
@@ -2223,7 +2223,7 @@ class BotEngine:
             return 'sell', rsi_now, macd_sig_str, vol_sig, atr
 
         # BUY: MACD bull cross + RSI in range only — no layers here
-        if macd_bull_cross and 28 <= rsi_now <= 60:
+        if macd_bull_cross and 28 <= rsi_now <= 75:
             return 'buy', rsi_now, macd_sig_str, vol_sig, atr
 
         return 'neutral', rsi_now, macd_sig_str, vol_sig, atr
