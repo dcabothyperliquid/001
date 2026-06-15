@@ -2221,11 +2221,15 @@ class BotEngine:
         macd_bull_cross = _bull_cross_recent(macd_ln, sig_ln)
         macd_bear_cross = _bear_cross_recent(macd_ln, sig_ln)
 
-        # Uptrend check: last candle made a higher high than previous candle
+        # Trend check: current candle vs recent swing (last 3 candles) — more stable
+        # than comparing against just the single previous candle, which flips to
+        # 'sideways' on almost any inside/outside bar (this is why ETH/SOL showed '–')
         highs  = [float(c[2]) for c in candles]
         lows   = [float(c[3]) for c in candles]
-        higher_high = highs[-1] > highs[-2]
-        lower_low   = lows[-1] < lows[-2]
+        recent_highs = highs[-4:-1]
+        recent_lows  = lows[-4:-1]
+        higher_high = highs[-1] > max(recent_highs) if recent_highs else False
+        lower_low   = lows[-1] < min(recent_lows) if recent_lows else False
 
         # trend_dir: uptrend / downtrend / sideways
         if higher_high and not lower_low:
