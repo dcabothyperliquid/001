@@ -2235,11 +2235,15 @@ class BotEngine:
         else:
             trend_dir = 'sideways'
 
-        if macd_bear_cross and rsi_now > 52:
+        # SELL: MACD currently bearish (matches red ▼ on card) OR fresh bear cross + RSI elevated
+        if (macd_sig_str == 'bearish' or macd_bear_cross) and rsi_now > 52:
             return 'sell', rsi_now, macd_sig_str, vol_sig, atr, trend_dir
 
-        # BUY: MACD bull cross + RSI in range + uptrend (higher high) only — no layers here
-        if macd_bull_cross and 10 <= rsi_now <= 80 and higher_high:
+        # BUY: MACD currently bullish (matches green ▲ on card) OR fresh bull cross
+        #      + RSI in range + uptrend (higher high)
+        # (previously required a FRESH cross within 2 candles only — once MACD stayed
+        #  bullish past that window, cards showed all-green but BUY never re-fired)
+        if (macd_sig_str == 'bullish' or macd_bull_cross) and 10 <= rsi_now <= 80 and higher_high:
             return 'buy', rsi_now, macd_sig_str, vol_sig, atr, trend_dir
 
         return 'neutral', rsi_now, macd_sig_str, vol_sig, atr, trend_dir
