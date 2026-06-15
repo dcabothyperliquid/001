@@ -1456,7 +1456,7 @@ class AsyncEngine:
                      'step': 'support_check'})
 
                 # ── Step 3: BUY or SKIP decision ─────────────────────────────
-                _confirm_ok = layers_ok >= 1
+                _confirm_ok = layers_ok >= 2
 
                 if not _confirm_ok:
                     # Build skip reason
