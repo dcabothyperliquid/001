@@ -1456,7 +1456,7 @@ class AsyncEngine:
                      'step': 'support_check'})
 
                 # ── Step 3: BUY or SKIP decision ─────────────────────────────
-                _confirm_ok = layers_ok >= 2
+                _confirm_ok = layers_ok >= 1
 
                 if not _confirm_ok:
                     # Build skip reason
@@ -2302,6 +2302,15 @@ class BotEngine:
         total_score = best['score']
         capital_pct = 1.0 if direction == 'buy' else 0.0
 
+        # trend_dir: use best_tf value, but fallback to any TF with real candle data
+        trend_dir_final = best.get('trend_dir', 'sideways')
+        if trend_dir_final == 'sideways':
+            for tf in active_sorted:
+                td = tf_results.get(tf, {}).get('trend_dir', 'sideways')
+                if td != 'sideways':
+                    trend_dir_final = td
+                    break
+
         return {'total_score': total_score, 'confidence': confidence,
                 'direction': direction, 'best_timeframe': best_tf,
                 'capital_pct': capital_pct, 'atr': best_atr,
@@ -2310,7 +2319,7 @@ class BotEngine:
                 'tf_results': tf_results,
                 'buy_tfs': buy_tfs, 'sell_tfs': sell_tfs,
                 'rsi': best['rsi'], 'macd_signal': best['macd'], 'volume_signal': best['vol'],
-                'trend_dir': best.get('trend_dir', 'sideways'),
+                'trend_dir': trend_dir_final,
                 'signal': direction if direction != 'neutral' else 'neutral'}
 
     # ── Market data (for REST API) ────────────────────────────────────────────

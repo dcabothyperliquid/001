@@ -1363,6 +1363,7 @@ function ingestEvents(events) {
       time:    ev.time   || '',
     };
     notifications.unshift(notif);
+    _ingestFlowEvent(notif);  // feed signal flow tracker
     if (cat === 'critical') addedCritical++;
     addedAny = true;
   }
