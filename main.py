@@ -1428,14 +1428,21 @@ class AsyncEngine:
                      'score': mtf_score, 'confidence': confidence,
                      'step': 'signal'})
 
-                # ── Step 2: Confirmation checks — Support, EMA9>EMA21, Volume ──
+                # ── Step 2: Confirmation checks — Momentum (ROC), EMA9>EMA21, Volume ──
+                # (Support-zone distance check removed — it almost always failed because
+                #  BUY only fires after price has already moved away from the recent low,
+                #  making 'near support' structurally incompatible with the BUY condition.
+                #  Replaced with a momentum check: price must show genuine recent upward
+                #  rate-of-change, so we don't buy right as momentum is fading/reversing.)
                 candles_best = candle_cache.get(symbol, best_tf) or []
-                support_lvl  = self.bot._find_support_zone(candles_best, lookback=20) if len(candles_best) >= 5 else None
-                near_sup     = False
-                dist_pct     = 0.0
-                if support_lvl and support_lvl > 0:
-                    dist_pct = (price - support_lvl) / support_lvl * 100
-                    near_sup = dist_pct <= 1.5
+                roc_pct      = 0.0
+                momentum_ok  = False
+                if len(candles_best) >= 4:
+                    closes_recent = [float(c[4]) for c in candles_best]
+                    prev_close    = closes_recent[-3]
+                    if prev_close:
+                        roc_pct = (closes_recent[-1] - prev_close) / prev_close * 100
+                    momentum_ok = roc_pct > 0
 
                 ema9_arr = ema21_arr = []
                 if len(candles_best) >= 22:
@@ -1444,14 +1451,14 @@ class AsyncEngine:
                     ema21_arr = _ema_fn(closes_b, 21)
                 ema_bull_now = bool(ema9_arr and ema21_arr and ema9_arr[-1] > ema21_arr[-1])
 
-                layers_ok = sum([near_sup, ema_bull_now, bool(vol_now)])
+                layers_ok = sum([momentum_ok, ema_bull_now, bool(vol_now)])
 
                 # Push confirmation check event to UI
                 self.bot._push_event('support_check',
-                    f"🔍 CHECK — {symbol} | Support={'✅' if near_sup else '❌'}({dist_pct:.1f}%) | EMA={'✅' if ema_bull_now else '❌'} | Vol={'✅' if vol_now else '❌'} | {layers_ok}/3 passed",
+                    f"🔍 CHECK — {symbol} | Momentum={'✅' if momentum_ok else '❌'}({roc_pct:.2f}%) | EMA={'✅' if ema_bull_now else '❌'} | Vol={'✅' if vol_now else '❌'} | {layers_ok}/3 passed",
                     {'symbol': symbol, 'price': price, 'tf': best_tf,
-                     'support': support_lvl, 'dist_pct': round(dist_pct, 3),
-                     'near_support': near_sup, 'ema_bull': ema_bull_now,
+                     'roc_pct': round(roc_pct, 3),
+                     'momentum_ok': momentum_ok, 'ema_bull': ema_bull_now,
                      'vol_ok': bool(vol_now), 'layers': layers_ok,
                      'step': 'support_check'})
 
@@ -1461,8 +1468,8 @@ class AsyncEngine:
                 if not _confirm_ok:
                     # Build skip reason
                     skip_reasons = []
-                    if not near_sup:
-                        skip_reasons.append(f"Support door ({dist_pct:.1f}%)")
+                    if not momentum_ok:
+                        skip_reasons.append(f"Momentum weak ({roc_pct:.2f}%)")
                     if not ema_bull_now:
                         skip_reasons.append("EMA9<EMA21 (trend nahi)")
                     if not vol_now:

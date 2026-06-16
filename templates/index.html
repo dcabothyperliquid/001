@@ -1085,8 +1085,8 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
         <div style="font-size:7px;color:var(--muted);font-family:var(--mono);margin-top:1px;">MACD+RSI</div>
       </div>
       <div style="background:rgba(160,96,255,0.07);padding:7px 10px;text-align:center;">
-        <div style="font-size:8px;color:#a060ff;font-family:var(--mono);letter-spacing:1.5px;font-weight:700;">② SUPPORT</div>
-        <div style="font-size:7px;color:var(--muted);font-family:var(--mono);margin-top:1px;">ZONE CHECK</div>
+        <div style="font-size:8px;color:#a060ff;font-family:var(--mono);letter-spacing:1.5px;font-weight:700;">② MOMENTUM</div>
+        <div style="font-size:7px;color:var(--muted);font-family:var(--mono);margin-top:1px;">ROC CHECK</div>
       </div>
       <div style="background:rgba(255,176,32,0.07);padding:7px 10px;text-align:center;">
         <div style="font-size:8px;color:var(--amber);font-family:var(--mono);letter-spacing:1.5px;font-weight:700;">③ ORDER</div>
@@ -2502,7 +2502,7 @@ function _renderTradeFlow() {
     // Step details
     const sigDetail = step1done ? `${sig.tf||'?'} · RSI ${(sig.rsi||0).toFixed(1)} · MACD ${sig.macd||'—'} · Vol ${sig.vol?'✓':'✗'}` : '';
     const supDetail = step2done
-      ? `Support ${fmtP(sup.support)} · Dist ${(sup.dist_pct||0).toFixed(2)}% · ${sup.layers||0}/3 layers · Near ${sup.near_support?'✓':'✗'} · EMA ${sup.ema_bull?'✓':'✗'}`
+      ? `Momentum ROC ${(sup.roc_pct||0).toFixed(2)}% · ${sup.layers||0}/3 layers · Mom ${sup.momentum_ok?'✓':'✗'} · EMA ${sup.ema_bull?'✓':'✗'}`
       : (step1done ? 'Checking…' : '');
     const ordDetail = step3done ? `${ord.mode||'SIM'} · ${fmtP(ord.price)} · $${(ord.usdt||0).toFixed(2)} USDC` : (step2done ? 'Placing…' : '');
     const buyDetail = step4done ? `LIVE @ ${fmtP(buy.price||sig.price)}` : (step3done ? 'Filling…' : '');
@@ -2519,7 +2519,7 @@ function _renderTradeFlow() {
           <span style="font-family:var(--mono);font-size:13px;font-weight:900;color:#fff;">${sym}</span>
           ${step4done ? '<span style="font-size:7px;background:rgba(13,255,140,0.15);color:#0dff8c;border:1px solid rgba(13,255,140,0.4);padding:1px 6px;border-radius:4px;font-family:var(--mono);font-weight:700;">● LIVE TRADE</span>' :
             step3done ? '<span style="font-size:7px;background:rgba(255,176,32,0.12);color:#ffb020;border:1px solid rgba(255,176,32,0.3);padding:1px 6px;border-radius:4px;font-family:var(--mono);">ORDER PLACED</span>' :
-            step2done ? '<span style="font-size:7px;background:rgba(160,96,255,0.1);color:#a060ff;border:1px solid rgba(160,96,255,0.3);padding:1px 6px;border-radius:4px;font-family:var(--mono);">SUPPORT CHECK</span>' :
+            step2done ? '<span style="font-size:7px;background:rgba(160,96,255,0.1);color:#a060ff;border:1px solid rgba(160,96,255,0.3);padding:1px 6px;border-radius:4px;font-family:var(--mono);">MOMENTUM CHECK</span>' :
             '<span style="font-size:7px;background:rgba(13,240,224,0.08);color:var(--cyan);border:1px solid rgba(13,240,224,0.25);padding:1px 6px;border-radius:4px;font-family:var(--mono);">SIGNAL</span>'}
           <span style="font-size:7px;color:rgba(160,96,255,0.7);font-family:var(--mono);background:rgba(160,96,255,0.08);padding:1px 5px;border-radius:3px;">${sig.tf||'?'}</span>
         </div>
@@ -2544,7 +2544,7 @@ function _renderTradeFlow() {
         <div style="display:flex;flex-direction:column;gap:3px;">
           <div style="display:flex;align-items:center;gap:4px;">
             ${stepDot(step2done, step1done, '#a060ff')}
-            <span style="font-size:7px;color:${step2done?'#a060ff':step1done?'rgba(160,96,255,0.5)':'var(--muted)'};font-family:var(--mono);font-weight:${step2done?'700':'400'};">② SUPPORT</span>
+            <span style="font-size:7px;color:${step2done?'#a060ff':step1done?'rgba(160,96,255,0.5)':'var(--muted)'};font-family:var(--mono);font-weight:${step2done?'700':'400'};">② MOMENTUM</span>
           </div>
           <div style="font-size:6.5px;color:${step2done?'rgba(200,220,232,0.7)':'var(--muted)'};font-family:var(--mono);line-height:1.4;padding-left:12px;">${supDetail||'—'}</div>
         </div>
