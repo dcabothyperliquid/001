@@ -2227,13 +2227,12 @@ class BotEngine:
         macd_bull_cross = _bull_cross_recent(macd_ln, sig_ln)
         macd_bear_cross = _bear_cross_recent(macd_ln, sig_ln)
 
-        # SELL: MACD currently bearish (matches red ▼ on card) OR fresh bear cross + RSI elevated
-        if (macd_sig_str == 'bearish' or macd_bear_cross) and rsi_now > 52:
+        # SELL: fresh bear cross only + RSI elevated (state alone nahi — warna ghanton sell rehta)
+        if macd_bear_cross and rsi_now > 52:
             return 'sell', rsi_now, macd_sig_str, vol_sig, atr
 
-        # BUY: MACD currently bullish (matches green ▲ on card) OR fresh bull cross + RSI in range
-        # (trend/uptrend condition removed per request — only MACD state + RSI now)
-        if (macd_sig_str == 'bullish' or macd_bull_cross) and 10 <= rsi_now <= 80:
+        # BUY: fresh bull cross only + RSI in range (state alone nahi — warna ghanton buy rehta)
+        if macd_bull_cross and 10 <= rsi_now <= 80:
             return 'buy', rsi_now, macd_sig_str, vol_sig, atr
 
         return 'neutral', rsi_now, macd_sig_str, vol_sig, atr
