@@ -1877,8 +1877,7 @@ function rsiColor(r) {
   return 'var(--muted2)';
 }
 function macdIcon(s) { return s === 'bullish' ? '▲' : s === 'bearish' ? '▼' : '–'; }
-function trendIcon(t) { return t === 'uptrend' ? '▲' : t === 'downtrend' ? '▼' : '–'; }
-function trendColor(t) { return t === 'uptrend' ? '#0dff8c' : t === 'downtrend' ? '#ff3060' : '#8896aa'; }
+
 // ═══════════════════════════════════════════════════════════════
 // RENDER COINS
 // ═══════════════════════════════════════════════════════════════
@@ -1917,10 +1916,6 @@ function _buildCoinCard(c) {
       <div class="cc-met">
         <span class="met-label">MACD</span>
         <span class="met-val" id="lm-macd-${sym}">${macdIcon(c.macd_signal)}</span>
-      </div>
-      <div class="cc-met">
-        <span class="met-label">TREND</span>
-        <span class="met-val" id="lm-trend-${sym}" style="color:${trendColor(c.trend_dir)}">${trendIcon(c.trend_dir)}</span>
       </div>
       <div class="cc-met" style="flex-direction:column;align-items:flex-start;gap:2px;">
         <span class="met-label">CAP</span>
@@ -2019,9 +2014,6 @@ function renderCoins(coins) {
     // MACD
     const macdEl = document.getElementById(`lm-macd-${sym}`);
     if (macdEl) { macdEl.innerHTML = macdIcon(c.macd_signal); macdEl.className = `met-val ${c.macd_signal==='bullish'?'c-up':c.macd_signal==='bearish'?'c-dn':''}`; }
-    // TREND
-    const trendEl = document.getElementById(`lm-trend-${sym}`);
-    if (trendEl) { trendEl.innerHTML = trendIcon(c.trend_dir); trendEl.style.color = trendColor(c.trend_dir); }
     // CAP
     set(`lm-cap-${sym}`, `$${c.capital||0}`);
 

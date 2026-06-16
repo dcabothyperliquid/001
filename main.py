@@ -2052,7 +2052,6 @@ class BotEngine:
                         'mtf_score': market.get('mtf_score', 0),
                         'best_timeframe': market.get('best_timeframe','N/A'),
                         'confidence': market.get('confidence','low'),
-                        'trend_dir': market.get('trend_dir', 'sideways'),
                         'holding': total_held, 'avg_entry': avg_entry,
                         'pnl_pct': round(pnl, 2),
                         'peak_price': holding.get('peak_price',0) if holding else 0}
@@ -2061,7 +2060,7 @@ class BotEngine:
                 return {**self.coins.get(sym,{}),
                         'price':0,'rsi':50,'macd_signal':'neutral','volume_signal':False,
                         'signal':'neutral','mtf_score':0,'best_timeframe':'N/A',
-                        'confidence':'low','trend_dir':'sideways',
+                        'confidence':'low',
                         'holding':0,'avg_entry':0,'pnl_pct':0,'peak_price':0}
 
         with ThreadPoolExecutor(max_workers=min(len(syms), 20)) as ex:
@@ -2182,7 +2181,7 @@ class BotEngine:
         Confirmation (support/EMA/volume) is done AFTER signal in _process_coin.
         """
         if not candles or len(candles) < 35:
-            return 'neutral', 50.0, 'neutral', False, 0.0, 'sideways'
+            return 'neutral', 50.0, 'neutral', False, 0.0
 
         closes  = [float(c[4]) for c in candles]
         volumes = [float(c[5]) for c in candles]
@@ -2202,7 +2201,7 @@ class BotEngine:
         sig_ln  = ema(macd_ln, 9)
 
         if len(macd_ln) < 2 or len(sig_ln) < 2:
-            return 'neutral', rsi_now, 'neutral', vol_sig, atr, 'sideways'
+            return 'neutral', rsi_now, 'neutral', vol_sig, atr
 
         hist_now     = macd_ln[-1] - sig_ln[-1]
         macd_sig_str = 'bullish' if hist_now > 0 else ('bearish' if hist_now < 0 else 'neutral')
@@ -2221,36 +2220,16 @@ class BotEngine:
         macd_bull_cross = _bull_cross_recent(macd_ln, sig_ln)
         macd_bear_cross = _bear_cross_recent(macd_ln, sig_ln)
 
-        # Trend check: current candle vs recent swing (last 3 candles) — more stable
-        # than comparing against just the single previous candle, which flips to
-        # 'sideways' on almost any inside/outside bar (this is why ETH/SOL showed '–')
-        highs  = [float(c[2]) for c in candles]
-        lows   = [float(c[3]) for c in candles]
-        recent_highs = highs[-4:-1]
-        recent_lows  = lows[-4:-1]
-        higher_high = highs[-1] > max(recent_highs) if recent_highs else False
-        lower_low   = lows[-1] < min(recent_lows) if recent_lows else False
-
-        # trend_dir: uptrend / downtrend / sideways
-        if higher_high and not lower_low:
-            trend_dir = 'uptrend'
-        elif lower_low and not higher_high:
-            trend_dir = 'downtrend'
-        else:
-            trend_dir = 'sideways'
-
         # SELL: MACD currently bearish (matches red ▼ on card) OR fresh bear cross + RSI elevated
         if (macd_sig_str == 'bearish' or macd_bear_cross) and rsi_now > 52:
-            return 'sell', rsi_now, macd_sig_str, vol_sig, atr, trend_dir
+            return 'sell', rsi_now, macd_sig_str, vol_sig, atr
 
-        # BUY: MACD currently bullish (matches green ▲ on card) OR fresh bull cross
-        #      + RSI in range + uptrend (higher high)
-        # (previously required a FRESH cross within 2 candles only — once MACD stayed
-        #  bullish past that window, cards showed all-green but BUY never re-fired)
-        if (macd_sig_str == 'bullish' or macd_bull_cross) and 10 <= rsi_now <= 80 and higher_high:
-            return 'buy', rsi_now, macd_sig_str, vol_sig, atr, trend_dir
+        # BUY: MACD currently bullish (matches green ▲ on card) OR fresh bull cross + RSI in range
+        # (trend/uptrend condition removed per request — only MACD state + RSI now)
+        if (macd_sig_str == 'bullish' or macd_bull_cross) and 10 <= rsi_now <= 80:
+            return 'buy', rsi_now, macd_sig_str, vol_sig, atr
 
-        return 'neutral', rsi_now, macd_sig_str, vol_sig, atr, trend_dir
+        return 'neutral', rsi_now, macd_sig_str, vol_sig, atr
 
     def _mtf_scan(self, symbol: str) -> dict:
         tf_results  = {}
@@ -2270,12 +2249,12 @@ class BotEngine:
             candles = candle_cache.get(symbol, tf)
             if not candles:
                 tf_results[tf] = {'signal': 'neutral', 'score': 0, 'rsi': 50.0,
-                                  'macd': 'neutral', 'vol': False, 'atr': 0.0, 'trend_dir': 'sideways'}
+                                  'macd': 'neutral', 'vol': False, 'atr': 0.0}
                 continue
-            signal, rsi, macd, vol, atr, trend_dir = self._signal_for_candles(candles)
+            signal, rsi, macd, vol, atr = self._signal_for_candles(candles)
             score = SIGNAL_SCORES.get(signal, 0)
             tf_results[tf] = {'signal': signal, 'score': score, 'rsi': rsi,
-                              'macd': macd, 'vol': vol, 'atr': atr, 'trend_dir': trend_dir}
+                              'macd': macd, 'vol': vol, 'atr': atr}
 
         # Simple rule: jis TF pe signal mile trade karo.
         # Agar dono buy + sell hon to highest TF (HTF-priority) wala wins.
@@ -2310,12 +2289,6 @@ class BotEngine:
         total_score = best['score']
         capital_pct = 1.0 if direction == 'buy' else 0.0
 
-        # trend_dir: ALWAYS best_tf's own value — must stay consistent with RSI/MACD/signal
-        # (a cross-TF fallback here used to show a 'green' trend from a different TF than
-        #  the one actually checked for the BUY/SELL signal, which looked like everything
-        #  was green while the real best_tf trend was sideways — so BUY never fired)
-        trend_dir_final = best.get('trend_dir', 'sideways')
-
         return {'total_score': total_score, 'confidence': confidence,
                 'direction': direction, 'best_timeframe': best_tf,
                 'capital_pct': capital_pct, 'atr': best_atr,
@@ -2324,7 +2297,6 @@ class BotEngine:
                 'tf_results': tf_results,
                 'buy_tfs': buy_tfs, 'sell_tfs': sell_tfs,
                 'rsi': best['rsi'], 'macd_signal': best['macd'], 'volume_signal': best['vol'],
-                'trend_dir': trend_dir_final,
                 'signal': direction if direction != 'neutral' else 'neutral'}
 
     # ── Market data (for REST API) ────────────────────────────────────────────
@@ -2339,7 +2311,7 @@ class BotEngine:
                     'volume_signal': mtf['volume_signal'], 'signal': mtf['signal'],
                     'mtf_score': mtf['total_score'], 'best_timeframe': mtf['best_timeframe'],
                     'confidence': mtf['confidence'], 'capital_pct': mtf['capital_pct'],
-                    'tf_breakdown': mtf['tf_breakdown'], 'trend_dir': mtf.get('trend_dir','sideways')}
+                    'tf_breakdown': mtf['tf_breakdown']}
         except Exception as e:
             logger.error(f"Market data error {symbol}: {e}")
             return {'price':0,'rsi':50,'macd_signal':'neutral','volume_signal':False,
