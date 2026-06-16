@@ -2176,8 +2176,8 @@ class BotEngine:
     def _signal_for_candles(self, candles):
         """
         Signal Detection (pure):
-        BUY:  MACD bull cross (last 2 candles) + RSI 10-80 + Higher High (uptrend confirm)
-        SELL: MACD bear cross (last 2 candles) + RSI > 52
+        BUY:  MACD bullish state OR fresh bull cross (last 2 candles) + RSI 10-80
+        SELL: MACD bearish state OR fresh bear cross (last 2 candles) + RSI > 52
         Confirmation (support/EMA/volume) is done AFTER signal in _process_coin.
         """
         if not candles or len(candles) < 35:
