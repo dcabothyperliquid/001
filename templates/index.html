@@ -55,7 +55,7 @@ body.day {
   --purple:   #6b3fbd;
   --text:     #0f1923;
   --muted:    #8896aa;
-  --muted2:   #6070848;
+  --muted2:   #607084;
   --header-bg: rgba(255,255,255,0.97);
   --scanline: transparent;
   --glow-top: transparent;
@@ -1078,7 +1078,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
         </div>
         <button onclick="clearLiveAlerts()" style="font-family:var(--mono);font-size:7px;color:rgba(255,255,255,0.25);background:transparent;border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:2px 7px;cursor:pointer;letter-spacing:1px;">CLEAR</button>
       </div>
-      <div id="liveAlertsList" style="max-height:180px;overflow-y:auto;padding:4px 0;scrollbar-width:thin;scrollbar-color:rgba(13,240,224,0.2) transparent;">
+      <div id="liveAlertsList" style="max-height:220px;overflow-y:auto;padding:4px 0;scrollbar-width:thin;scrollbar-color:rgba(13,240,224,0.2) transparent;">
         <div style="padding:14px;text-align:center;font-family:var(--mono);font-size:8px;color:rgba(255,255,255,0.15);letter-spacing:2px;">NO ALERTS YET</div>
       </div>
     </div>
@@ -2719,10 +2719,10 @@ function clearLiveAlerts() {
   _renderAlerts();
 }
 
-// Hook into existing toastRich to also add to Live Alerts
+// Hook into existing toastRich — redirect fully to Live Alerts box, no more
+// bottom-right corner popups (those used to overlap the UI and take space)
 const _origToastRich = toastRich;
 window.toastRich = function(title, sub, type='ok') {
-  _origToastRich(title, sub, type);
   // Map toast types to alert types
   const alertType = type === 'buy' ? 'buy' : type === 'sell' ? 'sell' : type === 'err' ? 'err' : type === 'warn' ? 'warn' : 'ok';
   addLiveAlert(title, sub, alertType);
