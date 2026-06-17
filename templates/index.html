@@ -1086,50 +1086,62 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
 
   <!-- LIVE TRADE FLOW + LIVE POSITIONS — side-by-side tab accordion -->
   <div style="margin-bottom:14px;" id="tradeFlowSec">
-    <!-- Tab switcher -->
-    <div style="display:flex;align-items:center;gap:0;margin-bottom:8px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.07);background:rgba(255,255,255,0.02);">
-      <button id="tabFlowBtn" onclick="switchSbsTab('flow')" style="flex:1;padding:8px 10px;font-family:var(--mono);font-size:8px;font-weight:800;letter-spacing:1.5px;cursor:pointer;border:none;background:rgba(13,240,224,0.1);color:#0df0e0;border-right:1px solid rgba(255,255,255,0.07);transition:all .18s;display:flex;align-items:center;justify-content:center;gap:5px;">
-        <span class="dot blink" style="background:#0df0e0;width:5px;height:5px;display:inline-block;border-radius:50%;"></span>LIVE FLOW
-      </button>
-      <button id="tabPosBtn" onclick="switchSbsTab('pos')" style="flex:1;padding:8px 10px;font-family:var(--mono);font-size:8px;font-weight:800;letter-spacing:1.5px;cursor:pointer;border:none;background:transparent;color:rgba(255,255,255,0.3);transition:all .18s;display:flex;align-items:center;justify-content:center;gap:5px;">
-        <span class="dot" style="background:rgba(0,255,136,0.5);width:5px;height:5px;display:inline-block;border-radius:50%;"></span>POSITIONS
-        <span id="posTabCount" style="font-size:7px;background:rgba(0,255,136,0.12);border:1px solid rgba(0,255,136,0.25);border-radius:10px;padding:0 5px;color:#00ff88;display:none;">0</span>
-      </button>
+    <div class="sec-head" style="margin-bottom:8px;">
+      <div class="sec-title">
+        <div class="bar" style="background:linear-gradient(180deg,#0df0e0,#3090ff);"></div>
+        LIVE TRADE FLOW
+      </div>
+      <span style="font-size:8px;color:var(--cyan);font-family:var(--mono);letter-spacing:1px;display:flex;align-items:center;gap:4px;">
+        <span class="dot blink" style="background:var(--cyan);"></span>REAL-TIME
+      </span>
     </div>
 
-    <!-- Coin filter tabs -->
-    <div id="sbsCoinTabs" style="display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:5px;margin-bottom:8px;scrollbar-width:none;-webkit-overflow-scrolling:touch;min-height:26px;"></div>
+    <!-- Coin filter tabs — click a coin to show only its card (accordion) -->
+    <div id="flowCoinTabs" style="display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:5px;margin-bottom:8px;scrollbar-width:none;-webkit-overflow-scrolling:touch;min-height:24px;"></div>
 
-    <!-- FLOW PANEL -->
-    <div id="sbsFlowPanel">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:1px;margin-bottom:8px;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.06);">
-        <div style="background:rgba(13,240,224,0.07);padding:7px 10px;text-align:center;">
-          <div style="font-size:8px;color:var(--cyan);font-family:var(--mono);letter-spacing:1.5px;font-weight:700;">① SIGNAL</div>
-          <div style="font-size:7px;color:var(--muted);font-family:var(--mono);margin-top:1px;">MACD+RSI</div>
-        </div>
-        <div style="background:rgba(160,96,255,0.07);padding:7px 10px;text-align:center;">
-          <div style="font-size:8px;color:#a060ff;font-family:var(--mono);letter-spacing:1.5px;font-weight:700;">② MOMENTUM</div>
-          <div style="font-size:7px;color:var(--muted);font-family:var(--mono);margin-top:1px;">ROC CHECK</div>
-        </div>
-        <div style="background:rgba(255,176,32,0.07);padding:7px 10px;text-align:center;">
-          <div style="font-size:8px;color:var(--amber);font-family:var(--mono);letter-spacing:1.5px;font-weight:700;">③ ORDER</div>
-          <div style="font-size:7px;color:var(--muted);font-family:var(--mono);margin-top:1px;">PLACED</div>
-        </div>
-        <div style="background:rgba(13,255,140,0.07);padding:7px 10px;text-align:center;">
-          <div style="font-size:8px;color:var(--green);font-family:var(--mono);letter-spacing:1.5px;font-weight:700;">④ TRADE</div>
-          <div style="font-size:7px;color:var(--muted);font-family:var(--mono);margin-top:1px;">LIVE</div>
-        </div>
+    <!-- Flow steps header -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:1px;margin-bottom:8px;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.06);">
+      <div style="background:rgba(13,240,224,0.07);padding:7px 10px;text-align:center;">
+        <div style="font-size:8px;color:var(--cyan);font-family:var(--mono);letter-spacing:1.5px;font-weight:700;">① SIGNAL</div>
+        <div style="font-size:7px;color:var(--muted);font-family:var(--mono);margin-top:1px;">MACD+RSI</div>
       </div>
-      <div id="tradeFlowCards" style="display:flex;flex-direction:column;gap:6px;">
-        <div style="padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);font-size:9px;color:var(--muted);font-family:var(--mono);text-align:center;letter-spacing:1.5px;">WAITING FOR SIGNALS…</div>
+      <div style="background:rgba(160,96,255,0.07);padding:7px 10px;text-align:center;">
+        <div style="font-size:8px;color:#a060ff;font-family:var(--mono);letter-spacing:1.5px;font-weight:700;">② MOMENTUM</div>
+        <div style="font-size:7px;color:var(--muted);font-family:var(--mono);margin-top:1px;">ROC CHECK</div>
+      </div>
+      <div style="background:rgba(255,176,32,0.07);padding:7px 10px;text-align:center;">
+        <div style="font-size:8px;color:var(--amber);font-family:var(--mono);letter-spacing:1.5px;font-weight:700;">③ ORDER</div>
+        <div style="font-size:7px;color:var(--muted);font-family:var(--mono);margin-top:1px;">PLACED</div>
+      </div>
+      <div style="background:rgba(13,255,140,0.07);padding:7px 10px;text-align:center;">
+        <div style="font-size:8px;color:var(--green);font-family:var(--mono);letter-spacing:1.5px;font-weight:700;">④ TRADE</div>
+        <div style="font-size:7px;color:var(--muted);font-family:var(--mono);margin-top:1px;">LIVE</div>
       </div>
     </div>
 
-    <!-- POSITIONS PANEL -->
-    <div id="sbsPosPanel" style="display:none;">
-      <div id="livePosCards" style="display:flex;flex-direction:column;gap:6px;">
-        <div style="padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);font-size:9px;color:var(--muted);font-family:var(--mono);text-align:center;letter-spacing:1.5px;">NO OPEN POSITIONS</div>
+    <!-- Per-coin flow cards (accordion - only selected coin shows) -->
+    <div id="tradeFlowCards" style="display:flex;flex-direction:column;gap:6px;">
+      <div style="padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);font-size:9px;color:var(--muted);font-family:var(--mono);text-align:center;letter-spacing:1.5px;">WAITING FOR SIGNALS…</div>
+    </div>
+  </div>
+
+  <!-- LIVE POSITIONS -->
+  <div style="margin-bottom:14px;" id="livePosSec">
+    <div class="sec-head" style="margin-bottom:8px;">
+      <div class="sec-title">
+        <div class="bar" style="background:linear-gradient(180deg,#00ff88,#00cc55);"></div>
+        LIVE POSITIONS
       </div>
+      <span style="font-size:8px;color:var(--green);font-family:var(--mono);letter-spacing:1px;display:flex;align-items:center;gap:4px;">
+        <span class="dot green blink"></span>OPEN TRADES
+      </span>
+    </div>
+
+    <!-- Coin filter tabs — click a coin to show only its position (accordion) -->
+    <div id="posCoinTabs" style="display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:5px;margin-bottom:8px;scrollbar-width:none;-webkit-overflow-scrolling:touch;min-height:24px;"></div>
+
+    <div id="livePosCards" style="display:flex;flex-direction:column;gap:6px;">
+      <div style="padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);font-size:9px;color:var(--muted);font-family:var(--mono);text-align:center;letter-spacing:1.5px;">NO OPEN POSITIONS</div>
     </div>
   </div>
 
@@ -2593,56 +2605,19 @@ function _renderTradeFlow() {
   }).join('');
 }
 
-// (setInterval moved below, after coin-filter patch is applied)
+// ── INDEPENDENT COIN ACCORDION FILTERS — Live Flow & Live Positions ─────────
+let _flowActiveCoin = 'ALL';   // coin name or 'ALL', for LIVE TRADE FLOW section
+let _posActiveCoin  = 'ALL';   // coin name or 'ALL', for LIVE POSITIONS section
 
-// ── SIDE-BY-SIDE TAB + COIN FILTER ───────────────────────────────────────────
-let _sbsActiveTab  = 'flow';   // 'flow' or 'pos'
-let _sbsActiveCoin = 'ALL';    // coin name or 'ALL'
-
-function switchSbsTab(tab) {
-  _sbsActiveTab = tab;
-  const flowBtn  = document.getElementById('tabFlowBtn');
-  const posBtn   = document.getElementById('tabPosBtn');
-  const flowPanel = document.getElementById('sbsFlowPanel');
-  const posPanel  = document.getElementById('sbsPosPanel');
-
-  if (tab === 'flow') {
-    flowBtn.style.background = 'rgba(13,240,224,0.1)';
-    flowBtn.style.color      = '#0df0e0';
-    posBtn.style.background  = 'transparent';
-    posBtn.style.color       = 'rgba(255,255,255,0.3)';
-    flowPanel.style.display  = 'block';
-    posPanel.style.display   = 'none';
-  } else {
-    posBtn.style.background  = 'rgba(0,255,136,0.1)';
-    posBtn.style.color       = '#00ff88';
-    flowBtn.style.background = 'transparent';
-    flowBtn.style.color      = 'rgba(255,255,255,0.3)';
-    flowPanel.style.display  = 'none';
-    posPanel.style.display   = 'block';
-  }
-  _updateCoinTabs();
-}
-
-function _updateCoinTabs() {
-  const tabsEl = document.getElementById('sbsCoinTabs');
+function _updateFlowCoinTabs() {
+  const tabsEl = document.getElementById('flowCoinTabs');
   if (!tabsEl) return;
-
-  // Collect coins from active panel
-  let coins = [];
-  if (_sbsActiveTab === 'flow') {
-    coins = Object.keys(_tradeFlow).sort();
-  } else {
-    // from _posCache (live positions)
-    coins = Object.keys(_posCache || {}).sort();
-  }
-
+  const coins = Object.keys(_tradeFlow || {}).sort();
   if (!coins.length) { tabsEl.innerHTML = ''; return; }
-
   const allCoins = ['ALL', ...coins];
   tabsEl.innerHTML = allCoins.map(c => {
-    const active = c === _sbsActiveCoin;
-    return `<button onclick="selectSbsCoin('${c}')" style="
+    const active = c === _flowActiveCoin;
+    return `<button onclick="selectFlowCoin('${c}')" style="
       flex-shrink:0;padding:3px 10px;font-family:var(--mono);font-size:7px;font-weight:700;
       letter-spacing:1px;cursor:pointer;border-radius:6px;transition:all .15s;
       background:${active ? 'rgba(13,240,224,0.15)' : 'rgba(255,255,255,0.04)'};
@@ -2652,27 +2627,62 @@ function _updateCoinTabs() {
   }).join('');
 }
 
-function selectSbsCoin(coin) {
-  _sbsActiveCoin = coin;
-  _updateCoinTabs();
-  if (_sbsActiveTab === 'flow') _renderTradeFlow();
-  else refreshLivePositions();
+function selectFlowCoin(coin) {
+  _flowActiveCoin = coin;
+  _updateFlowCoinTabs();
+  _applyFlowCoinFilter();
 }
 
-// Patch _renderTradeFlow to filter by selected coin
+function _applyFlowCoinFilter() {
+  const el = document.getElementById('tradeFlowCards');
+  if (!el) return;
+  const cards = el.querySelectorAll('[data-coin]');
+  cards.forEach(card => {
+    card.style.display = (_flowActiveCoin === 'ALL' || card.dataset.coin === _flowActiveCoin) ? '' : 'none';
+  });
+}
+
+// Patch _renderTradeFlow to refresh coin tabs + re-apply filter after each render
 const _origRenderTradeFlow = _renderTradeFlow;
 window._renderTradeFlow = function() {
   _origRenderTradeFlow();
-  _updateCoinTabs();
-  // Apply coin filter on rendered cards
-  const el = document.getElementById('tradeFlowCards');
-  if (!el || _sbsActiveCoin === 'ALL') return;
-  const cards = el.querySelectorAll('[data-coin]');
-  cards.forEach(card => {
-    card.style.display = card.dataset.coin === _sbsActiveCoin ? '' : 'none';
-  });
+  _updateFlowCoinTabs();
+  _applyFlowCoinFilter();
 };
 setInterval(_renderTradeFlow, 3000);  // uses patched version since identifier resolves at call time
+
+function _updatePosCoinTabs() {
+  const tabsEl = document.getElementById('posCoinTabs');
+  if (!tabsEl) return;
+  const coins = Object.keys(_posCache || {}).sort();
+  if (!coins.length) { tabsEl.innerHTML = ''; return; }
+  const allCoins = ['ALL', ...coins];
+  tabsEl.innerHTML = allCoins.map(c => {
+    const active = c === _posActiveCoin;
+    return `<button onclick="selectPosCoin('${c}')" style="
+      flex-shrink:0;padding:3px 10px;font-family:var(--mono);font-size:7px;font-weight:700;
+      letter-spacing:1px;cursor:pointer;border-radius:6px;transition:all .15s;
+      background:${active ? 'rgba(0,255,136,0.15)' : 'rgba(255,255,255,0.04)'};
+      border:1px solid ${active ? 'rgba(0,255,136,0.5)' : 'rgba(255,255,255,0.08)'};
+      color:${active ? '#00ff88' : 'rgba(255,255,255,0.35)'};
+    ">${c}</button>`;
+  }).join('');
+}
+
+function selectPosCoin(coin) {
+  _posActiveCoin = coin;
+  _updatePosCoinTabs();
+  _applyPosCoinFilter();
+}
+
+function _applyPosCoinFilter() {
+  const el = document.getElementById('livePosCards');
+  if (!el) return;
+  const cards = el.querySelectorAll('[data-coin]');
+  cards.forEach(card => {
+    card.style.display = (_posActiveCoin === 'ALL' || card.dataset.coin === _posActiveCoin) ? '' : 'none';
+  });
+}
 
 // ── LIVE ALERTS BOX ───────────────────────────────────────────────────────────
 const _liveAlerts = [];
@@ -2695,21 +2705,21 @@ function _renderAlerts() {
   if (badge) badge.textContent = _liveAlerts.length + ' EVENT' + (_liveAlerts.length !== 1 ? 'S' : '');
 
   if (!_liveAlerts.length) {
-    list.innerHTML = '<div style="padding:14px;text-align:center;font-family:var(--mono);font-size:8px;color:rgba(255,255,255,0.15);letter-spacing:2px;">NO ALERTS YET</div>';
+    list.innerHTML = '<div class="empty-state" style="padding:14px;">NO ALERTS YET</div>';
     return;
   }
 
   list.innerHTML = _liveAlerts.map(a => {
-    const bg  = _alertColors[a.type]  || _alertColors.info;
     const bdr = _alertBorders[a.type] || _alertBorders.info;
+    const tagBg = _alertColors[a.type] || _alertColors.info;
     const icon = _alertIcons[a.type] || 'ℹ️';
-    return `<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 14px;border-left:2px solid ${bdr};background:${bg};margin:2px 4px;border-radius:0 6px 6px 0;">
-      <span style="font-size:11px;flex-shrink:0;margin-top:1px;">${icon}</span>
-      <div style="flex:1;min-width:0;">
-        <div style="font-family:var(--mono);font-size:8.5px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${a.title}</div>
-        ${a.sub ? `<div style="font-family:var(--mono);font-size:7px;color:rgba(200,220,232,0.55);margin-top:1px;">${a.sub}</div>` : ''}
+    return `<div style="display:flex;align-items:flex-start;gap:7px;padding:6px 12px;border-bottom:1px solid rgba(255,255,255,0.04);border-left:2px solid ${bdr};font-family:var(--mono);">
+      <span style="font-size:8px;color:var(--muted);min-width:48px;flex-shrink:0;margin-top:1px;">${a.time}</span>
+      <span style="font-size:10px;flex-shrink:0;margin-top:0px;">${icon}</span>
+      <div style="flex:1;min-width:0;overflow:hidden;">
+        <div style="font-size:10px;font-weight:700;color:var(--fg);word-break:break-word;">${a.title}</div>
+        ${a.sub ? `<div style="font-size:8.5px;color:var(--muted);margin-top:1px;word-break:break-word;">${a.sub}</div>` : ''}
       </div>
-      <span style="font-family:var(--mono);font-size:7px;color:rgba(255,255,255,0.2);flex-shrink:0;margin-top:2px;">${a.time}</span>
     </div>`;
   }).join('');
 }
@@ -2729,16 +2739,22 @@ window.toastRich = function(title, sub, type='ok') {
 };
 
 // Also hook into skip events from notifications — called from pollEvents
+const _seenAlertKeys = new Set();
 function _checkSkipAlerts(events) {
   if (!events || !Array.isArray(events)) return;
   for (const ev of events) {
+    const key = (ev.time || '') + '|' + (ev.message || '');
+    if (_seenAlertKeys.has(key)) continue;  // already shown, skip duplicate
     if (ev.type === 'skip' || (ev.message && ev.message.toLowerCase().includes('skip'))) {
-      addLiveAlert('⏭ SKIP — ' + (ev.data?.symbol || ev.message || 'Signal skipped'),
-        ev.data?.reason || ev.message || '', 'skip');
-    } else if (ev.type === 'monitor') {
-      // Optionally surface monitor events as info
-      // addLiveAlert(ev.message || 'Monitor', '', 'info');
+      _seenAlertKeys.add(key);
+      addLiveAlert('SKIP — ' + (ev.data?.symbol || ''), ev.message || ev.data?.reason || '', 'skip');
     }
+  }
+  // Keep the seen-set bounded so it doesn't grow forever
+  if (_seenAlertKeys.size > 500) {
+    const arr = Array.from(_seenAlertKeys);
+    _seenAlertKeys.clear();
+    arr.slice(-300).forEach(k => _seenAlertKeys.add(k));
   }
 }
 const _origPollEvents = window.pollEvents;
@@ -2765,13 +2781,7 @@ async function refreshLivePositions() {
 
     // Cache position data for TF chart switching
     pos.forEach(p => { _posCache[p.symbol] = p; });
-    // Update positions tab count badge
-    const posCount = document.getElementById('posTabCount');
-    if (posCount) {
-      posCount.textContent = pos.length;
-      posCount.style.display = pos.length > 0 ? 'inline' : 'none';
-    }
-    _updateCoinTabs();
+    _updatePosCoinTabs();
 
     el.innerHTML = pos.map(p => {
       const upnl     = p.unreal_pnl ?? 0;
@@ -3183,12 +3193,7 @@ function _updateLWChart(sym, ch, entry, sl, tp, livePrice) {
 const _origRefreshLivePositions = refreshLivePositions;
 window.refreshLivePositions = async function() {
   await _origRefreshLivePositions();
-  const el = document.getElementById('livePosCards');
-  if (el && _sbsActiveCoin !== 'ALL') {
-    el.querySelectorAll('[data-coin]').forEach(card => {
-      card.style.display = card.dataset.coin === _sbsActiveCoin ? '' : 'none';
-    });
-  }
+  _applyPosCoinFilter();
 };
 setInterval(refreshLivePositions, 2000);
 refreshLivePositions();
