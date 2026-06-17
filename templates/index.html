@@ -1078,7 +1078,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
         </div>
         <button onclick="clearLiveAlerts()" style="font-family:var(--mono);font-size:7px;color:rgba(255,255,255,0.25);background:transparent;border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:2px 7px;cursor:pointer;letter-spacing:1px;">CLEAR</button>
       </div>
-      <div id="liveAlertsList" style="max-height:220px;overflow-y:auto;padding:4px 0;scrollbar-width:thin;scrollbar-color:rgba(13,240,224,0.2) transparent;">
+      <div id="liveAlertsList" style="display:block;max-height:220px;overflow-y:auto;padding:4px 0;scrollbar-width:thin;scrollbar-color:rgba(13,240,224,0.2) transparent;">
         <div style="padding:14px;text-align:center;font-family:var(--mono);font-size:8px;color:rgba(255,255,255,0.15);letter-spacing:2px;">NO ALERTS YET</div>
       </div>
     </div>
@@ -2420,7 +2420,7 @@ async function refreshSignals() {
     } else {
       coinEl.innerHTML = coins.map(([sym, info]) => `
         <div style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:rgba(13,240,224,0.06);border:1px solid rgba(13,240,224,0.12);border-radius:20px;">
-          <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--fg);">${sym}</span>
+          <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--text);">${sym}</span>
           <span style="font-family:var(--mono);font-size:11px;font-weight:800;color:var(--cyan);">${info.count}</span>
           ${info.executed ? '<span style="font-size:7px;background:rgba(0,255,136,0.12);color:var(--green);padding:1px 4px;border-radius:3px;">✓</span>' : ''}
         </div>
@@ -2437,7 +2437,7 @@ async function refreshSignals() {
         const exec = s.executed ? '<span style="font-size:7px;background:rgba(0,255,136,0.12);color:var(--green);padding:1px 5px;border-radius:3px;">✓</span>' : '';
         return `<div style="display:flex;align-items:center;gap:7px;padding:5px 12px;border-bottom:1px solid rgba(255,255,255,0.04);font-family:var(--mono);">
           <span style="font-size:8px;color:var(--muted);min-width:48px;">${s.time}</span>
-          <span style="font-size:11px;font-weight:700;color:var(--fg);min-width:40px;">${s.symbol}</span>
+          <span style="font-size:11px;font-weight:700;color:var(--text);min-width:40px;">${s.symbol}</span>
           <span style="font-size:8px;background:rgba(0,255,136,0.08);color:var(--green);padding:1px 5px;border-radius:3px;letter-spacing:1px;">BUY</span>
           <span style="font-size:10px;color:var(--cyan);flex:1;">$${px}</span>
           <span style="font-size:8px;color:var(--muted);">${s.timeframe}</span>
@@ -2711,14 +2711,15 @@ function _renderAlerts() {
 
   list.innerHTML = _liveAlerts.map(a => {
     const bdr = _alertBorders[a.type] || _alertBorders.info;
-    const tagBg = _alertColors[a.type] || _alertColors.info;
     const icon = _alertIcons[a.type] || 'ℹ️';
-    return `<div style="display:flex;align-items:flex-start;gap:7px;padding:6px 12px;border-bottom:1px solid rgba(255,255,255,0.04);border-left:2px solid ${bdr};font-family:var(--mono);">
+    const title = (a.title || '').replace(/</g, '&lt;');
+    const sub = (a.sub || '').replace(/</g, '&lt;');
+    return `<div style="width:100%;box-sizing:border-box;display:flex;flex-direction:row;align-items:flex-start;gap:7px;padding:6px 12px;border-bottom:1px solid rgba(255,255,255,0.04);border-left:2px solid ${bdr};font-family:var(--mono);">
       <span style="font-size:8px;color:var(--muted);min-width:48px;flex-shrink:0;margin-top:1px;">${a.time}</span>
       <span style="font-size:10px;flex-shrink:0;margin-top:0px;">${icon}</span>
-      <div style="flex:1;min-width:0;overflow:hidden;">
-        <div style="font-size:10px;font-weight:700;color:var(--fg);word-break:break-word;">${a.title}</div>
-        ${a.sub ? `<div style="font-size:8.5px;color:var(--muted);margin-top:1px;word-break:break-word;">${a.sub}</div>` : ''}
+      <div style="flex:1 1 auto;min-width:0;overflow:hidden;">
+        <div style="font-size:10px;font-weight:700;color:var(--text);word-break:break-word;">${title}</div>
+        ${sub ? `<div style="font-size:8.5px;color:var(--muted);margin-top:1px;word-break:break-word;">${sub}</div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -2896,7 +2897,7 @@ async function refreshLivePositions() {
 
         <!-- Bottom row -->
         <div style="display:flex;align-items:center;justify-content:space-between;">
-          <div style="font-size:7px;color:var(--muted);font-family:var(--mono);">QTY <span style="color:var(--fg);font-weight:700;">${p.amount}</span> · FUND <span style="color:var(--fg);font-weight:700;">$${p.orig_fund}</span></div>
+          <div style="font-size:7px;color:var(--muted);font-family:var(--mono);">QTY <span style="color:var(--text);font-weight:700;">${p.amount}</span> · FUND <span style="color:var(--text);font-weight:700;">$${p.orig_fund}</span></div>
           <div style="font-size:7px;color:var(--muted);font-family:var(--mono);">PEAK <span style="color:#ffb800;font-weight:700;">$${fp(peak)}</span></div>
         </div>
       </div>`;
@@ -3295,7 +3296,7 @@ async function refreshVirtualTracker() {
 
         const upnl      = (info.unrealized_pnl !== null && info.unrealized_pnl !== undefined)
                             ? info.unrealized_pnl : null;
-        const upnlColor = upnl === null ? 'var(--fg)' : upnl >= 0 ? 'var(--green)' : 'var(--red)';
+        const upnlColor = upnl === null ? 'var(--text)' : upnl >= 0 ? 'var(--green)' : 'var(--red)';
         const upnlSign  = upnl !== null && upnl >= 0 ? '+' : '';
 
         const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -3375,7 +3376,7 @@ async function refreshVirtualTracker() {
                          ? info.unrealized_pnl : null;
       const upnlPct  = info.unrealized_pct ?? null;
       const livePrice= info.live_price ?? null;
-      const upnlColor = upnl === null ? 'var(--fg)' : upnl >= 0 ? 'var(--green)' : 'var(--red)';
+      const upnlColor = upnl === null ? 'var(--text)' : upnl >= 0 ? 'var(--green)' : 'var(--red)';
       const upnlSign  = upnl !== null && upnl >= 0 ? '+' : '';
       const fmtPrice  = p => p > 1 ? p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4}) : p?.toFixed(6) ?? '—';
 
@@ -3451,7 +3452,7 @@ async function refreshVirtualTracker() {
       <div class="cc-strip" onclick="toggleVtCard(this)" style="position:relative;">
         <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,${stripAccentColor},transparent);opacity:0.5;border-radius:10px 10px 0 0;"></div>
         ${inPosDot}
-        <span style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--fg);letter-spacing:0.5px;min-width:52px;">${sym}</span>
+        <span style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--text);letter-spacing:0.5px;min-width:52px;">${sym}</span>
         ${stripRightHtml}
         <span class="cc-chevron" style="font-size:10px;color:var(--muted);transition:transform 0.2s;">▾</span>
       </div>`;
@@ -3880,7 +3881,7 @@ function renderVtTrades(filterCoin) {
     const worstTrade = trades.reduce((w,t) => (t.pnl_usdt||0) < (w.pnl_usdt||0) ? t : w, trades[0]);
     const pnlColor = totalPnl >= 0 ? '#0dff8c' : '#ff4050';
     const pnlSign = totalPnl >= 0 ? '+' : '';
-    const statItem = (label, val, color='var(--fg)') =>
+    const statItem = (label, val, color='var(--text)') =>
       `<div style="flex:1;min-width:80px;padding:10px 14px;border-right:1px solid rgba(255,255,255,0.05);">
         <div style="font-size:7px;color:var(--muted);letter-spacing:1.5px;font-family:var(--mono);text-transform:uppercase;margin-bottom:4px;">${label}</div>
         <div style="font-size:12px;font-weight:700;color:${color};font-family:var(--mono);">${val}</div>
@@ -3888,7 +3889,7 @@ function renderVtTrades(filterCoin) {
     statsEl.innerHTML =
       statItem('Total P&L', pnlSign+'$'+(Math.abs(totalPnl)).toFixed(3), pnlColor) +
       statItem('Win Rate', winRate.toFixed(0)+'%', winRate>=50?'#0dff8c':'#ff4050') +
-      statItem('Trades', trades.length, 'var(--fg)') +
+      statItem('Trades', trades.length, 'var(--text)') +
       statItem('Wins', wins, '#0dff8c') +
       statItem('Losses', trades.length-wins, '#ff4050') +
       `<div style="flex:1;min-width:80px;padding:10px 14px;border-right:1px solid rgba(255,255,255,0.05);">
@@ -3953,7 +3954,7 @@ function renderVtTrades(filterCoin) {
     return `
       <div style="display:grid;grid-template-columns:2.8fr 2.4fr 2.4fr 1.4fr 2fr 1.8fr 2.6fr 2fr;padding:10px 14px;background:${rowBg};border-bottom:1px solid rgba(255,255,255,0.04);align-items:center;${leftBorder}">
         <div>
-          <div style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--fg);">${t.symbol}</div>
+          <div style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--text);">${t.symbol}</div>
           <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">${exitTag}<span style="font-size:7.5px;color:var(--muted);font-family:var(--mono);">${t.buy_time||''}</span></div>
         </div>
         <div>
