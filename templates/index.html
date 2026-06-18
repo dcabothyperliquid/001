@@ -1490,7 +1490,7 @@ function renderNotifList() {
           <span class="notif-chip">${chip}</span>
           <span class="notif-time">${t}</span>
         </div>
-        <div class="notif-msg">${n.message}</div>
+        <div class="notif-msg">${_escHtml(n.message)}</div>
         ${detail ? `<div class="notif-detail">${detail}</div>` : ''}
         ${pnlHtml}
       </div>
@@ -2614,8 +2614,7 @@ function _updateFlowCoinTabs() {
   if (!tabsEl) return;
   const coins = Object.keys(_tradeFlow || {}).sort();
   if (!coins.length) { tabsEl.innerHTML = ''; return; }
-  const allCoins = ['ALL', ...coins];
-  tabsEl.innerHTML = allCoins.map(c => {
+  tabsEl.innerHTML = coins.map(c => {
     const active = c === _flowActiveCoin;
     return `<button onclick="selectFlowCoin('${c}')" style="
       flex-shrink:0;padding:3px 10px;font-family:var(--mono);font-size:7px;font-weight:700;
@@ -2628,7 +2627,8 @@ function _updateFlowCoinTabs() {
 }
 
 function selectFlowCoin(coin) {
-  _flowActiveCoin = coin;
+  // Tapping the already-active coin toggles back to showing all
+  _flowActiveCoin = (_flowActiveCoin === coin) ? 'ALL' : coin;
   _updateFlowCoinTabs();
   _applyFlowCoinFilter();
 }
@@ -2656,8 +2656,7 @@ function _updatePosCoinTabs() {
   if (!tabsEl) return;
   const coins = Object.keys(_posCache || {}).sort();
   if (!coins.length) { tabsEl.innerHTML = ''; return; }
-  const allCoins = ['ALL', ...coins];
-  tabsEl.innerHTML = allCoins.map(c => {
+  tabsEl.innerHTML = coins.map(c => {
     const active = c === _posActiveCoin;
     return `<button onclick="selectPosCoin('${c}')" style="
       flex-shrink:0;padding:3px 10px;font-family:var(--mono);font-size:7px;font-weight:700;
@@ -2670,7 +2669,8 @@ function _updatePosCoinTabs() {
 }
 
 function selectPosCoin(coin) {
-  _posActiveCoin = coin;
+  // Tapping the already-active coin toggles back to showing all
+  _posActiveCoin = (_posActiveCoin === coin) ? 'ALL' : coin;
   _updatePosCoinTabs();
   _applyPosCoinFilter();
 }
@@ -2698,6 +2698,10 @@ function addLiveAlert(title, sub, type='info') {
   _renderAlerts();
 }
 
+function _escHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 function _renderAlerts() {
   const list = document.getElementById('liveAlertsList');
   const badge = document.getElementById('alertCountBadge');
@@ -2712,8 +2716,8 @@ function _renderAlerts() {
   list.innerHTML = _liveAlerts.map(a => {
     const bdr = _alertBorders[a.type] || _alertBorders.info;
     const icon = _alertIcons[a.type] || 'ℹ️';
-    const title = (a.title || '').replace(/</g, '&lt;');
-    const sub = (a.sub || '').replace(/</g, '&lt;');
+    const title = _escHtml(a.title);
+    const sub = _escHtml(a.sub);
     return `<div style="width:100%;box-sizing:border-box;display:flex;flex-direction:row;align-items:flex-start;gap:7px;padding:6px 12px;border-bottom:1px solid rgba(255,255,255,0.04);border-left:2px solid ${bdr};font-family:var(--mono);">
       <span style="font-size:8px;color:var(--muted);min-width:48px;flex-shrink:0;margin-top:1px;">${a.time}</span>
       <span style="font-size:10px;flex-shrink:0;margin-top:0px;">${icon}</span>
