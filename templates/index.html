@@ -1655,8 +1655,10 @@ function renderEvents() {
 }
 function clearEvents() { localEvents = []; renderEvents(); }
 
+let _lastEventTime = '';
 async function pollEvents() {
-  const data = await api('/events');
+  const q = _lastEventTime ? ('?since=' + encodeURIComponent(_lastEventTime)) : '';
+  const data = await api('/events' + q);
   if (data && Array.isArray(data)) {
     const existingKeys = new Set(localEvents.map(e => e.time + e.message));
     let added = false;
@@ -1665,12 +1667,11 @@ async function pollEvents() {
         localEvents.unshift(ev);
         added = true;
       }
+      if (ev.time && ev.time > _lastEventTime) _lastEventTime = ev.time;
     }
     if (localEvents.length > 500) localEvents = localEvents.slice(0,500);
     if (added) renderEvents();
-    _checkSkipAlerts(data);
-    // Feed into notification system
-    ingestEvents(data);
+    if (data.length) { _checkSkipAlerts(data); ingestEvents(data); }
   }
 }
 
@@ -2779,11 +2780,23 @@ function _fmtHeld(s) {
   return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
 }
 
+let _posPollCount = 0;
+let _posChartCache = {};  // symbol -> last-known chart_3m payload
 async function refreshLivePositions() {
   try {
-    const pos = await api('/live_positions');
+    _posPollCount++;
+    const wantChart = (_posPollCount % 4 === 1);  // full chart every 4th poll (~20s), light poll otherwise
+    const pos = await api('/live_positions' + (wantChart ? '' : '?chart=0'));
     const el  = document.getElementById('livePosCards');
     if (!el) return;
+
+    // Fill in cached chart for positions that came back without one this cycle
+    if (pos && Array.isArray(pos)) {
+      pos.forEach(p => {
+        if (p.chart_3m) _posChartCache[p.symbol] = p.chart_3m;
+        else if (_posChartCache[p.symbol]) p.chart_3m = _posChartCache[p.symbol];
+      });
+    }
 
     if (!pos || pos.length === 0) {
       el.innerHTML = '<div style="padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);font-size:9px;color:var(--muted);font-family:var(--mono);text-align:center;letter-spacing:1.5px;">NO OPEN POSITIONS</div>';

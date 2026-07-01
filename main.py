@@ -2603,6 +2603,11 @@ def get_events():
     events      = bot_engine.get_events()
     filter_type = request.args.get('type','').lower()
     if filter_type: events = [e for e in events if e.get('type')==filter_type]
+    # 'since' (ISO time string) lets the dashboard poll for only NEW events
+    # instead of re-downloading the full 500-event list every poll.
+    since = request.args.get('since','')
+    if since:
+        events = [e for e in events if e.get('time','') > since]
     return jsonify(events)
 
 @app.route('/api/sell/<symbol>', methods=['POST'])
@@ -2766,6 +2771,7 @@ def virtual_summary():
 @app.route('/api/live_positions', methods=['GET'])
 def live_positions():
     """Live open positions (VT) with entry, SL, TP, current price, unrealized PnL + 3m chart."""
+    include_chart = request.args.get('chart', '1') != '0'
 
     with _vt_lock:
         out = []
@@ -2801,15 +2807,19 @@ def live_positions():
             held_s   = int(time.time() - entry_ts) if entry_ts else 0
 
             # ── Chart data — uses the trade's entry timeframe ──────────────────
+            # This is the heaviest part of this payload (80 candles + EMA/RSI/MACD
+            # series PER open position). Skip it on most polls — frontend only
+            # asks for it every few cycles and caches the last one client-side.
             chart_3m = None
-            try:
-                entry_tf_key = op.get('timeframe', '5m') or '5m'
-                raw3 = candle_cache.get(sym, entry_tf_key) or []
-                if len(raw3) < 10:
-                    raw3 = client.get_candles(sym, entry_tf_key, lookback=CANDLE_LOOKBACK) or []
-                chart_3m = _build_chart_payload(raw3)
-            except Exception:
-                pass
+            if include_chart:
+                try:
+                    entry_tf_key = op.get('timeframe', '5m') or '5m'
+                    raw3 = candle_cache.get(sym, entry_tf_key) or []
+                    if len(raw3) < 10:
+                        raw3 = client.get_candles(sym, entry_tf_key, lookback=CANDLE_LOOKBACK) or []
+                    chart_3m = _build_chart_payload(raw3)
+                except Exception:
+                    pass
 
             out.append({
                 'symbol':     sym,
