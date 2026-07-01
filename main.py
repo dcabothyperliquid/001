@@ -366,6 +366,18 @@ class HyperliquidClient:
             return f"@{idx}"
         return symbol.upper()
 
+    def _resolve_bbo_coin(self, symbol: str) -> str:
+        """Return the coin string to use for WS bbo (price) subscription.
+        Matches get_spot_price()'s own lookup order: BTC/ETH use the perp
+        coin id directly (their spot pairs are inactive on HL), everything
+        else uses '@{uni_index}'.
+        """
+        INACTIVE_SPOT = {'BTC', 'ETH', 'UBTC', 'UETH'}
+        if symbol.upper() in INACTIVE_SPOT:
+            return 'BTC' if symbol.upper() in ('BTC', 'UBTC') else 'ETH'
+        idx = self.sym_to_index(symbol)
+        return f"@{idx}" if idx is not None else symbol.upper()
+
     def _resolve_coin_from_id(self, coin_id: str) -> str:
         """Reverse lookup: '@152' → 'SOL' (or whichever symbol the bot uses).
         Also handles plain name like 'HYPE'.
@@ -1089,13 +1101,91 @@ class AsyncEngine:
     async def _main(self):
         logger.info("⚡ AsyncEngine started")
         await asyncio.gather(
-            self._ws_feed(),
+            self._ws_bbo_feed(),
             self._ws_candle_feed(),
             self._cache_refresh_loop(),
             self._decision_loop(),
         )
 
-    # ── WebSocket allMids feed ────────────────────────────────────────────────
+    # ── WebSocket bbo feed — per-coin price stream (replaces allMids firehose) ─
+    async def _ws_bbo_feed(self):
+        """Subscribe to best-bid/offer for ONLY the coins this bot actually
+        trades, instead of the old allMids subscription which streamed mid
+        prices for every single market on Hyperliquid (300+ markets,
+        continuously) even though the bot only ever used a handful of them.
+        This was almost certainly the single largest source of Render
+        bandwidth usage — allMids ticks on ~every block, all day, for
+        markets we never look at.
+        _ws_feed() (allMids-based) below is kept but unused, in case this
+        needs to be rolled back."""
+        backoff = 1
+        INACTIVE_SPOT = {'BTC', 'ETH', 'UBTC', 'UETH'}
+        while True:
+            try:
+                async with websockets.connect(WS_URL, ping_interval=20, ping_timeout=30) as ws:
+                    backoff = 1
+                    # Reset per-connection — a fresh WS connection has no memory of
+                    # previous subscriptions, so everything must be resent here.
+                    subscribed_ids = set()
+
+                    async def _subscribe_coins():
+                        coins = list(self.bot.coins.keys())
+                        want_ids = set()
+                        for sym in coins:
+                            want_ids.add(self.client._resolve_bbo_coin(sym))
+                        new_ids = want_ids - subscribed_ids
+                        for coin_id in new_ids:
+                            sub = json.dumps({"method": "subscribe",
+                                               "subscription": {"type": "bbo", "coin": coin_id}})
+                            await ws.send(sub)
+                            subscribed_ids.add(coin_id)
+                        if new_ids:
+                            logger.info(f"✅ WS bbo subscribed: {sorted(new_ids)}")
+
+                    await _subscribe_coins()
+
+                    async def _coin_watcher():
+                        while True:
+                            await asyncio.sleep(10)
+                            await _subscribe_coins()
+
+                    watcher_task = asyncio.ensure_future(_coin_watcher())
+
+                    try:
+                        async for raw in ws:
+                            try:
+                                msg = json.loads(raw)
+                                if msg.get('channel') == 'bbo':
+                                    data    = msg.get('data', {})
+                                    coin_id = data.get('coin', '')
+                                    bbo     = data.get('bbo', [None, None]) or [None, None]
+                                    bid, ask = (bbo + [None, None])[:2]
+                                    px = None
+                                    if bid and ask:
+                                        px = (float(bid['px']) + float(ask['px'])) / 2
+                                    elif bid:
+                                        px = float(bid['px'])
+                                    elif ask:
+                                        px = float(ask['px'])
+                                    if px and coin_id:
+                                        price_cache.update({coin_id: px})
+                                        # Reuse the existing exit-check logic — it reads
+                                        # prices via get_spot_price() → price_cache, so
+                                        # passing an empty dict here is fine (it's only
+                                        # a fallback lookup path inside these functions).
+                                        self._vt_check_exits({})
+                                        self._real_check_exits({})
+                            except Exception as e:
+                                logger.warning(f"WS bbo parse error: {e}")
+                    finally:
+                        watcher_task.cancel()
+            except Exception as e:
+                logger.warning(f"WS bbo disconnected: {e} — reconnect in {backoff}s")
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60)
+
+    # ── WebSocket allMids feed — SUPERSEDED by _ws_bbo_feed() above, kept ──────
+    # unused for rollback safety. Do not add this back to _main()'s gather().
     async def _ws_feed(self):
         backoff = 1
         while True:
