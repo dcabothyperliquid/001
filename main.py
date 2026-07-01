@@ -45,6 +45,12 @@ try:
 except ImportError:
     CORS_AVAILABLE = False
 
+try:
+    from flask_compress import Compress
+    COMPRESS_AVAILABLE = True
+except ImportError:
+    COMPRESS_AVAILABLE = False
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -2513,6 +2519,11 @@ class BotEngine:
 # ═════════════════════════════════════════════════════════════════════════════
 app = Flask(__name__)
 if CORS_AVAILABLE: CORS(app)
+if COMPRESS_AVAILABLE:
+    # gzip every JSON/text response — dashboard polls JSON every few seconds,
+    # and JSON compresses ~70-85% (repeated keys). Biggest single bandwidth win.
+    app.config['COMPRESS_MIMETYPES'] = ['application/json', 'text/html', 'text/css', 'application/javascript']
+    Compress(app)
 
 client     = HyperliquidClient()
 bot_engine = BotEngine(client)
