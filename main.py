@@ -1308,7 +1308,10 @@ class AsyncEngine:
 
     # ── CandleCache refresh (fallback, runs every 5 min as backup) ────────────
     async def _cache_refresh_loop(self):
-        """Backup REST refresh every 60s — fills gaps if WS candle misses anything."""
+        """Backup REST refresh — fills gaps if WS candle misses anything.
+        WS is the primary live feed, so this only needs to run occasionally
+        as a safety net, not every 60s (that duplicated ~all WS traffic over
+        REST and was the #1 cause of excess Render bandwidth usage)."""
         await asyncio.sleep(30)  # small buffer after WS seed releases lock
         while True:
             # ── Watchdog: if _refreshing stuck > 3 min, force-clear it ──────
@@ -1321,7 +1324,7 @@ class AsyncEngine:
             coins = list(self.bot.coins.keys())
             if coins:
                 await self._refresh_candles(coins)
-            await asyncio.sleep(60)
+            await asyncio.sleep(300)   # was 60s — 5x less REST traffic, WS covers live updates anyway
 
     async def _refresh_candles(self, coins: list):
         if not coins: return
@@ -2572,7 +2575,14 @@ def get_balance():
 def get_holdings(): return jsonify(bot_engine.get_holdings())
 
 @app.route('/api/trades', methods=['GET'])
-def get_trades(): return jsonify(bot_engine.get_trade_history())
+def get_trades():
+    # Default: only send recent trades to the dashboard poller (huge bandwidth saver).
+    # Full history only when explicitly requested (e.g. CSV export via ?limit=0).
+    limit = request.args.get('limit', default=100, type=int)
+    full  = bot_engine.get_trade_history()
+    if limit and limit > 0:
+        return jsonify(full[:limit])
+    return jsonify(full)
 
 @app.route('/api/stats', methods=['GET'])
 def get_stats(): return jsonify(bot_engine.get_stats())

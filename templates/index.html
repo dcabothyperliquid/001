@@ -2216,8 +2216,16 @@ function renderTrades(trades) {
 // DOWNLOAD TRADES CSV
 // ═══════════════════════════════════════════════════════════════
 let _cachedTrades = [];
-function downloadTrades() {
-  if (!_cachedTrades.length) { alert('No trades to download'); return; }
+async function downloadTrades() {
+  // Polling loop only caches last 100 trades (bandwidth saver) — pull full
+  // history from the server just for this on-demand export.
+  let trades = _cachedTrades;
+  try {
+    const full = await api('/trades?limit=0');
+    if (full && Array.isArray(full) && full.length) trades = full;
+  } catch (e) {}
+  if (!trades.length) { alert('No trades to download'); return; }
+  _cachedTrades = trades;
 
   const headers = [
     'type','symbol','buy_tf','sell_tf',
@@ -2346,7 +2354,7 @@ async function refreshAll() {
   _refreshing = true;
   try {
     const [coins, holdings, trades, stats, status] = await Promise.all([
-      api('/coins'), api('/holdings'), api('/trades'), api('/stats'), api('/bot/status')
+      api('/coins'), api('/holdings'), api('/trades?limit=100'), api('/stats'), api('/bot/status')
     ]);
     // Only update if data is valid (never blank out existing cards on API error)
     if (coins && Array.isArray(coins))   { renderCoins(coins); updateTicker(coins); }
@@ -2360,11 +2368,11 @@ async function refreshAll() {
     _refreshing = false;
   }
 }
-function startRefresh() { if (refreshTimer) clearInterval(refreshTimer); refreshTimer = setInterval(refreshAll, 2000); }
+function startRefresh() { if (refreshTimer) clearInterval(refreshTimer); refreshTimer = setInterval(refreshAll, 8000); }
 function stopRefresh()  { if (refreshTimer) clearInterval(refreshTimer); }
-function startEvents()  { if (eventsTimer) clearInterval(eventsTimer); pollEvents(); eventsTimer = setInterval(pollEvents, 5000); }
+function startEvents()  { if (eventsTimer) clearInterval(eventsTimer); pollEvents(); eventsTimer = setInterval(pollEvents, 10000); }
 
-// FAST PRICE REFRESH — every 1.5s, only updates price spans
+// FAST PRICE REFRESH — only updates price spans
 let _lastPrices = {};
 async function refreshPrices() {
   try {
@@ -2385,7 +2393,7 @@ async function refreshPrices() {
     }
   } catch(e) {}
 }
-setInterval(refreshPrices, 1500);
+setInterval(refreshPrices, 3000);
 refreshPrices();
 
 // SIGNAL STATS TODAY
@@ -2448,7 +2456,7 @@ async function refreshSignals() {
     }
   } catch(e) {}
 }
-setInterval(() => { if (_sigDayOffset === 0) refreshSignals(); }, 10000);
+setInterval(() => { if (_sigDayOffset === 0) refreshSignals(); }, 20000);
 refreshSignals();
 
 
@@ -3200,7 +3208,7 @@ window.refreshLivePositions = async function() {
   await _origRefreshLivePositions();
   _applyPosCoinFilter();
 };
-setInterval(refreshLivePositions, 2000);
+setInterval(refreshLivePositions, 5000);
 refreshLivePositions();
 
 
@@ -3533,7 +3541,7 @@ async function resetVirtualTracker() {
   } catch(e) {}
 }
 
-setInterval(refreshVirtualTracker, 3000);
+setInterval(refreshVirtualTracker, 8000);
 refreshVirtualTracker();
 
 
@@ -3566,7 +3574,7 @@ async function refreshMemory() {
     }
   } catch(e) {}
 }
-setInterval(refreshMemory, 2000);
+setInterval(refreshMemory, 15000);
 refreshMemory();
 
 // ═══════════════════════════════════════════════════════════════
