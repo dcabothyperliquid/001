@@ -1657,6 +1657,7 @@ function clearEvents() { localEvents = []; renderEvents(); }
 
 let _lastEventTime = '';
 async function pollEvents() {
+  if (document.hidden) return;
   const q = _lastEventTime ? ('?since=' + encodeURIComponent(_lastEventTime)) : '';
   const data = await api('/events' + q);
   if (data && Array.isArray(data)) {
@@ -2351,6 +2352,7 @@ async function updateTicker(coins) {
 // ═══════════════════════════════════════════════════════════════
 let _refreshing = false;
 async function refreshAll() {
+  if (document.hidden) return;   // tab backgrounded — skip poll to save bandwidth
   if (_refreshing) return;   // prevent overlapping calls
   _refreshing = true;
   try {
@@ -2376,6 +2378,7 @@ function startEvents()  { if (eventsTimer) clearInterval(eventsTimer); pollEvent
 // FAST PRICE REFRESH — only updates price spans
 let _lastPrices = {};
 async function refreshPrices() {
+  if (document.hidden) return;
   try {
     const prices = await api('/prices');
     if (!prices) return;
@@ -2414,6 +2417,7 @@ function _sigDayKey(offset) {
   return now.toISOString().slice(0,10);
 }
 async function refreshSignals() {
+  if (document.hidden) return;
   try {
     const dateKey = _sigDayKey(_sigDayOffset);
     const d = await api('/signals/today?date=' + dateKey);
@@ -2783,6 +2787,7 @@ function _fmtHeld(s) {
 let _posPollCount = 0;
 let _posChartCache = {};  // symbol -> last-known chart_3m payload
 async function refreshLivePositions() {
+  if (document.hidden) return;
   try {
     _posPollCount++;
     const wantChart = (_posPollCount % 4 === 1);  // full chart every 4th poll (~20s), light poll otherwise
@@ -3227,6 +3232,7 @@ refreshLivePositions();
 
 // ── VIRTUAL P&L TRACKER ───────────────────────────────────────────────────────
 async function refreshVirtualTracker() {
+  if (document.hidden) return;
   try {
     const d = await api('/virtual/summary');
     if (!d) return;
@@ -3561,6 +3567,7 @@ refreshVirtualTracker();
 
 // MEMORY WIDGET
 async function refreshMemory() {
+  if (document.hidden) return;
   try {
     const d = await api('/memory');
     if (!d) return;
@@ -4014,6 +4021,15 @@ function renderVtTrades(filterCoin) {
   }).join('');
 }
 // ─────────────────────────────────────────────────────────────────────────────
+// Tab backgrounded → all polling functions above early-return (saves bandwidth
+// when phone screen is off / app is switched away). When it comes back into
+// view, fire one immediate refresh across the board so the UI catches up fast.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    refreshAll(); refreshPrices(); pollEvents(); refreshSignals();
+    refreshLivePositions(); refreshVirtualTracker(); refreshMemory();
+  }
+});
 </script>
 </body>
 </html>
