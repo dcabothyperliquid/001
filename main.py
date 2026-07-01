@@ -822,6 +822,15 @@ def _signal_state_set(symbol, state):
     with _coin_signal_state_lock:
         _coin_signal_state[symbol] = state
 
+# ── Pending entries — waiting for price to reach 5m support zone ─────────────
+# symbol → {'best_tf', 'signal_price', 'since', 'expires'}
+_pending_entries      = {}
+_pending_entries_lock = __import__('threading').Lock()
+
+SUPPORT_WAIT_TIMEOUT_MIN = 90     # signal expire ho jayega agar itne min me support na mile
+NEAR_SUPPORT_PCT         = 0.3    # zone ke % andar aane pe "at support" mana jayega
+SUPPORT_BREAK_PCT        = 1.0    # zone se itna % neeche gaya to breakdown maan ke signal cancel
+
 # ── Virtual P&L Tracker ───────────────────────────────────────────────────────
 # Tracks hypothetical trades based purely on BUY/SELL signals (no real orders).
 # BUY signal -> assume bought at that price with current fund allocation.
@@ -1534,14 +1543,6 @@ class AsyncEngine:
                 #  Replaced with a momentum check: price must show genuine recent upward
                 #  rate-of-change, so we don't buy right as momentum is fading/reversing.)
                 candles_best = candle_cache.get(symbol, best_tf) or []
-                roc_pct      = 0.0
-                momentum_ok  = False
-                if len(candles_best) >= 4:
-                    closes_recent = [float(c[4]) for c in candles_best]
-                    prev_close    = closes_recent[-3]
-                    if prev_close:
-                        roc_pct = (closes_recent[-1] - prev_close) / prev_close * 100
-                    momentum_ok = roc_pct > 0
 
                 ema9_arr = ema21_arr = []
                 if len(candles_best) >= 22:
@@ -1550,14 +1551,13 @@ class AsyncEngine:
                     ema21_arr = _ema_fn(closes_b, 21)
                 ema_bull_now = bool(ema9_arr and ema21_arr and ema9_arr[-1] > ema21_arr[-1])
 
-                layers_ok = sum([momentum_ok, ema_bull_now, bool(vol_now)])
+                layers_ok = sum([ema_bull_now, bool(vol_now)])
 
                 # Push confirmation check event to UI
                 self.bot._push_event('support_check',
-                    f"🔍 CHECK — {symbol} | Momentum={'✅' if momentum_ok else '❌'}({roc_pct:.2f}%) | EMA={'✅' if ema_bull_now else '❌'} | Vol={'✅' if vol_now else '❌'} | {layers_ok}/3 passed",
+                    f"🔍 CHECK — {symbol} | EMA={'✅' if ema_bull_now else '❌'} | Vol={'✅' if vol_now else '❌'} | {layers_ok}/2 passed",
                     {'symbol': symbol, 'price': price, 'tf': best_tf,
-                     'roc_pct': round(roc_pct, 3),
-                     'momentum_ok': momentum_ok, 'ema_bull': ema_bull_now,
+                     'ema_bull': ema_bull_now,
                      'vol_ok': bool(vol_now), 'layers': layers_ok,
                      'step': 'support_check'})
 
@@ -1567,8 +1567,6 @@ class AsyncEngine:
                 if not _confirm_ok:
                     # Build skip reason
                     skip_reasons = []
-                    if not momentum_ok:
-                        skip_reasons.append(f"Momentum weak ({roc_pct:.2f}%)")
                     if not ema_bull_now:
                         skip_reasons.append("EMA9<EMA21 (trend nahi)")
                     if not vol_now:
@@ -1580,9 +1578,64 @@ class AsyncEngine:
                          'skip_reasons': skip_reasons, 'layers': layers_ok,
                          'step': 'skip'})
                     direction = 'neutral'  # block actual buy below
+                    with _pending_entries_lock:
+                        _pending_entries.pop(symbol, None)
+
+                # ── Step 4: Wait for price to reach a 5m auto support zone ────
+                # MACD+RSI+EMA+Vol confirm high/mid-TF ka hai, entry timing 5m pe.
+                # Zones khud detect hote hain (swing-low pivots clustered) — koi
+                # fixed number hardcode nahi. Jab tak price zone ke paas na aaye,
+                # buy hold rehta hai (pending); TIMEOUT/breakdown pe cancel.
+                if _confirm_ok:
+                    candles_5m = candle_cache.get(symbol, '5m') or []
+                    zones      = self.bot._detect_support_zones(candles_5m)
+                    at_support   = False
+                    nearest_zone = None
+                    if zones:
+                        below_or_near = [z for z in zones
+                                          if z['price'] <= price * (1 + NEAR_SUPPORT_PCT / 100)]
+                        if below_or_near:
+                            nearest_zone = max(below_or_near, key=lambda z: z['price'])
+                            dist_pct = (price - nearest_zone['price']) / nearest_zone['price'] * 100
+                            if -SUPPORT_BREAK_PCT <= dist_pct <= NEAR_SUPPORT_PCT:
+                                at_support = True
+
+                    if at_support:
+                        with _pending_entries_lock:
+                            _pending_entries.pop(symbol, None)
+                        self.bot._push_event('support_check',
+                            f"✅ AT SUPPORT — {symbol} @ ${price:.6f} | zone=${nearest_zone['price']:.6f} "
+                            f"({nearest_zone['touches']}x touched, 5m) | buying now",
+                            {'symbol': symbol, 'price': price, 'zone': nearest_zone['price'],
+                             'touches': nearest_zone['touches'], 'step': 'support_hit'})
+                    else:
+                        now = time.time()
+                        with _pending_entries_lock:
+                            pend = _pending_entries.get(symbol)
+                            if not pend or pend.get('best_tf') != best_tf:
+                                pend = {'best_tf': best_tf, 'signal_price': price, 'since': now,
+                                         'expires': now + SUPPORT_WAIT_TIMEOUT_MIN * 60}
+                                _pending_entries[symbol] = pend
+                        if now > pend['expires']:
+                            with _pending_entries_lock:
+                                _pending_entries.pop(symbol, None)
+                            self.bot._push_event('warn',
+                                f"⌛ EXPIRED — {symbol} | {SUPPORT_WAIT_TIMEOUT_MIN}min me 5m support tak "
+                                f"nahi aaya, signal cancel",
+                                {'symbol': symbol, 'price': price, 'step': 'support_timeout'})
+                        else:
+                            wait_min = int((now - pend['since']) / 60)
+                            zone_txt = f"${zones[0]['price']:.6f}" if zones else "koi zone nahi mila"
+                            self.bot._push_event('support_check',
+                                f"⏳ WAIT — {symbol} @ ${price:.6f} | nearest 5m zone {zone_txt} | "
+                                f"waiting {wait_min}/{SUPPORT_WAIT_TIMEOUT_MIN}min",
+                                {'symbol': symbol, 'price': price,
+                                 'zone': zones[0]['price'] if zones else None,
+                                 'wait_min': wait_min, 'step': 'support_wait'})
+                        direction = 'neutral'  # buy hold — support ka wait
 
             # ── Same-TF Momentum Confirmation ─────────────────────────────────
-            # direction already set to 'neutral' if confirmation failed (SKIP path above)
+            # direction already set to 'neutral' if confirmation/support-wait failed
             _3m_momentum_ok = True
             _buy_confirmed  = (direction == 'buy')
 
@@ -2279,6 +2332,59 @@ class BotEngine:
         # Support = lowest low of lookback period
         return min(lows)
 
+    def _detect_support_zones(self, candles, pivot_window=2, tolerance_pct=0.4,
+                               lookback=100, max_zones=4):
+        """
+        Auto support-zone detection (same pattern as chiku's S/R engine):
+        1. Find swing-low pivots — a candle whose low is the lowest among
+           `pivot_window` candles on either side.
+        2. Cluster pivots that are within `tolerance_pct` of each other into zones.
+        3. Score each zone by touch-count (more touches = stronger zone) and recency.
+        Returns list of zones sorted strongest-first:
+          [{'price': float, 'touches': int, 'last_idx': int}, ...]
+        """
+        if not candles or len(candles) < (pivot_window * 2 + 3):
+            return []
+
+        data = candles[-lookback:] if len(candles) > lookback else candles
+        lows = [float(c[3]) for c in data]
+        n    = len(lows)
+
+        pivots = []  # (price, index)
+        for i in range(pivot_window, n - pivot_window):
+            window = lows[i - pivot_window: i + pivot_window + 1]
+            if lows[i] == min(window):
+                pivots.append((lows[i], i))
+
+        if not pivots:
+            return []
+
+        # Cluster nearby pivot lows into zones
+        pivots.sort(key=lambda p: p[0])
+        zones = []
+        cluster = [pivots[0]]
+        for price, idx in pivots[1:]:
+            cluster_avg = sum(p[0] for p in cluster) / len(cluster)
+            if abs(price - cluster_avg) / cluster_avg * 100 <= tolerance_pct:
+                cluster.append((price, idx))
+            else:
+                zones.append(cluster)
+                cluster = [(price, idx)]
+        zones.append(cluster)
+
+        result = []
+        for cl in zones:
+            avg_price = sum(p[0] for p in cl) / len(cl)
+            result.append({
+                'price':    round(avg_price, 8),
+                'touches':  len(cl),
+                'last_idx': max(p[1] for p in cl),
+            })
+
+        # Strongest zones first: more touches, then more recent
+        result.sort(key=lambda z: (z['touches'], z['last_idx']), reverse=True)
+        return result[:max_zones]
+
     def _signal_for_candles(self, candles):
         """
         Signal Detection (pure):
@@ -2815,6 +2921,8 @@ def _record_buy_signal(symbol, price, timeframe, score, executed=False, capital=
 def _record_sell_signal(symbol, price=None, exit_reason='signal'):
     """Call this when a SELL fires — resets the cycle so next BUY will be counted."""
     _signal_state_set(symbol, 'sell')
+    with _pending_entries_lock:
+        _pending_entries.pop(symbol, None)
     if price:
         _vt_on_sell(symbol, price, exit_reason=exit_reason)
 
