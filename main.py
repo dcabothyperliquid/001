@@ -1614,51 +1614,62 @@ class AsyncEngine:
                 # buy hold rehta hai (pending); TIMEOUT/breakdown pe cancel.
                 if _confirm_ok:
                     candles_5m = candle_cache.get(symbol, '5m') or []
-                    zones      = self.bot._detect_support_zones(candles_5m)
-                    at_support   = False
-                    nearest_zone = None
-                    if zones:
-                        below_or_near = [z for z in zones
-                                          if z['price'] <= price * (1 + NEAR_SUPPORT_PCT / 100)]
-                        if below_or_near:
-                            nearest_zone = max(below_or_near, key=lambda z: z['price'])
-                            dist_pct = (price - nearest_zone['price']) / nearest_zone['price'] * 100
-                            if -SUPPORT_BREAK_PCT <= dist_pct <= NEAR_SUPPORT_PCT:
-                                at_support = True
-
-                    if at_support:
+                    if len(candles_5m) < 10:
+                        # 5m data missing (e.g. 5m TF globally OFF, or cache not warm yet) —
+                        # FAIL-OPEN: buy immediately instead of blocking forever. A missing
+                        # timeframe should never silently stop every trade.
                         with _pending_entries_lock:
                             _pending_entries.pop(symbol, None)
-                        self.bot._push_event('support_check',
-                            f"✅ AT SUPPORT — {symbol} @ ${price:.6f} | zone=${nearest_zone['price']:.6f} "
-                            f"({nearest_zone['touches']}x touched, 5m) | buying now",
-                            {'symbol': symbol, 'price': price, 'zone': nearest_zone['price'],
-                             'touches': nearest_zone['touches'], 'step': 'support_hit'})
+                        self.bot._push_event('warn',
+                            f"⚠️ NO 5m DATA — {symbol} @ ${price:.6f} | support-wait skip, buying directly "
+                            f"(check kar ki 5m timeframe globally ON hai)",
+                            {'symbol': symbol, 'price': price, 'step': 'support_no_data'})
                     else:
-                        now = time.time()
-                        with _pending_entries_lock:
-                            pend = _pending_entries.get(symbol)
-                            if not pend or pend.get('best_tf') != best_tf:
-                                pend = {'best_tf': best_tf, 'signal_price': price, 'since': now,
-                                         'expires': now + SUPPORT_WAIT_TIMEOUT_MIN * 60}
-                                _pending_entries[symbol] = pend
-                        if now > pend['expires']:
+                        zones        = self.bot._detect_support_zones(candles_5m)
+                        at_support   = False
+                        nearest_zone = None
+                        if zones:
+                            below_or_near = [z for z in zones
+                                              if z['price'] <= price * (1 + NEAR_SUPPORT_PCT / 100)]
+                            if below_or_near:
+                                nearest_zone = max(below_or_near, key=lambda z: z['price'])
+                                dist_pct = (price - nearest_zone['price']) / nearest_zone['price'] * 100
+                                if -SUPPORT_BREAK_PCT <= dist_pct <= NEAR_SUPPORT_PCT:
+                                    at_support = True
+
+                        if at_support:
                             with _pending_entries_lock:
                                 _pending_entries.pop(symbol, None)
-                            self.bot._push_event('warn',
-                                f"⌛ EXPIRED — {symbol} | {SUPPORT_WAIT_TIMEOUT_MIN}min me 5m support tak "
-                                f"nahi aaya, signal cancel",
-                                {'symbol': symbol, 'price': price, 'step': 'support_timeout'})
-                        else:
-                            wait_min = int((now - pend['since']) / 60)
-                            zone_txt = f"${zones[0]['price']:.6f}" if zones else "koi zone nahi mila"
                             self.bot._push_event('support_check',
-                                f"⏳ WAIT — {symbol} @ ${price:.6f} | nearest 5m zone {zone_txt} | "
-                                f"waiting {wait_min}/{SUPPORT_WAIT_TIMEOUT_MIN}min",
-                                {'symbol': symbol, 'price': price,
-                                 'zone': zones[0]['price'] if zones else None,
-                                 'wait_min': wait_min, 'step': 'support_wait'})
-                        direction = 'neutral'  # buy hold — support ka wait
+                                f"✅ AT SUPPORT — {symbol} @ ${price:.6f} | zone=${nearest_zone['price']:.6f} "
+                                f"({nearest_zone['touches']}x touched, 5m) | buying now",
+                                {'symbol': symbol, 'price': price, 'zone': nearest_zone['price'],
+                                 'touches': nearest_zone['touches'], 'step': 'support_hit'})
+                        else:
+                            now = time.time()
+                            with _pending_entries_lock:
+                                pend = _pending_entries.get(symbol)
+                                if not pend or pend.get('best_tf') != best_tf:
+                                    pend = {'best_tf': best_tf, 'signal_price': price, 'since': now,
+                                             'expires': now + SUPPORT_WAIT_TIMEOUT_MIN * 60}
+                                    _pending_entries[symbol] = pend
+                            if now > pend['expires']:
+                                with _pending_entries_lock:
+                                    _pending_entries.pop(symbol, None)
+                                self.bot._push_event('warn',
+                                    f"⌛ EXPIRED — {symbol} | {SUPPORT_WAIT_TIMEOUT_MIN}min me 5m support tak "
+                                    f"nahi aaya, signal cancel",
+                                    {'symbol': symbol, 'price': price, 'step': 'support_timeout'})
+                            else:
+                                wait_min = int((now - pend['since']) / 60)
+                                zone_txt = f"${zones[0]['price']:.6f}" if zones else "koi zone nahi mila"
+                                self.bot._push_event('support_check',
+                                    f"⏳ WAIT — {symbol} @ ${price:.6f} | nearest 5m zone {zone_txt} | "
+                                    f"waiting {wait_min}/{SUPPORT_WAIT_TIMEOUT_MIN}min",
+                                    {'symbol': symbol, 'price': price,
+                                     'zone': zones[0]['price'] if zones else None,
+                                     'wait_min': wait_min, 'step': 'support_wait'})
+                            direction = 'neutral'  # buy hold — support ka wait
 
             # ── Same-TF Momentum Confirmation ─────────────────────────────────
             # direction already set to 'neutral' if confirmation/support-wait failed
