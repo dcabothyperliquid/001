@@ -1945,12 +1945,12 @@ function _buildCoinCard(c) {
         <span class="met-label">MACD</span>
         <span class="met-val" id="lm-macd-${sym}">${macdIcon(c.macd_signal)}</span>
       </div>
-      <div class="cc-met" style="flex-direction:column;align-items:flex-start;gap:2px;">
-        <span class="met-label">CAP</span>
-        <div style="display:flex;align-items:center;gap:3px;">
-          <button onclick="lmAdjustCap('${sym}',-1,event)" title="Withdraw fund" style="width:14px;height:14px;line-height:12px;padding:0;border-radius:3px;border:1px solid rgba(255,48,96,0.35);background:rgba(255,48,96,0.08);color:#ff3060;font-size:10px;font-weight:900;font-family:var(--mono);">−</button>
-          <span class="met-val c-cy" id="lm-cap-${sym}">$${(c.compound_capital ?? c.capital ?? 0).toFixed ? (c.compound_capital ?? c.capital ?? 0).toFixed(2) : (c.compound_capital ?? c.capital ?? 0)}</span>
-          <button onclick="lmAdjustCap('${sym}',1,event)" title="Add fund" style="width:14px;height:14px;line-height:12px;padding:0;border-radius:3px;border:1px solid rgba(13,255,140,0.35);background:rgba(13,255,140,0.08);color:#0dff8c;font-size:10px;font-weight:900;font-family:var(--mono);">+</button>
+      <div class="cc-met" style="grid-column:span 2;flex-direction:column;align-items:flex-start;gap:2px;">
+        <span class="met-label">CAP (LIVE)</span>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <button onclick="lmAdjustCap('${sym}',-1,event)" title="Withdraw fund" style="width:15px;height:15px;line-height:13px;padding:0;border-radius:3px;border:1px solid rgba(255,48,96,0.35);background:rgba(255,48,96,0.08);color:#ff3060;font-size:11px;font-weight:900;font-family:var(--mono);flex-shrink:0;">−</button>
+          <span class="met-val c-cy" id="lm-cap-${sym}" style="white-space:nowrap;">$${(c.compound_capital ?? c.capital ?? 0).toFixed ? (c.compound_capital ?? c.capital ?? 0).toFixed(2) : (c.compound_capital ?? c.capital ?? 0)}</span>
+          <button onclick="lmAdjustCap('${sym}',1,event)" title="Add fund" style="width:15px;height:15px;line-height:13px;padding:0;border-radius:3px;border:1px solid rgba(13,255,140,0.35);background:rgba(13,255,140,0.08);color:#0dff8c;font-size:11px;font-weight:900;font-family:var(--mono);flex-shrink:0;">+</button>
         </div>
       </div>
 

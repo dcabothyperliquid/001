@@ -1644,6 +1644,11 @@ class AsyncEngine:
                         # already handles this every cycle. Nothing new to place.
                         direction = 'neutral'
                     else:
+                        if pend:
+                            # Signal shifted to a different TF while an order was still
+                            # resting — cancel the OLD one first so we never end up with
+                            # two live resting orders for the same coin at once.
+                            self.bot._cancel_pending_entry(symbol, reason='tf_changed')
                         candles_5m = candle_cache.get(symbol, '5m') or []
                         if len(candles_5m) < 10:
                             # 5m data missing / cache not warm yet — FAIL-OPEN: buy at
