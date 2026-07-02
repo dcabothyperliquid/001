@@ -427,20 +427,33 @@ body::after{
 /* ══ STATS ROW ═══════════════════════════════════ */
 .stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:18px;}
 
-/* ══ COMPACT STAT STRIP ══════════════════════════ */
+/* ══ COMPACT STAT STRIP — individual glass cards, not one flat strip ══ */
 .stat-strip{
-  display:flex;align-items:stretch;
-  background:linear-gradient(135deg,rgba(255,255,255,0.03) 0%,rgba(255,255,255,0.01) 100%);
-  border:1px solid rgba(255,255,255,0.07);
-  border-radius:10px;margin-bottom:12px;overflow:hidden;
+  display:flex;align-items:stretch;gap:8px;
+  margin-bottom:12px;
 }
 .stat-strip-item{
   flex:1;display:flex;flex-direction:column;justify-content:center;
-  padding:10px 14px;gap:2px;position:relative;
-  border-right:1px solid rgba(255,255,255,0.05);
+  padding:10px 14px 9px;gap:2px;position:relative;isolation:isolate;
+  background:linear-gradient(155deg,rgba(255,255,255,0.045) 0%,rgba(255,255,255,0.012) 100%);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:10px;overflow:hidden;
+  box-shadow:0 3px 14px rgba(0,0,0,0.28),inset 0 1px 0 rgba(255,255,255,0.03);
+  transition:border-color 0.2s,box-shadow 0.2s,transform 0.2s;
 }
-.stat-strip-item:last-child{border-right:none;}
+.stat-strip-item::before{
+  content:'';position:absolute;top:0;left:10%;right:10%;height:1.5px;
+  background:linear-gradient(90deg,transparent,var(--glow,var(--cyan)),transparent);
+  opacity:0.75;box-shadow:0 0 8px var(--glow,var(--cyan));
+}
+.stat-strip-item:hover{border-color:rgba(255,255,255,0.16);box-shadow:0 6px 20px rgba(0,0,0,0.35),0 0 18px -6px var(--glow,var(--cyan));transform:translateY(-1px);}
+body.day .stat-strip-item{background:linear-gradient(155deg,#ffffff,#f7f9fc);border:1px solid rgba(0,0,0,0.07);box-shadow:0 2px 10px rgba(0,0,0,0.05);}
 .stat-strip-item.wide{flex:1.4;}
+.stat-strip-item.acc-cyan{--glow:var(--cyan);}
+.stat-strip-item.acc-green{--glow:var(--green);}
+.stat-strip-item.acc-red{--glow:var(--red);}
+.stat-strip-item.acc-amber{--glow:var(--amber);}
+.stat-strip-item.acc-purple{--glow:var(--purple);}
 .stat-strip-label{font-family:var(--mono);font-size:7.5px;letter-spacing:1.8px;color:var(--muted2);text-transform:uppercase;}
 .stat-strip-val{font-family:var(--mono);font-size:14px;font-weight:700;line-height:1.1;}
 .stat-strip-val.cyan{color:var(--cyan);}
@@ -884,36 +897,36 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
 
   <!-- STATS STRIP -->
   <!-- STATS ROW 1: Trading -->
-  <div class="stat-strip" style="margin-bottom:6px;">
-    <div class="stat-strip-item">
+  <div class="stat-strip" style="margin-bottom:10px;">
+    <div class="stat-strip-item acc-cyan">
       <div class="stat-strip-label">BALANCE</div>
       <div class="stat-strip-val cyan" id="s-bal">—</div>
       <div class="stat-strip-sub">USDC</div>
     </div>
-    <div class="stat-strip-item">
+    <div class="stat-strip-item acc-green" id="s-pnl-card">
       <div class="stat-strip-label">TOTAL P&amp;L</div>
       <div class="stat-strip-val" id="s-pnl">—</div>
       <div class="stat-strip-sub" id="s-pnl-sub">ALL TIME</div>
     </div>
-    <div class="stat-strip-item">
+    <div class="stat-strip-item acc-amber">
       <div class="stat-strip-label">WIN RATE</div>
       <div class="stat-strip-val amber" id="s-wr">—</div>
       <div class="stat-strip-sub" id="s-trades">0 TRADES</div>
     </div>
   </div>
   <!-- STATS ROW 2: System -->
-  <div class="stat-strip" style="margin-bottom:16px;">
-    <div class="stat-strip-item">
+  <div class="stat-strip" style="margin-bottom:18px;">
+    <div class="stat-strip-item acc-cyan">
       <div class="stat-strip-label">HOLDINGS</div>
       <div class="stat-strip-val cyan" id="s-hold">0</div>
       <div class="stat-strip-sub">POSITIONS</div>
     </div>
-    <div class="stat-strip-item">
+    <div class="stat-strip-item acc-cyan">
       <div class="stat-strip-label">MONITORING</div>
       <div class="stat-strip-val cyan" id="s-mon">0</div>
       <div class="stat-strip-sub">COINS</div>
     </div>
-    <div class="stat-strip-item" style="flex:2;">
+    <div class="stat-strip-item acc-purple" style="flex:2;">
       <div class="stat-strip-label" style="display:flex;align-items:center;justify-content:space-between;">
         <span>MEMORY</span>
         <div id="memDot" class="dot blink" style="background:var(--cyan);width:5px;height:5px;"></div>
@@ -2311,10 +2324,12 @@ function renderStats(stats) {
   const wr   = stats.win_rate || 0;
   const pnl  = stats.total_profit || 0;
   document.getElementById('s-wr').textContent  = wr + '%';
-  document.getElementById('s-wr').className    = `stat-val ${wr >= 50 ? 'green' : 'red'}`;
+  document.getElementById('s-wr').className    = `stat-strip-val ${wr >= 50 ? 'green' : 'red'}`;
   const pnlEl = document.getElementById('s-pnl');
   pnlEl.textContent = (pnl >= 0 ? '+' : '') + pnl.toFixed(4);
-  pnlEl.className   = `stat-val ${pnl >= 0 ? 'green' : 'red'}`;
+  pnlEl.className   = `stat-strip-val ${pnl >= 0 ? 'green' : 'red'}`;
+  const pnlCard = document.getElementById('s-pnl-card');
+  if (pnlCard) pnlCard.className = `stat-strip-item ${pnl >= 0 ? 'acc-green' : 'acc-red'}`;
 }
 
 // ═══════════════════════════════════════════════════════════════
