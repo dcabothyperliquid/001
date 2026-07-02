@@ -2358,6 +2358,44 @@ class BotEngine:
         self._save_data()
         return {'success': True, 'coin': self.coins[symbol]}
 
+    def adjust_fund(self, symbol, delta):
+        """Add or withdraw funds from a coin's LIVE trading pool (compound_capital).
+        +delta = add fresh funds (also bumps the 'capital' baseline, since it's real
+                 new principal, not profit — keeps the safety floor scaling correctly).
+        -delta = withdraw profit out of the compounding loop (baseline unchanged, so
+                 the safety floor doesn't shrink from withdrawals).
+        Takes effect immediately — next buy on this coin uses the new compound_capital,
+        no restart needed. Does NOT touch a currently open position; if one is open,
+        this only changes the size of the NEXT trade after the current one closes."""
+        if symbol not in self.coins:
+            return {'success': False, 'error': 'Coin not found'}
+        if not delta:
+            return {'success': False, 'error': 'delta cannot be 0'}
+        cfg     = self.coins[symbol]
+        old_cap = cfg.get('compound_capital', cfg.get('capital', 0))
+        new_cap = round(old_cap + delta, 4)
+        initial = cfg.get('capital', old_cap)
+        floor   = round(initial * 0.1, 4)
+        if new_cap < floor:
+            return {'success': False,
+                    'error': f'Cannot withdraw that much — min ${floor:.2f} must stay (10% safety floor)'}
+        cfg['compound_capital'] = new_cap
+        if delta > 0:
+            # Fresh deposit — grows the real principal baseline too
+            cfg['capital'] = round(cfg.get('capital', old_cap) + delta, 4)
+        self._save_data()
+        action = 'ADD' if delta > 0 else 'WITHDRAW'
+        self._push_event('info',
+            f"💰 FUND {action} — {symbol} | ${old_cap:.4f} → ${new_cap:.4f} USDC ({delta:+.4f})",
+            {'symbol': symbol, 'old_capital': old_cap, 'new_capital': new_cap,
+             'delta': delta, 'action': action})
+        holding_open = bool(self.holdings.get(symbol, {}).get('entries'))
+        return {'success': True, 'symbol': symbol, 'old_capital': old_cap,
+                'new_capital': new_cap, 'delta': delta,
+                'note': ('Position abhi open hai — ye change agle trade (is position ke '
+                         'close hone ke baad) se effective hoga.') if holding_open else
+                        'Agla BUY isi naye amount se hoga.'}
+
     def get_coins(self):
         """Parallel market data fetch using ThreadPoolExecutor."""
         syms = list(self.coins.keys())
@@ -2956,6 +2994,15 @@ def remove_coin(symbol): return jsonify(bot_engine.remove_coin(symbol.upper()))
 
 @app.route('/api/coins/<symbol>', methods=['PUT'])
 def update_coin(symbol): return jsonify(bot_engine.update_coin(symbol.upper(), request.json))
+
+@app.route('/api/coins/<symbol>/fund', methods=['POST'])
+def adjust_coin_fund(symbol):
+    d = request.json or {}
+    try:
+        delta = float(d.get('delta', 0))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Invalid delta'})
+    return jsonify(bot_engine.adjust_fund(symbol.upper(), delta))
 
 @app.route('/api/market/<symbol>', methods=['GET'])
 def get_market_data(symbol): return jsonify(bot_engine.get_market_data(symbol.upper()))
