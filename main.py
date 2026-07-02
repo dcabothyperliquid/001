@@ -3071,6 +3071,7 @@ def live_positions():
                 'unreal_pnl': unreal_pnl,
                 'unreal_pct': unreal_pct,
                 'entry_time': op.get('buy_time', '—'),
+                'entry_ts':   entry_ts,
                 'entry_tf':   op.get('timeframe', '—'),
                 'held_s':     held_s,
                 'peak_price': op.get('peak_price'),

@@ -2937,7 +2937,7 @@ async function refreshLivePositions() {
     pos.forEach(p => {
       const ch = p.chart_3m;
       if (!ch || !ch.candles || ch.candles.length < 5) return;
-      _drawLWChart(`chart3m_${p.symbol}`, ch, p.entry, p.sl_price, p.tp_price, p.live_price, p.entry_tf || '3m', p.symbol);
+      _drawLWChart(`chart3m_${p.symbol}`, ch, p.entry, p.sl_price, p.tp_price, p.live_price, p.entry_tf || '3m', p.symbol, p.entry_ts);
     });
 
   } catch(e) { console.error('livePos err', e); }
@@ -2970,14 +2970,14 @@ async function switchPosChart(sym, tf, btnEl) {
   try {
     const data = await api(`/chart_candles?symbol=${sym}&tf=${tf}`);
     if (data && data.candles && data.candles.length >= 5) {
-      _updateLWChart(sym, data, pos.entry, pos.sl_price, pos.tp_price, pos.live_price);
+      _updateLWChart(sym, data, pos.entry, pos.sl_price, pos.tp_price, pos.live_price, pos.entry_ts);
     }
     // Restore scroll position after chart redraw
     requestAnimationFrame(() => { window.scrollTo(0, savedScrollY); });
   } catch(e) { console.error('chart switch err', e); }
 }
 
-function _drawLWChart(containerId, ch, entry, sl, tp, livePrice, tf, sym) {
+function _drawLWChart(containerId, ch, entry, sl, tp, livePrice, tf, sym, entryTs) {
   const container = document.getElementById(containerId);
   const rsiContainer = document.getElementById(`rsi_${sym}`);
   if (!container) return;
@@ -3102,9 +3102,7 @@ function _drawLWChart(containerId, ch, entry, sl, tp, livePrice, tf, sym) {
   }
 
   // ── Markers: ENTRY + MACD cross BUY/SELL ────────────────────────────────────
-  candleSeries.setMarkers(_buildMarkers(candleData, ch));
-
-  // ── RSI sub-panel (synced time scale) ───────────────────────────────────────
+  candleSeries.setMarkers(_buildMarkers(candleData, ch, entryTs));
   let rsiChart = null, rsiSeries = null;
   if (rsiContainer && ch.rsi_series && ch.rsi_series.length === ch.candles.length) {
     rsiChart = LightweightCharts.createChart(rsiContainer, {
@@ -3157,12 +3155,18 @@ function _drawLWChart(containerId, ch, entry, sl, tp, livePrice, tf, sym) {
   ro.observe(container);
 }
 
-// Build chart markers: entry arrow + MACD bull/bear cross BUY/SELL signals
-function _buildMarkers(candleData, ch) {
+// Build chart markers: entry arrow (real entry_ts) + MACD bull/bear cross BUY/SELL signals
+function _buildMarkers(candleData, ch, entryTs) {
   const markers = [];
-  if (candleData.length > 0) {
+  if (candleData.length > 0 && entryTs) {
+    // Find the candle at/just-after the real entry timestamp — not a fake fixed position
+    let entryCandle = candleData[0];
+    for (const c of candleData) {
+      if (c.time <= entryTs) entryCandle = c;
+      else break;
+    }
     markers.push({
-      time:     candleData[Math.floor(candleData.length * 0.35)].time,
+      time:     entryCandle.time,
       position: 'belowBar',
       color:    '#ffb800',
       shape:    'arrowUp',
@@ -3185,7 +3189,7 @@ function _buildMarkers(candleData, ch) {
   return markers;
 }
 
-function _updateLWChart(sym, ch, entry, sl, tp, livePrice) {
+function _updateLWChart(sym, ch, entry, sl, tp, livePrice, entryTs) {
   const series = _lwSeries[sym];
   if (!series) return;
   const { candleSeries, ema9Series, ema21Series, volumeSeries, rsiSeries, supportLine } = series;
@@ -3214,9 +3218,7 @@ function _updateLWChart(sym, ch, entry, sl, tp, livePrice) {
     supportLine.applyOptions({ price: ch.support });
   }
 
-  candleSeries.setMarkers(_buildMarkers(candleData, ch));
-
-  _lwCharts[sym]?.main.timeScale().fitContent();
+  candleSeries.setMarkers(_buildMarkers(candleData, ch, entryTs));
   _lwCharts[sym]?.rsi?.timeScale().fitContent();
 }
 
