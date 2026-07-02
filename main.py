@@ -1536,6 +1536,7 @@ class AsyncEngine:
                      'price': price, 'timeframe': tf_key})
 
             # Record buy signal for daily stats panel
+            _vt_buy_ok = False  # default; set True below only when EMA/Vol confirm passes
             if direction == 'buy':
                 _coin_capital = self.bot.coins.get(symbol, {}).get('compound_capital',
                                 self.bot.coins.get(symbol, {}).get('capital', _VT_INITIAL))
@@ -1585,6 +1586,11 @@ class AsyncEngine:
                 # dono fail ho jaye, turant SKIP nahi — agle 1-2 candles (best_tf ke
                 # hisaab se) tak retry karega, tabhi final SKIP/expire hoga.
                 _confirm_ok = layers_ok >= 1
+                # VT (virtual tracker) must fire on confirm alone — independent of
+                # whether the real/live resting order below succeeds, fills, or
+                # fails due to balance. Captured here, before Step 4 overwrites
+                # `direction` to 'neutral' for the live-order flow.
+                _vt_buy_ok = _confirm_ok
 
                 if not _confirm_ok:
                     now         = time.time()
@@ -1707,7 +1713,7 @@ class AsyncEngine:
             # ── Same-TF Momentum Confirmation ─────────────────────────────────
             # direction already set to 'neutral' if confirmation/support-wait failed
             _3m_momentum_ok = True
-            _buy_confirmed  = (direction == 'buy')
+            _buy_confirmed  = (direction == 'buy') or _vt_buy_ok
 
             # Virtual tracker — BUY/SELL cycle with SL / TP / Trailing Stop
             vt_pos = _vt_fund.get(symbol, {})
