@@ -2444,12 +2444,12 @@ class BotEngine:
         hist_now     = macd_ln[-1] - sig_ln[-1]
         macd_sig_str = 'bullish' if hist_now > 0 else ('bearish' if hist_now < 0 else 'neutral')
 
-        def _bull_cross_recent(ml, sl, window=2):
+        def _bull_cross_recent(ml, sl, window=4):
             for i in range(1, min(window+1, len(ml))):
                 if ml[-(i+1)] <= sl[-(i+1)] and ml[-i] > sl[-i]:
                     return True
             return False
-        def _bear_cross_recent(ml, sl, window=2):
+        def _bear_cross_recent(ml, sl, window=4):
             for i in range(1, min(window+1, len(ml))):
                 if ml[-(i+1)] >= sl[-(i+1)] and ml[-i] < sl[-i]:
                     return True
