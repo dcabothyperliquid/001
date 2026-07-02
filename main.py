@@ -1676,12 +1676,23 @@ class AsyncEngine:
                                         'size': placed.get('size'), 'since': now,
                                         'expires': now + SUPPORT_WAIT_TIMEOUT_MIN * 60,
                                     }
+                                mode_tag = 'LIVE' if self.bot.live_mode else 'SIM'
                                 self.bot._push_event('support_check',
                                     f"📐 5m CHART DRAWN — {symbol} | support=${support_price:.6f} "
                                     f"({zone.get('touches', 0)}x touched) | maker BUY resting @ support "
                                     f"| SL/TP auto-attach on fill",
                                     {'symbol': symbol, 'price': price, 'zone': support_price,
-                                     'touches': zone.get('touches', 0), 'step': 'support_order_placed'})
+                                     'touches': zone.get('touches', 0), 'step': 'support_check'})
+                                # ── Step 3 (UI) — resting maker order placed, not filled yet ──
+                                # Fires the SAME 'order_placed' step the trade-flow card listens
+                                # for, so the ORDER card lights up now (shows "Filling…" on Step 4
+                                # until the real fill event overwrites this with actual fill data).
+                                self.bot._push_event('order_placed',
+                                    f"MAKER ORDER RESTING — {mode_tag} BUY {symbol} @ ${support_price:.6f} "
+                                    f"(5m support) | ${trade_cap:.4f} USDC | TF={best_tf}",
+                                    {'symbol': symbol, 'price': support_price, 'usdt': trade_cap,
+                                     'mode': mode_tag, 'tf': best_tf, 'step': 'order_placed',
+                                     'resting': True})
                             else:
                                 self.bot._push_event('error',
                                     f"Support limit order failed {symbol} @ ${support_price:.6f}",
