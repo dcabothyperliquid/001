@@ -790,12 +790,6 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--line2);border-radius:2px;}
 
-/* ══ SCROLLABLE FEED — caps vertical growth when many cards are open ══ */
-.scroll-feed{
-  max-height:400px;overflow-y:auto;overscroll-behavior:contain;
-  padding-right:3px;-webkit-overflow-scrolling:touch;
-}
-
 /* ══ RESPONSIVE ══════════════════════════════════ */
 @media(max-width:1200px){
   .stats-row{grid-template-columns:repeat(3,1fr)!important;}
@@ -1139,7 +1133,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
     </div>
 
     <!-- Per-coin flow cards (accordion - only selected coin shows) -->
-    <div id="tradeFlowCards" class="scroll-feed" style="display:flex;flex-direction:column;gap:6px;">
+    <div id="tradeFlowCards" style="display:flex;flex-direction:column;gap:6px;">
       <div style="padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);font-size:9px;color:var(--muted);font-family:var(--mono);text-align:center;letter-spacing:1.5px;">WAITING FOR SIGNALS…</div>
     </div>
   </div>
@@ -1159,7 +1153,7 @@ body.day .modal{box-shadow:0 8px 40px rgba(0,0,0,0.15);}
     <!-- Coin filter tabs — click a coin to show only its position (accordion) -->
     <div id="posCoinTabs" style="display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:5px;margin-bottom:8px;scrollbar-width:none;-webkit-overflow-scrolling:touch;min-height:24px;"></div>
 
-    <div id="livePosCards" class="scroll-feed" style="display:flex;flex-direction:column;gap:6px;">
+    <div id="livePosCards" style="display:flex;flex-direction:column;gap:6px;">
       <div style="padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);font-size:9px;color:var(--muted);font-family:var(--mono);text-align:center;letter-spacing:1.5px;">NO OPEN POSITIONS</div>
     </div>
   </div>
