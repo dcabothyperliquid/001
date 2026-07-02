@@ -92,6 +92,13 @@ def get_active_tfs():
     with _enabled_tfs_lock:
         return [tf for tf in ALL_TIMEFRAMES if tf in _enabled_tfs]
 
+def get_fetch_tfs():
+    """TFs to actually pull candle data for — always includes 5m (needed for
+    entry/support-zone chart drawing) even when 5m is globally OFF for signal
+    scoring. Signal generation itself still only uses get_active_tfs()."""
+    return sorted(set(get_active_tfs()) | {'5m'},
+                  key=lambda tf: ALL_TIMEFRAMES.index(tf))
+
 CANDLE_LOOKBACK = 60
 CACHE_TTL       = 300        # 5 minutes candle cache
 PRICE_CACHE_TTL = 3          # 3 seconds price cache (WS updates this faster anyway)
@@ -1358,19 +1365,20 @@ class AsyncEngine:
                             async with aiohttp.ClientSession() as sess:
                                 for sym in new_coins:
                                     # Seed cache via REST — one TF at a time with delay
-                                    for tf in get_active_tfs():
+                                    # (always includes 5m — needed for entry/support chart even if OFF globally)
+                                    for tf in get_fetch_tfs():
                                         candles = await self.client.async_get_candles(sess, sym, tf, semaphore=self._sem)
                                         if candles:
                                             await candle_cache.set(sym, tf, candles)
                                         await asyncio.sleep(0.3)   # 300ms gap per TF to avoid burst
                                     # Subscribe via WS for live updates
-                                    for tf in get_active_tfs():
+                                    for tf in get_fetch_tfs():
                                         coin_id = self.client._resolve_candle_coin(sym)
                                         sub = json.dumps({"method": "subscribe", "subscription": {
                                             "type": "candle", "coin": coin_id, "interval": tf}})
                                         await ws.send(sub)
                                     subscribed_coins.add(sym)
-                                    logger.info(f"✅ WS candle subscribed: {sym} × {get_active_tfs()}")
+                                    logger.info(f"✅ WS candle subscribed: {sym} × {get_fetch_tfs()}")
                         finally:
                             self._refreshing = False
 
@@ -1393,7 +1401,7 @@ class AsyncEngine:
                                 coin_id  = data.get('s', '')
                                 interval = data.get('i', '')
                                 sym = self.client._resolve_coin_from_id(coin_id)
-                                if not sym or interval not in get_active_tfs(): continue
+                                if not sym or interval not in get_fetch_tfs(): continue
 
                                 # Live candle update — replace last or append
                                 existing = candle_cache.get(sym, interval) or []
@@ -1445,11 +1453,12 @@ class AsyncEngine:
         self._refreshing_since = time.time()
         try:
             t0 = time.time()
-            logger.info(f"🔄 Refreshing candles: {len(coins)} coins × {len(get_active_tfs())} TFs")
+            fetch_tfs = get_fetch_tfs()  # always includes 5m for entry/support chart
+            logger.info(f"🔄 Refreshing candles: {len(coins)} coins × {len(fetch_tfs)} TFs")
             # Single shared session for all requests — avoids TCP burst
             async with aiohttp.ClientSession() as session:
                 for sym in coins:
-                    for tf in get_active_tfs():
+                    for tf in fetch_tfs:
                         await self._fetch_and_cache(session, sym, tf)
                         await asyncio.sleep(0.4)   # 400ms gap per request — safe under HL rate limit
             logger.info(f"✅ Candle cache refreshed in {time.time()-t0:.2f}s for {len(coins)} coins")
@@ -1488,6 +1497,15 @@ class AsyncEngine:
                 candles = candle_cache.get(symbol, '1h')
                 if candles: price = float(candles[-1][4])
             if not price: return
+
+            # ── Poll any resting support-limit BUY order for this symbol ─────
+            # Runs every cycle regardless of current signal direction — a resting
+            # maker order must keep being checked for fill/cancel even if the raw
+            # signal has since gone neutral.
+            with _pending_entries_lock:
+                _has_pending = symbol in _pending_entries
+            if _has_pending:
+                await self._run_order(self.bot._check_pending_entry_fill, symbol)
 
             mtf_score   = mtf.get('total_score', 0)
             direction   = mtf.get('signal', 'neutral')
@@ -1607,69 +1625,68 @@ class AsyncEngine:
                     with _pending_confirm_lock:
                         _pending_confirm.pop(symbol, None)
 
-                # ── Step 4: Wait for price to reach a 5m auto support zone ────
-                # MACD+RSI+EMA+Vol confirm high/mid-TF ka hai, entry timing 5m pe.
-                # Zones khud detect hote hain (swing-low pivots clustered) — koi
-                # fixed number hardcode nahi. Jab tak price zone ke paas na aaye,
-                # buy hold rehta hai (pending); TIMEOUT/breakdown pe cancel.
+                # ── Step 4: 5m chart draw + maker BUY order resting at support ──
+                # 5m rehta hai OFF hi for signal scoring — koi separate 5m signal
+                # generate nahi hota. Yaha sirf ENTRY TIMING ke liye use hota hai:
+                # jis bhi TF (best_tf) ka signal confirm hua, us ke baad bot poora
+                # 5m chart draw karta hai, nearest support zone dhoondta hai, aur
+                # WAIT nahi karta — turant ek MAKER (GTC limit) BUY order us support
+                # price par resting daal deta hai. SL + TP order fill hote hi bracket
+                # order se saath attach hote hain (dekho _check_pending_entry_fill
+                # aur _place_bracket_orders — ye har cycle unconditionally poll hota
+                # hai, is direction=='buy' block se independent).
                 if _confirm_ok:
-                    candles_5m = candle_cache.get(symbol, '5m') or []
-                    if len(candles_5m) < 10:
-                        # 5m data missing (e.g. 5m TF globally OFF, or cache not warm yet) —
-                        # FAIL-OPEN: buy immediately instead of blocking forever. A missing
-                        # timeframe should never silently stop every trade.
-                        with _pending_entries_lock:
-                            _pending_entries.pop(symbol, None)
-                        self.bot._push_event('warn',
-                            f"⚠️ NO 5m DATA — {symbol} @ ${price:.6f} | support-wait skip, buying directly "
-                            f"(check kar ki 5m timeframe globally ON hai)",
-                            {'symbol': symbol, 'price': price, 'step': 'support_no_data'})
-                    else:
-                        zones        = self.bot._detect_support_zones(candles_5m)
-                        at_support   = False
-                        nearest_zone = None
-                        if zones:
-                            below_or_near = [z for z in zones
-                                              if z['price'] <= price * (1 + NEAR_SUPPORT_PCT / 100)]
-                            if below_or_near:
-                                nearest_zone = max(below_or_near, key=lambda z: z['price'])
-                                dist_pct = (price - nearest_zone['price']) / nearest_zone['price'] * 100
-                                if -SUPPORT_BREAK_PCT <= dist_pct <= NEAR_SUPPORT_PCT:
-                                    at_support = True
+                    with _pending_entries_lock:
+                        pend = _pending_entries.get(symbol)
 
-                        if at_support:
+                    if pend and pend.get('best_tf') == best_tf:
+                        # Order already resting for this signal — fill/timeout polling
+                        # already handles this every cycle. Nothing new to place.
+                        direction = 'neutral'
+                    else:
+                        candles_5m = candle_cache.get(symbol, '5m') or []
+                        if len(candles_5m) < 10:
+                            # 5m data missing / cache not warm yet — FAIL-OPEN: buy at
+                            # market directly instead of blocking forever.
                             with _pending_entries_lock:
                                 _pending_entries.pop(symbol, None)
-                            self.bot._push_event('support_check',
-                                f"✅ AT SUPPORT — {symbol} @ ${price:.6f} | zone=${nearest_zone['price']:.6f} "
-                                f"({nearest_zone['touches']}x touched, 5m) | buying now",
-                                {'symbol': symbol, 'price': price, 'zone': nearest_zone['price'],
-                                 'touches': nearest_zone['touches'], 'step': 'support_hit'})
+                            self.bot._push_event('warn',
+                                f"⚠️ NO 5m DATA — {symbol} @ ${price:.6f} | support order skip, buying directly",
+                                {'symbol': symbol, 'price': price, 'step': 'support_no_data'})
+                            # direction stays 'buy' — fail-open market buy via normal path below
                         else:
-                            now = time.time()
-                            with _pending_entries_lock:
-                                pend = _pending_entries.get(symbol)
-                                if not pend or pend.get('best_tf') != best_tf:
-                                    pend = {'best_tf': best_tf, 'signal_price': price, 'since': now,
-                                             'expires': now + SUPPORT_WAIT_TIMEOUT_MIN * 60}
-                                    _pending_entries[symbol] = pend
-                            if now > pend['expires']:
-                                with _pending_entries_lock:
-                                    _pending_entries.pop(symbol, None)
-                                self.bot._push_event('warn',
-                                    f"⌛ EXPIRED — {symbol} | {SUPPORT_WAIT_TIMEOUT_MIN}min me 5m support tak "
-                                    f"nahi aaya, signal cancel",
-                                    {'symbol': symbol, 'price': price, 'step': 'support_timeout'})
+                            zones = self.bot._detect_support_zones(candles_5m)
+                            below_or_equal = [z for z in zones if z['price'] <= price] if zones else []
+                            if below_or_equal:
+                                zone = max(below_or_equal, key=lambda z: z['price'])
+                            elif zones:
+                                zone = min(zones, key=lambda z: z['price'])
                             else:
-                                wait_min = int((now - pend['since']) / 60)
-                                zone_txt = f"${zones[0]['price']:.6f}" if zones else "koi zone nahi mila"
+                                zone = {'price': self.bot._find_support_zone(candles_5m), 'touches': 0}
+
+                            support_price = zone['price']
+                            placed = self.bot._place_support_limit_buy(symbol, trade_cap, support_price, best_tf)
+                            if placed:
+                                now = time.time()
+                                with _pending_entries_lock:
+                                    _pending_entries[symbol] = {
+                                        'best_tf': best_tf, 'support_price': support_price,
+                                        'capital': trade_cap, 'live': self.bot.live_mode,
+                                        'oid': placed.get('oid'), 'coin_str': placed.get('coin_str'),
+                                        'size': placed.get('size'), 'since': now,
+                                        'expires': now + SUPPORT_WAIT_TIMEOUT_MIN * 60,
+                                    }
                                 self.bot._push_event('support_check',
-                                    f"⏳ WAIT — {symbol} @ ${price:.6f} | nearest 5m zone {zone_txt} | "
-                                    f"waiting {wait_min}/{SUPPORT_WAIT_TIMEOUT_MIN}min",
-                                    {'symbol': symbol, 'price': price,
-                                     'zone': zones[0]['price'] if zones else None,
-                                     'wait_min': wait_min, 'step': 'support_wait'})
-                            direction = 'neutral'  # buy hold — support ka wait
+                                    f"📐 5m CHART DRAWN — {symbol} | support=${support_price:.6f} "
+                                    f"({zone.get('touches', 0)}x touched) | maker BUY resting @ support "
+                                    f"| SL/TP auto-attach on fill",
+                                    {'symbol': symbol, 'price': price, 'zone': support_price,
+                                     'touches': zone.get('touches', 0), 'step': 'support_order_placed'})
+                            else:
+                                self.bot._push_event('error',
+                                    f"Support limit order failed {symbol} @ ${support_price:.6f}",
+                                    {'symbol': symbol, 'price': price})
+                            direction = 'neutral'  # actual buy sirf fill confirm hone par hoga
 
             # ── Same-TF Momentum Confirmation ─────────────────────────────────
             # direction already set to 'neutral' if confirmation/support-wait failed
@@ -2051,6 +2068,121 @@ class BotEngine:
                 return {'success': True, 'price': filled_px, 'size': size, 'raw': result}
             return None
         except Exception as e: logger.error(f"Live buy error {symbol}: {e}"); return None
+
+    # ── Resting maker BUY at support (GTC limit — does NOT wait for fill here) ─
+    def _live_buy_limit_gtc(self, symbol, usdt_amount, limit_price):
+        """Place a resting maker (GTC) limit BUY order at an exact price — used
+        for support-zone entries. Unlike _live_buy (IOC/taker), this does NOT
+        block waiting for a fill; caller must poll query_order_by_oid separately."""
+        try:
+            idx = self._get_spot_asset_index(symbol)
+            if idx is None: logger.error(f"{symbol} not found"); return None
+            coin_str = f"@{10000 + idx}"
+            size     = round(usdt_amount / limit_price, 6)
+            result   = self.exchange.order(coin_str, is_buy=True, sz=size,
+                                           limit_px=round(limit_price, 6),
+                                           order_type={"limit": {"tif": "Gtc"}}, reduce_only=False)
+            logger.info(f"LIVE SUPPORT LIMIT BUY {symbol} @ {limit_price:.6f}: {result}")
+            if result.get('status') != 'ok':
+                return None
+            st  = result.get('response', {}).get('data', {}).get('statuses', [{}])[0]
+            oid = st.get('resting', {}).get('oid') or st.get('filled', {}).get('oid')
+            if not oid:
+                logger.warning(f"[SUPPORT ORDER] {symbol} no oid in response: {st}")
+                return None
+            return {'oid': oid, 'coin_str': coin_str, 'size': size}
+        except Exception as e:
+            logger.error(f"Live support-limit buy error {symbol}: {e}")
+            return None
+
+    def _place_support_limit_buy(self, symbol, capital, support_price, best_tf):
+        """Place resting maker BUY at the 5m support level — live mode places a
+        real GTC limit order on-chain; sim/paper mode tracks a virtual resting
+        order that fills when price actually touches the support level."""
+        if self.live_mode:
+            return self._live_buy_limit_gtc(symbol, capital, support_price)
+        # SIM: virtual resting order — no oid, filled later by candle-touch check
+        size = round(capital / support_price, 6) if support_price else 0
+        return {'oid': None, 'coin_str': None, 'size': size}
+
+    def _cancel_pending_entry(self, symbol, reason='timeout'):
+        """Cancel a resting support-limit BUY order (live) and clear pending state."""
+        with _pending_entries_lock:
+            pend = _pending_entries.pop(symbol, None)
+        if not pend:
+            return
+        if self.live_mode and pend.get('oid') and pend.get('coin_str'):
+            try:
+                r = self.exchange.cancel(pend['coin_str'], int(pend['oid']))
+                logger.info(f"[SUPPORT ORDER] Cancelled {symbol} oid={pend['oid']}: {r.get('status')}")
+            except Exception as e:
+                logger.warning(f"[SUPPORT ORDER] Cancel error {symbol} oid={pend.get('oid')}: {e}")
+        self._push_event('warn',
+            f"⌛ CANCELLED — {symbol} | resting maker BUY @ ${pend['support_price']:.6f} | reason={reason}",
+            {'symbol': symbol, 'price': pend['support_price'], 'step': 'support_timeout'})
+
+    def _check_pending_entry_fill(self, symbol):
+        """Poll a resting support-limit BUY order — live: query exchange order
+        status; sim: check if latest 5m candle low touched the support price.
+        On fill: finalize the trade + immediately place bracket TP/SL. On
+        timeout without fill: cancel the resting order."""
+        with _pending_entries_lock:
+            pend = _pending_entries.get(symbol)
+        if not pend:
+            return
+
+        if self.live_mode and pend.get('oid'):
+            try:
+                res    = self.info.query_order_by_oid(self.wallet, int(pend['oid']))
+                order  = (res or {}).get('order', {})
+                status = order.get('status')
+            except Exception as e:
+                logger.warning(f"[SUPPORT ORDER] Status check error {symbol}: {e}")
+                status = None
+
+            if status == 'filled':
+                fill_px = support_price = pend['support_price']
+                try:
+                    order_detail = order.get('order', {})
+                    limit_px = order_detail.get('limitPx')
+                    if limit_px: fill_px = float(limit_px)
+                except Exception:
+                    pass
+                self._finalize_filled_entry(symbol, pend, fill_px)
+            elif status in ('canceled', 'rejected', 'marginCanceled'):
+                with _pending_entries_lock:
+                    _pending_entries.pop(symbol, None)
+                self._push_event('warn', f"⚠️ Support order for {symbol} was {status} on exchange",
+                                 {'symbol': symbol, 'step': 'support_timeout'})
+            elif time.time() > pend['expires']:
+                self._cancel_pending_entry(symbol, reason='timeout')
+            # else: still resting — nothing to do, wait for next poll
+        else:
+            # SIM mode — fill when latest 5m candle's low touches the support price
+            candles_5m = candle_cache.get(symbol, '5m') or []
+            support_price = pend['support_price']
+            touched = bool(candles_5m) and float(candles_5m[-1][3]) <= support_price * 1.0005
+            if touched:
+                self._finalize_filled_entry(symbol, pend, support_price)
+            elif time.time() > pend['expires']:
+                self._cancel_pending_entry(symbol, reason='timeout')
+
+    def _finalize_filled_entry(self, symbol, pend, fill_price):
+        """Called once a resting support-limit BUY order is confirmed filled
+        (live) or simulated as touched (sim). Records the trade/holding exactly
+        like _execute_buy, then immediately attaches SL+TP bracket orders."""
+        with _pending_entries_lock:
+            _pending_entries.pop(symbol, None)
+        trade = self._execute_buy(symbol, pend['capital'], fill_price,
+                                  f"signal_buy_{pend['best_tf']}_support",
+                                  already_filled={'oid': pend.get('oid'), 'size': pend.get('size')})
+        if not trade:
+            return
+        self._push_event('support_check',
+            f"✅ FILLED — {symbol} @ ${fill_price:.6f} (5m support) | bracket SL/TP attaching",
+            {'symbol': symbol, 'price': fill_price, 'step': 'support_hit'})
+        if self.live_mode and pend.get('coin_str') and pend.get('size'):
+            self._place_bracket_orders(symbol, pend['coin_str'], pend['size'], fill_price)
 
     # ── Bracket orders: place TP + SL as GTC limits after buy ─────────────────
     def _place_bracket_orders(self, symbol, coin_str, size, fill_price):
@@ -2567,8 +2699,11 @@ class BotEngine:
                     'confidence':'low','capital_pct':0.0,'tf_breakdown':{}}
 
     # ── Execute buy ───────────────────────────────────────────────────────────
-    def _execute_buy(self, symbol, capital, price, reason):
-        if self.live_mode:
+    def _execute_buy(self, symbol, capital, price, reason, already_filled=None):
+        """already_filled: pass {'oid':..., 'size':...} when the exchange order
+        (e.g. a resting support-limit BUY) is already confirmed filled — this
+        skips placing a fresh order and just records the trade/holding."""
+        if self.live_mode and not already_filled:
             # Cache balance for 30s to avoid REST call on every buy attempt
             if time.time() - self._balance_ts > 30:
                 self._balance_cache = self.client.get_spot_balance()
@@ -2581,7 +2716,11 @@ class BotEngine:
                 return None
 
         actual_price = price; order_id = None; mode_tag = 'SIM'
-        if self.live_mode:
+        if already_filled:
+            actual_price = price   # already-filled price (support level)
+            order_id     = str(already_filled.get('oid') or '')
+            mode_tag     = 'LIVE' if self.live_mode else 'SIM'
+        elif self.live_mode:
             result = self._live_buy(symbol, capital, price)
             if result:
                 actual_price = result['price']
