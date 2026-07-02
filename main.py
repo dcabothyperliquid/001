@@ -2787,7 +2787,10 @@ class BotEngine:
         amount = (capital * (1 - _VT_TAKER_FEE)) / actual_price   # deduct buy fee from capital
         buy_fee = round(capital * _VT_TAKER_FEE, 6)
         # Extract TF from reason string e.g. 'signal_buy_4h' → '4h'
-        trade_tf = reason.split('_')[-1] if '_' in reason else '1h'
+        # Support-fill entries append a '_support' suffix (e.g. 'signal_buy_4h_support')
+        # which must be stripped first, otherwise split('_')[-1] wrongly returns 'support'.
+        _reason_for_tf = reason[:-len('_support')] if reason.endswith('_support') else reason
+        trade_tf = _reason_for_tf.split('_')[-1] if '_' in _reason_for_tf else '1h'
         trade  = {'type':'BUY','symbol':symbol,'price':actual_price,'amount':amount,
                   'usdt':capital,'buy_fee':buy_fee,'reason':reason,'mode':mode_tag,'order_id':order_id,
                   'signal_price': price,       # price when signal fired
