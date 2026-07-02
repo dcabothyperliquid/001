@@ -831,6 +831,11 @@ SUPPORT_WAIT_TIMEOUT_MIN = 90     # signal expire ho jayega agar itne min me sup
 NEAR_SUPPORT_PCT         = 0.3    # zone ke % andar aane pe "at support" mana jayega
 SUPPORT_BREAK_PCT        = 1.0    # zone se itna % neeche gaya to breakdown maan ke signal cancel
 
+# symbol → {'best_tf', 'since', 'expires', 'tries'} — EMA/Volume dono fail hone pe
+# agle 1-2 candles tak retry karne ke liye (final SKIP se pehle)
+_pending_confirm      = {}
+_pending_confirm_lock = __import__('threading').Lock()
+
 # ── Virtual P&L Tracker ───────────────────────────────────────────────────────
 # Tracks hypothetical trades based purely on BUY/SELL signals (no real orders).
 # BUY signal -> assume bought at that price with current fund allocation.
@@ -1537,11 +1542,7 @@ class AsyncEngine:
                      'step': 'signal'})
 
                 # ── Step 2: Confirmation checks — Momentum (ROC), EMA9>EMA21, Volume ──
-                # (Support-zone distance check removed — it almost always failed because
-                #  BUY only fires after price has already moved away from the recent low,
-                #  making 'near support' structurally incompatible with the BUY condition.
-                #  Replaced with a momentum check: price must show genuine recent upward
-                #  rate-of-change, so we don't buy right as momentum is fading/reversing.)
+                # ── Step 3 prep: EMA + Volume confirmation on best_tf ──────────
                 candles_best = candle_cache.get(symbol, best_tf) or []
 
                 ema9_arr = ema21_arr = []
@@ -1562,24 +1563,49 @@ class AsyncEngine:
                      'step': 'support_check'})
 
                 # ── Step 3: BUY or SKIP decision ─────────────────────────────
-                _confirm_ok = layers_ok >= 2
+                # 1-of-2 chalega (EMA ya Volume, koi ek). Agar signal candle pe bhi
+                # dono fail ho jaye, turant SKIP nahi — agle 1-2 candles (best_tf ke
+                # hisaab se) tak retry karega, tabhi final SKIP/expire hoga.
+                _confirm_ok = layers_ok >= 1
 
                 if not _confirm_ok:
-                    # Build skip reason
-                    skip_reasons = []
-                    if not ema_bull_now:
-                        skip_reasons.append("EMA9<EMA21 (trend nahi)")
-                    if not vol_now:
-                        skip_reasons.append("Volume weak")
-                    skip_msg = " | ".join(skip_reasons) if skip_reasons else "Confirmation fail"
-                    self.bot._push_event('warn',
-                        f"⛔ SKIP — {symbol} @ ${price:.6f} | TF={best_tf} | {skip_msg}",
-                        {'symbol': symbol, 'price': price, 'tf': best_tf,
-                         'skip_reasons': skip_reasons, 'layers': layers_ok,
-                         'step': 'skip'})
-                    direction = 'neutral'  # block actual buy below
-                    with _pending_entries_lock:
-                        _pending_entries.pop(symbol, None)
+                    now         = time.time()
+                    candle_secs = _TF_SECONDS.get(best_tf, 900)
+                    with _pending_confirm_lock:
+                        pend = _pending_confirm.get(symbol)
+                        if not pend or pend.get('best_tf') != best_tf:
+                            pend = {'best_tf': best_tf, 'since': now,
+                                     'expires': now + 2 * candle_secs, 'tries': 0}
+                        pend['tries'] += 1
+                        _pending_confirm[symbol] = pend
+
+                    if now <= pend['expires']:
+                        self.bot._push_event('support_check',
+                            f"🔁 RETRY — {symbol} @ ${price:.6f} | TF={best_tf} | EMA={'✅' if ema_bull_now else '❌'} "
+                            f"Vol={'✅' if vol_now else '❌'} | try {pend['tries']}, agle candle tak wait",
+                            {'symbol': symbol, 'price': price, 'tf': best_tf,
+                             'tries': pend['tries'], 'step': 'confirm_retry'})
+                        direction = 'neutral'  # is cycle buy nahi, but agla candle retry hoga
+                    else:
+                        with _pending_confirm_lock:
+                            _pending_confirm.pop(symbol, None)
+                        skip_reasons = []
+                        if not ema_bull_now:
+                            skip_reasons.append("EMA9<EMA21 (trend nahi)")
+                        if not vol_now:
+                            skip_reasons.append("Volume weak")
+                        skip_msg = " | ".join(skip_reasons) if skip_reasons else "Confirmation fail"
+                        self.bot._push_event('warn',
+                            f"⛔ SKIP — {symbol} @ ${price:.6f} | TF={best_tf} | {skip_msg} | 2 candles tak retry fail",
+                            {'symbol': symbol, 'price': price, 'tf': best_tf,
+                             'skip_reasons': skip_reasons, 'layers': layers_ok,
+                             'step': 'skip'})
+                        direction = 'neutral'  # block actual buy below
+                        with _pending_entries_lock:
+                            _pending_entries.pop(symbol, None)
+                else:
+                    with _pending_confirm_lock:
+                        _pending_confirm.pop(symbol, None)
 
                 # ── Step 4: Wait for price to reach a 5m auto support zone ────
                 # MACD+RSI+EMA+Vol confirm high/mid-TF ka hai, entry timing 5m pe.
@@ -2886,7 +2912,7 @@ _signal_store      = {}
 _signal_store_lock = __import__('threading').Lock()
 
 # Candle duration in seconds per timeframe
-_TF_SECONDS = {'15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400}
+_TF_SECONDS = {'5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400}
 
 def _record_buy_signal(symbol, price, timeframe, score, executed=False, capital=None):
     import time as _t
@@ -2923,6 +2949,8 @@ def _record_sell_signal(symbol, price=None, exit_reason='signal'):
     _signal_state_set(symbol, 'sell')
     with _pending_entries_lock:
         _pending_entries.pop(symbol, None)
+    with _pending_confirm_lock:
+        _pending_confirm.pop(symbol, None)
     if price:
         _vt_on_sell(symbol, price, exit_reason=exit_reason)
 
